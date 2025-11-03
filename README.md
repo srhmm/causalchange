@@ -26,7 +26,7 @@ Additional jupyter notebooks are available for the following case studies,
  
 - **Chapter 1**: [Population Paradox I](demo/ch1_example_simpson.ipynb), Simpson's paradox in COVID-19 data [5] 
 - **Chapter 5**: [Changepoint Challenge](demo/ch5_realworld_river.ipynb), E-OBS temperature and precipitation data [6]
-- **Chapter 6**: [Population Paradox III](demo/ch_6_example_colon.ipynb), TCGA colon adenocarcinoma data [7]
+- **Chapter 6**: [Population Paradox III](demo/ch6_example_colon.ipynb), TCGA colon adenocarcinoma data [7]
 
 ### Experiments
 To run larger experiments, we provide example experiment suites for the causal DAG discovery and causal CMM discovery,
