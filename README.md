@@ -1,5 +1,5 @@
 ## CausalChange
-*Causal Discovery under Changes in Distribution*: Implementations of the main algorithms in the thesis.
+*Causal Discovery under Changes in Distribution*: Implementations of the main algorithms included in the thesis.
 
 ### Setup
 The following sets up a conda environment and a jupyter kernel (```Python (cc)```) that can be used to run the jupyter notebooks.
@@ -25,15 +25,15 @@ The following jupyter notebooks under ``demo/`` show basic usage of the algorith
 Additional jupyter notebooks are available for the following case studies, 
  
 - **Chapter 1**: [Population Paradox I](demo/ch1_example_simpson.ipynb), Simpson's paradox in COVID-19 data [5] 
-- **Chapter 5**: [Changepoint Challenge](demo/ch5_realworld_river.ipynb), European catchments [6]
-- **Chapter 6**: [Population Paradox III](demo/ch1_example_simpson.ipynb),   [7]
+- **Chapter 5**: [Changepoint Challenge](demo/ch5_realworld_river.ipynb), E-OBS temperature and precipitation data [6]
+- **Chapter 6**: [Population Paradox III](demo/ch_6_example_colon.ipynb), TCGA colon adenocarcinoma data [7]
 
 ### Experiments
 To run larger experiments, we provide example experiment suites for the causal DAG discovery and causal CMM discovery,
-- **Chapters 2, 3**: ```python -m src.exp_change.exp_contexts ```
-- **Chapter 6**: ```python -m src.exp_change.exp_mix ```
+- **Chapters 2, 3**: ```python -m src.exp.exp_change.exp_contexts ```
+- **Chapter 6**: ```python -m src.exp.exp_change.exp_mix ```
 
-For customization of experiment parameters or methods, see ```src/exp_change/config_contexts.py```, respectively ```src/exp_change/config_mix.py```.
+For customization of experiment parameters or methods, see ```src/exp/exp_change/config_contexts.py```, respectively ```src/exp/exp_change/config_mix.py```.
 
 ### References
 
@@ -51,12 +51,6 @@ discovery from non-stationary time series.* AAAI, 2025a.
 
 
 ### Notes 
-
-To view the FLUXNET embedding, with
-```set PYTHONPATH=%cd%```, 
-
-```python src\exp_stime\app_tsne_dash.py```
-or ```python -m src.exp_stime.app_tsne_dash```
 
 *Note:* If the requirement of rpy is problematic, it can be omitted from the requirements.txt. Only the notebooks for **Chapter 6**
 need it, the remaining notebooks can be used without it.
