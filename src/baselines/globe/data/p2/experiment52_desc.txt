@@ -1,0 +1,9 @@
+Ground Truth (X <tab> Y means X causes Y)
+1	3
+2	3
+
+
+Coefficients
+[2]= + noise_2
+[1]= + noise_1
+[3]= +0.201406([1]+0.464586)^3.35792 +0.301596([2]+0.917571)^4.9258 + noise_3
