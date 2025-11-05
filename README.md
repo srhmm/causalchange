@@ -14,7 +14,7 @@ pip install -r requirements.txt
 conda activate causalchange
 
 pip install ipykernel
-python -m ipykernel install --user --name causalchange --display-name "Python (cc)"
+python -m ipykernel install --user --name causalchange --display-name "Python (causc)"
 ```
 #### docker
 For a setup with Docker, after installing Docker (and making sure to
@@ -35,7 +35,8 @@ The following jupyter notebooks under ``demo/`` show basic usage of the algorith
 Additional jupyter notebooks are available for the following case studies, 
  
 - **Chapter 1**: [Population Paradox I](demo/ch1_example_simpson.ipynb), Simpson's paradox in COVID-19 data [6] 
-- **Chapter 5**: [Changepoint Challenge](demo/ch5_realworld_river.ipynb), E-OBS temperature and precipitation data [7]
+- **Chapter 5**: [Changepoint Challenge](demo/ch5_realworld_river.ipynb), E-OBS temperature and precipitation data [7]. The data is not public, but the notebooks show some geographical maps and changepoints discovered with SPACETIME.
+- **Chapter 5**, for theFLUXNET data [9], the t-SNE embedding of SPACETIME's causal edge weights can be shown with this web app: ```python src\exp\exp_stime\app_tsne_dash.py``` with argument  ```--mode 0``` for different colorings (0-7)
 - **Chapter 6**: [Population Paradox III](demo/ch6_example_colon.ipynb), TCGA colon adenocarcinoma data [8]
 
 ### Experiments
@@ -59,6 +60,7 @@ Discovery from Non-stationary Time Series.* AAAI, 2025a.
  - [6] based on data from Public Health England (2010), accessed at https://www.openintro.org/data/index.php?data=simpsons_paradox_covid
  - [7] based on E-OBS Temperature and Precipitation Data Sets, Cornes et al. (2018)
  - [8] based on Colon adenocarcinoma data, from the TCGA atlas, https://www.cancer.gov/tcga, as well as the RobMixReg package by Chang (2020) 
+ - [8] based on FLUXNET data, obtained from https://fluxnet.org/data/, and based on Baldocchi, 2014 
 
 
 

@@ -1,5 +1,8 @@
+from pathlib import Path
+
 import numpy as np
-PATH_PRE = "C://Users\msara\eda_papers\git_thesissrc\src/"
+#PATH_PRE = "YOURPREFIX\causalchange\src/"
+PATH_PRE =  str(Path(__file__).resolve().parent.parent.parent) +'/' #  paths should be fixed .....
 
 
 """ Data parameters for fluxnet and river runoff experiments"""
@@ -7,9 +10,9 @@ PATH_PRE = "C://Users\msara\eda_papers\git_thesissrc\src/"
 # Paths
 FLUX_PATH = '/dsets/dsets_stime/flux_krich_et_al/'
 FLUX_LOC_INFO_KRICH_PATH = '/dsets/dsets_stime/fluxnet_locations_krichetal.csv'
-FLUX_LOC_INFO_OURS_PATH = 'exp_stime/res/res_stime/flux/fluxnet_locations_ours.csv'
-FLUX_OUT_PATH = 'exp_stime/res/res_stime/flux/'
-PATH_FLUX_OUT = 'exp_stime/res/res_stime/flux/'
+FLUX_LOC_INFO_OURS_PATH = 'exp/exp_stime/res/res_stime/flux/fluxnet_locations_ours.csv'
+FLUX_OUT_PATH = 'exp/exp_stime/res/res_stime/flux/'
+PATH_FLUX_OUT = 'exp/exp_stime/res/res_stime/flux/'
 
 # Relevant vars
 FLUX_RELEVANT_VARIABLES = [
@@ -68,7 +71,7 @@ FLUX_RESULT_REGIME_PARTITION = [
 # Paths
 
 PATH_RIVER_DATA = '/dsets/dsets_stime/basin data/timeseries'
-PATH_RIVER_OUT = 'exp_stime/res/res_stime/river/'
+PATH_RIVER_OUT = 'exp/exp_stime/res/res_stime/river/'
 PATH_RIVER_BASINSINFO = '/dsets/dsets_stime/basin data/basins_info.csv'
 PATH_RIVER_LOC_INFO = PATH_RIVER_OUT + 'runoff_locations_ours.csv'
 

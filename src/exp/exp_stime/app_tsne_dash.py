@@ -1,22 +1,55 @@
-
+import argparse
+import sys
 
 import dash
 from dash import dcc, html, Input, Output
 import pandas as pd
 import plotly.express as px
 
-from src.exp.exp_stime.data_hypparams import FLUX_OUT_PATH, PATH_PRE
+from src.exp.exp_stime.data_hypparams import FLUX_OUT_PATH, PATH_PRE, PATH_RIVER_OUT
 
-df = pd.read_csv(PATH_PRE + FLUX_OUT_PATH + "tsne/tsne_years_col_T_df.csv")
-#df = pd.read_csv(PATH_PRE + PATH_RIVER_OUT + "tsne_output_2010.csv")
+ap = argparse.ArgumentParser("tsne")
+ap.add_argument("-m", "--mode", default=1, help=f"colors (0 for clusters, 1 for P, 2 for R, 3 for T, 4 for VPD, 5 for NEE, 6 for LE, 7 for GPP)", type=int)
+argv = sys.argv[1:]
+nmsp = ap.parse_args(argv)
+
+if nmsp.mode == 0:
+    df = pd.read_csv(PATH_PRE + FLUX_OUT_PATH + "tsne/tsne_years_col_cluster_df.csv")
+    dfname = 'fluxnet, colored by cluster/region'
+elif nmsp.mode == 1:
+    df = pd.read_csv(PATH_PRE + FLUX_OUT_PATH + "tsne/tsne_years_col_P_df.csv")
+    dfname = 'fluxnet, colored by P (precipitation)'
+elif nmsp.mode == 2:
+    df = pd.read_csv(PATH_PRE + FLUX_OUT_PATH + "tsne/tsne_years_col_R_df.csv")
+    dfname = 'fluxnet, colored by R (radiation)'
+elif nmsp.mode == 3:
+    df = pd.read_csv(PATH_PRE + FLUX_OUT_PATH + "tsne/tsne_years_col_T_df.csv")
+    dfname = 'fluxnet, colored by T (temperature)'
+elif nmsp.mode == 4:
+    df = pd.read_csv(PATH_PRE + FLUX_OUT_PATH + "tsne/tsne_years_col_VPD_df.csv")
+    dfname = 'fluxnet, colored by VPD'
+elif nmsp.mode == 5:
+    df = pd.read_csv(PATH_PRE + FLUX_OUT_PATH + "tsne/tsne_years_col_NEE_df.csv")
+    dfname = 'fluxnet, colored by NEE'
+elif nmsp.mode == 6:
+    df = pd.read_csv(PATH_PRE + FLUX_OUT_PATH + "tsne/tsne_years_col_LE_df.csv")
+    dfname = 'fluxnet, colored by LE'
+elif nmsp.mode == 7:
+    df = pd.read_csv(PATH_PRE + FLUX_OUT_PATH + "tsne/tsne_years_col_GPP_df.csv")
+    dfname = 'fluxnet, colored by GPP'
+elif nmsp.mode == 8:
+    df = pd.read_csv(PATH_PRE + PATH_RIVER_OUT + "tsne_output_2010_colorby_edgePQ.csv")
+    dfname = 'river'
+else:
+    raise ValueError(f"{nmsp.mode} invalid color")
 #print("Cols:", df.columns.tolist())
 
 # Dash app
 app = dash.Dash(__name__)
-app.title = "t-SNE Interactive Viewer"
+app.title = "t-SNE embedding"
 
 app.layout = html.Div([
-    html.H2("t-SNE embedding for fluxnet", style={"textAlign": "center"}),
+    html.H2(f"t-SNE embedding for {dfname}", style={"textAlign": "center"}),
 
     html.Div([
         html.Div([
@@ -105,7 +138,7 @@ def update_plot(selected_year, selected_month, selected_loc):
     #    marker=dict(size=10, color="red", opacity=0.9),
     #    name="Selected",
     #)
-    fig.update_layout(template="plotly_white", title="Interactive t-SNE Embedding")
+    fig.update_layout(template="plotly_white", title=f"ft-SNE embedding {dfname}")
 
 
     return fig
