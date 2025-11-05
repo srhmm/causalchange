@@ -1,8 +1,13 @@
 ## CausalChange
-Implementations of the main algorithms included in the thesis *Causal Discovery under Changes in Distribution*, (2025).
+Implementations of the main algorithms included in the thesis *Causal Discovery under Distribution Change* (2025).
 
 ### Setup
-The following sets up a conda environment and a jupyter kernel (```Python (cc)```) that can be used to run the jupyter notebooks.
+
+#### conda
+The following script sets up a conda environment and a jupyter kernel (```Python (cc)```) that can be used to run the jupyter notebooks,
+```./scripts/conda_setup.sh```.
+
+The following does the same,
 ```
 conda create -n causalchange python=3.10 -y
 pip install -r requirements.txt
@@ -11,6 +16,11 @@ conda activate causalchange
 pip install ipykernel
 python -m ipykernel install --user --name causalchange --display-name "Python (cc)"
 ```
+#### docker
+For a setup with Docker, after installing Docker (and making sure to
+``` export PATH="$PATH:/Applications/Docker.app/Contents/Resources/bin/"``` if on mac), use
+```./scripts/docker_setup.sh```.
+
 
 ### Demos
 

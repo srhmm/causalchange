@@ -1,3 +1,6 @@
+# USAGE:
+#docker build -t causalchange .
+
 FROM continuumio/miniconda3:latest
 
 ENV ENV_NAME=causalchange
@@ -21,9 +24,15 @@ RUN conda run -n $ENV_NAME R -e "install.packages('flexmix', repos='http://cran.
 RUN conda run -n $ENV_NAME python -m ipykernel install --user --name $ENV_NAME --display-name "Python 3 ($ENV_NAME)"
 
 #RUN conda run -n $ENV_NAME pip freeze #to show all packages
+# the workspc is the whole directory:
+#EXPOSE 8888
+#COPY . /workspace/
+
+WORKDIR /workspace
 EXPOSE 8888
-# Default command
-COPY /src/mixtures /workspace/
-CMD ["conda", "run", "-n", "causalchange", "jupyter", "notebook", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root"]
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--allow-root", "--no-browser"]
-#docker build -t causalchange-jupyter .
+
+CMD ["conda", "run", "--no-capture-output", "-n", "causalchange", \
+     "jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", \
+     "--allow-root", "--ServerApp.root_dir=/workspace"]
+
+#CMD ["jupyter", "lab", "--ip=0.0.0.0", "--allow-root", "--no-browser"]
