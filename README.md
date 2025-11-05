@@ -1,5 +1,5 @@
 ## CausalChange
-*Causal Discovery under Changes in Distribution*: Implementations of the main algorithms included in the thesis.
+Implementations of the main algorithms included in the thesis *Causal Discovery under Changes in Distribution*, (2025).
 
 ### Setup
 The following sets up a conda environment and a jupyter kernel (```Python (cc)```) that can be used to run the jupyter notebooks.
@@ -15,21 +15,21 @@ python -m ipykernel install --user --name causalchange --display-name "Python (c
 ### Demos
 
 The following jupyter notebooks under ``demo/`` show basic usage of the algorithms on example datasets.
-- **Chapters 2, 3**: [TOPIC](demo/ch3_causal.ipynb) for causal DAG discovery from multiple contexts [1]
+- **Chapters 2, 3**: [TOPIC](demo/ch3_causal.ipynb) for causal DAG discovery from multiple contexts [1, 2]
 
-- **Chapter 5**: [CoCo](demo/ch4_confounding.ipynb) for counfounder detection from multiple contexts [2]
-- **Chapter 5**: [SpaceTime](demo/ch5_time.ipynb) for TCG discovery and changepoint detection from time series [3]
+- **Chapter 5**: [CoCo](demo/ch4_confounding.ipynb) for detecting counfounding in multiple contexts [3]
+- **Chapter 5**: [SpaceTime](demo/ch5_time.ipynb) for TCG discovery and changepoint detection in multi-context time series [4]
 
-- **Chapter 6**: [CMMs](demo/ch6_cmms.ipynb) for data from mixtures of populations [4]
+- **Chapter 6**: [CMMs](demo/ch6_cmms.ipynb) for causal modelling and discovery in mixtures of populations [5]
 
 Additional jupyter notebooks are available for the following case studies, 
  
-- **Chapter 1**: [Population Paradox I](demo/ch1_example_simpson.ipynb), Simpson's paradox in COVID-19 data [5] 
-- **Chapter 5**: [Changepoint Challenge](demo/ch5_realworld_river.ipynb), E-OBS temperature and precipitation data [6]
-- **Chapter 6**: [Population Paradox III](demo/ch6_example_colon.ipynb), TCGA colon adenocarcinoma data [7]
+- **Chapter 1**: [Population Paradox I](demo/ch1_example_simpson.ipynb), Simpson's paradox in COVID-19 data [6] 
+- **Chapter 5**: [Changepoint Challenge](demo/ch5_realworld_river.ipynb), E-OBS temperature and precipitation data [7]
+- **Chapter 6**: [Population Paradox III](demo/ch6_example_colon.ipynb), TCGA colon adenocarcinoma data [8]
 
 ### Experiments
-To run larger experiments, we provide example experiment suites for the causal DAG discovery and causal CMM discovery,
+To run larger experiments, there are example experiment suites for the causal DAG discovery and causal CMM discovery,
 - **Chapters 2, 3**: ```python -m src.exp.exp_change.exp_contexts ```
 - **Chapter 6**: ```python -m src.exp.exp_change.exp_mix ```
 
@@ -37,20 +37,25 @@ For customization of experiment parameters or methods, see ```src/exp/exp_change
 
 ### References
 
- - [1] Xu, S., Mameche, S., and Vreeken, J. *Information-theoretic causal discovery
-in topological order.* AISTATS, 2025.
- - [2] Mameche, S., Vreeken, J., and Kaltenpoth, D. *Identifying confounding from
-causal mechanism shifts.* AISTATS, 2024.
- - [3] Mameche, S., Cornanguer, L., Ninad, U., and Vreeken, J. *Spacetime: Causal
-discovery from non-stationary time series.* AAAI, 2025a.
- - [4] Mameche, S., Kalofolias, J., and Vreeken, J. *Causal mixture models: Characterization and discovery.* NeurIPS, 2025b.
- - [5] based on data from Public Health England (2010), accessed at https://www.openintro.org/data/index.php?data=simpsons_paradox_covid
- - [6] based on E-OBS Temperature and Precipitation Data Sets, Cornes et al. (2018)
- - [7] based on Colon adenocarcinoma data, from the TCGA atlas, https://www.cancer.gov/tcga, as well as the RobMixReg package by Chang (2020) 
+ - [1] Mameche, S., Kaltenpoth, D., and Vreeken, J. *Learning Causal Models under
+Independent Changes.* NeurIPS, 2023.
+ - [2] Xu, S., Mameche, S., and Vreeken, J. *Information-theoretic Causal Discovery
+in Topological Order.* AISTATS, 2025.
+ - [3] Mameche, S., Vreeken, J., and Kaltenpoth, D. *Identifying Confounding from
+Causal Mechanism Shifts.* AISTATS, 2024.
+ - [4] Mameche, S., Cornanguer, L., Ninad, U., and Vreeken, J. *Spacetime: Causal
+Discovery from Non-stationary Time Series.* AAAI, 2025a.
+ - [5] Mameche, S., Kalofolias, J., and Vreeken, J. *Causal Mixture Models: Characterization and Discovery.* NeurIPS, 2025b.
+ - [6] based on data from Public Health England (2010), accessed at https://www.openintro.org/data/index.php?data=simpsons_paradox_covid
+ - [7] based on E-OBS Temperature and Precipitation Data Sets, Cornes et al. (2018)
+ - [8] based on Colon adenocarcinoma data, from the TCGA atlas, https://www.cancer.gov/tcga, as well as the RobMixReg package by Chang (2020) 
 
 
 
 ### Notes 
+To view the FLUXNET embedding, with
+```set PYTHONPATH=%cd%```, 
+```python -m src.exp.exp_stime.app_tsne_dash``` or ```python src\exp\exp_stime\app_tsne_dash.py```
 
 *Note:* If the requirement of rpy is problematic, it can be omitted from the requirements.txt. Only the notebooks for **Chapter 6**
 need it, the remaining notebooks can be used without it.
