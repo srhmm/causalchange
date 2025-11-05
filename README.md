@@ -20,7 +20,7 @@ python -m ipykernel install --user --name causalchange --display-name "Python (c
 For a setup with Docker, after installing Docker (and making sure to
 ``` export PATH="$PATH:/Applications/Docker.app/Contents/Resources/bin/"``` if on mac), use
 ```./scripts/docker_setup.sh```.
-
+ 
 
 ### Demos
 

@@ -15,7 +15,7 @@ pgmpy
 causaldag
 seaborn
 joblib
-#rpy2==3.5.17
+rpy2==3.5.17
 tigramite
 ruptures
 dash
