@@ -341,7 +341,9 @@ class CausalMixtureMethodGES(CausalDiscoveryMthd, ABC):
 
         # reconstruct the mixing variables under G
         adj = general_graph_to_undirected_edge_adj(gg)
-        hypparams = dict(oracle_Z=False, oracle_K=False, oracle_G=False, k_max=params.get('k_max', 5))
+        hypparams = dict(oracle_Z=False, oracle_K=False, oracle_G=False, k_max=params.get('k_max', 5),
+                         data_mode=DataMode.MIXED, score_type=ScoreType.LIN, mixing_type=MixingType.MIX_LIN)
+
         top = CausalChangeTopological(**hypparams)
         top.fit_Z_given_G(X, adj, skip_pruning=True) #pruning is only for the power-speci experiments
         self.metrics = {'time': time.perf_counter() - time_st}

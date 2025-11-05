@@ -14,7 +14,7 @@ pip install -r requirements.txt
 conda activate causalchange
 
 pip install ipykernel
-python -m ipykernel install --user --name causalchange --display-name "Python (causc)"
+python -m ipykernel install --user --name causalchange --display-name "Python (cc)"
 ```
 #### docker
 For a setup with Docker, after installing Docker (and making sure to
@@ -36,7 +36,7 @@ Additional jupyter notebooks are available for the following case studies,
  
 - **Chapter 1**: [Population Paradox I](demo/ch1_example_simpson.ipynb), Simpson's paradox in COVID-19 data [6] 
 - **Chapter 5**: [Changepoint Challenge](demo/ch5_realworld_river.ipynb), E-OBS temperature and precipitation data [7]. The data is not public, but the notebooks show some geographical maps and changepoints discovered with SPACETIME.
-- **Chapter 5**, for theFLUXNET data [9], the t-SNE embedding of SPACETIME's causal edge weights can be shown with this web app: ```python src\exp\exp_stime\app_tsne_dash.py``` with argument  ```--mode 0``` for different colorings (0-7)
+- **Chapter 5**,  FLUXNET [9]. To show the t-SNE embedding of causal edge strengths, see the zip file ```src/exp/exp_stime/res.zip```, or use this app ```python src\exp\exp_stime\app_tsne_dash.py```.
 - **Chapter 6**: [Population Paradox III](demo/ch6_example_colon.ipynb), TCGA colon adenocarcinoma data [8]
 
 ### Experiments
@@ -65,11 +65,13 @@ Discovery from Non-stationary Time Series.* AAAI, 2025a.
 
 
 ### Notes 
-To view the FLUXNET embedding, with
-```set PYTHONPATH=%cd%```, 
-```python -m src.exp.exp_stime.app_tsne_dash``` or ```python src\exp\exp_stime\app_tsne_dash.py```
+*FLUXNET:* To view the  embedding, with
+```set PYTHONPATH=%cd%```, run
+```python -m src.exp.exp_stime.app_tsne_dash``` or ```python src\exp\exp_stime\app_tsne_dash.py```.
+The extra argument  ```--mode 0``` determines the coloring by cluster/region A-D (0) or by one of the observed variables (1-7). 
+For this, the zip file  ```src/exp/exp_stime/res.zip``` needs to be unpacked first into the same folder. 
 
-*Note:* If the requirement of rpy is problematic, it can be omitted from the requirements.txt. Only the notebooks for **Chapter 6**
+*R packages:* If the requirement of rpy is problematic, it can be omitted from the requirements.txt. Only the notebooks for **Chapter 6**
 need it, the remaining notebooks can be used without it.
 
 To install R packages, such as ```pcalg```, one can use the following.
