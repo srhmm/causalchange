@@ -8,12 +8,12 @@ import pandas as pd
 
 from src.baselines.sep_distances.codebase import mixed_graph as graph_lmg
 from src.baselines.sep_distances.codebase.mixed_graph import LabelledMixedGraph
-from src.causalchange.greedy_equivalent_causal_mixture import ges_causal_mixture
+from src.causalchange.search.greedy_equivalent_causal_mixture import ges_causal_mixture
 from src.causalchange.mixing.mixing import MixingType
-from src.causalchange.mixing.regression import ScoreType, GPType, DataMode
+from src.causalchange.context.regression import ScoreType, GPType, DataMode
 from src.causalchange.causal_change_topo import CausalChangeTopological
 from src.causalchange.util.util import compare_lmg_DAG, compare_lmg_CPDAG, nxdigraph_to_lmg, general_graph_to_lmg, \
-    causaldag_to_lmg, general_graph_to_directed_edge_adj, general_graph_to_undirected_edge_adj, augmented_graph_to_lmg, \
+    causaldag_to_lmg, general_graph_to_undirected_edge_adj, augmented_graph_to_lmg, \
     lmg_to_directed_edge_adj
 
 
@@ -302,7 +302,7 @@ class CausalMixtureMethod(CausalDiscoveryMthd, ABC):
         time_st = time.perf_counter()
         top.fit_graph_and_mixtures(X)
         self.metrics = {'time': time.perf_counter() - time_st}
-        self.dag = top.topic_graph
+        self.dag = top.graph_state
         self.lmg = nxdigraph_to_lmg(self.dag)
         self.model = top
 
@@ -345,7 +345,7 @@ class CausalMixtureMethodGES(CausalDiscoveryMthd, ABC):
                          data_mode=DataMode.MIXED, score_type=ScoreType.LIN, mixing_type=MixingType.MIX_LIN)
 
         top = CausalChangeTopological(**hypparams)
-        top.fit_Z_given_G(X, adj, skip_pruning=True) #pruning is only for the power-speci experiments
+        top.fit_Z_given_G(adj, skip_pruning=True) #pruning is only for the power-speci experiments
         self.metrics = {'time': time.perf_counter() - time_st}
 
         self.model = {'ges-with-latent-bic': ges_obj, 'mixture-variable-extraction': top}
@@ -478,7 +478,6 @@ class CDNODMethod(CausalDiscoveryMthd, ABC):
         model = None
         time_st = time.perf_counter()
 
-        from causallearn.search.ConstraintBased.CDNOD import cdnod
         contexts = sorted(X.keys())
         blocks = [np.asarray(X[k]) for k in contexts]
         data = np.vstack(blocks)

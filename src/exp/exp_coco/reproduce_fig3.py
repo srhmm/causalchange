@@ -2,9 +2,9 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from src.coco.coco import CoCo
-from src.coco.util.co_test_types import CoShiftTestType, CoCoTestType, CoDAGType
-from src.coco.util.mi_sampling import Sampler
+from src.causalchange.coco import CoCo
+from src.causalchange.util.co_test_types import CoShiftTestType, CoCoTestType, CoDAGType
+from src.causalchange.util.mi_sampling import Sampler
 
 
 def show_raf_mek(path):

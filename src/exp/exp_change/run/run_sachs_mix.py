@@ -29,8 +29,8 @@ def sachs_run_causal_discovery(samples, cd_mthd, k_max, idx2var_dict, true_g):
     os.makedirs(os.path.dirname(out_fl), exist_ok=True)
     write_out_metrs(out_fl, metrics)
     if cd_mthd.value == CD.TopicContexts.value:
-        for node_i in cls.model.topic_graph.nodes:
-            parents_i = list(cls.model.topic_graph.predecessors(node_i))
+        for node_i in cls.model.graph_state.nodes:
+            parents_i = list(cls.model.graph_state.predecessors(node_i))
             score, res = cls.model._score(parents_i, node_i, ret_full_result=True)
             print(idx2var_dict[node_i], res["groups"])
 
@@ -89,7 +89,7 @@ def sachs_run_mixtureutigsp_ours(mixture_samples, intv_args_dict, intv_targets, 
     mi_scores_ours = sachs_eval_iv_targets(topEst.e_Z_n, t_Z, intv_targets, idx2var_dict, t_intv_args_dict)
     write_out_metrs(os.path.join("../../results_paper/res_sachs", f"results_ivtargets_m_{CD.CausalMixtures}.tsv"), mi_scores_ours)
 
-    our_lmg = nxdigraph_to_lmg(topEst.topic_graph)
+    our_lmg = nxdigraph_to_lmg(topEst.graph_state)
     metrics_ours = compare_lmg_DAG(true_lmg, our_lmg)
     write_out_metrs(os.path.join("../../results_paper/res_sachs", f"results_m_{CD.CausalMixtures}.tsv"), metrics_ours)
 
@@ -112,5 +112,5 @@ def sachs_run_mixtureutigsp_ours(mixture_samples, intv_args_dict, intv_targets, 
 
     # some prints
     for (i, j) in true_g.edges: print(f"\t\t{idx2var_dict[i]}->{idx2var_dict[j]}")
-    for (i, j) in topEst.topic_graph.edges: print(f"\t\t{idx2var_dict[i]}->{idx2var_dict[j]}")
+    for (i, j) in topEst.graph_state.edges: print(f"\t\t{idx2var_dict[i]}->{idx2var_dict[j]}")
 

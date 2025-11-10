@@ -6,7 +6,7 @@ import numpy as np
 from src.exp.exp_stime.utils.gen_timeseries import gen_timeseries
 from src.exp.exp_stime.options import Options
 from src.exp.exp_stime.utils.case_results import CaseReslts, write_cases
-from src.stime.spacetime import SpaceTime
+from src.stime import SpaceTime
 
 """ Run ST on simulated data"""
 

@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from sklearn.manifold import TSNE
-
 import json
 import warnings
 from types import SimpleNamespace
 from typing import Tuple, List
-import folium
 
 from sklearn.metrics import silhouette_score
 
@@ -21,9 +18,9 @@ import re
 from src.exp.exp_stime.data_hypparams import PATH_RIVER_OUT, assumed_max_lag, assumed_min_dur, verbosity, \
     RIVER_RESULT_LINKS, RIVER_ATTRS, \
     PATH_PRE
-from src.stime.scoring.discrepancy_testing import DiscrepancyTestType
-from src.stime.spacetime import SpaceTime
-from src.stime.sttypes import MethodType, CpsInitializationStrategy
+from src.stime import DiscrepancyTestType
+from src.stime import SpaceTime
+from src.stime import MethodType, CpsInitializationStrategy
 
 COL_SCHEME = {
     "pr-color1b": "#219ebc",   # blue
@@ -826,8 +823,7 @@ def visualize_clusters_on_map_old(
 
     print(f"Map saved to {file_path+map_file}")
 
-import geopandas as gpd
-from shapely.geometry import Point, Polygon
+
 from matplotlib.colors import ListedColormap
 
 import geopandas as gpd

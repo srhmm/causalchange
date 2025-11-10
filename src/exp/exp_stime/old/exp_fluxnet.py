@@ -10,12 +10,12 @@ from matplotlib import pyplot as plt
 from data_preproc import get_flux_data
 from src.exp.exp_stime.data_hypparams import FLUX_OUT_PATH, assumed_max_lag, assumed_min_dur, initial_bin_size, verbosity, \
     interleaving_iterations, FLUX_RESULT_LINKS
-from src.stime.cps_search import mdl_error_cp_search
-from src.stime.discrepancy_test import DiscrepancyTestType
-from src.stime.methods import MethodType, CpsInitializationStrategy
+from src.stime import mdl_error_cp_search
+from src.stime import DiscrepancyTestType
+from src.stime import MethodType, CpsInitializationStrategy
 
-from src.stime.spacetime import SpaceTime, get_options
-from src.stime.utils.util_regimes import partition_t, r_partition_to_windows_T
+from src.stime import SpaceTime, get_options
+from src.causalchange.util.util_regimes import partition_t, r_partition_to_windows_T
 
 # DAG discovery
 def causal_discovery_loc():

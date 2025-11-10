@@ -2,12 +2,12 @@ import os
 
 import numpy as np
 
-from src.coco.util.co_test_types import CoCoTestType, CoShiftTestType, CoDAGType
-from src.coco.coco import CoCo
+from src.causalchange.util.co_test_types import CoCoTestType, CoShiftTestType, CoDAGType
+from src.causalchange.coco import CoCo
 from src.coco.gen.dag_gen import _random_nonlinearity
 from src.exp.exp_coco.fci import FCI_JCI
 from src.coco.gen.dag_confounded import DAGConfounded
-from src.coco.util.mi_sampling import Sampler
+from src.causalchange.util.mi_sampling import Sampler
 from src.exp.exp_coco.results_coco import ResultsCoCo, MethodType
 
 

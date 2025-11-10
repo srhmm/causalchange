@@ -1,8 +1,9 @@
 import logging
 from typing import List
 
+from src.causalchange.util.sttypes import MethodType
 from src.exp.exp_stime.utils.gen_timeseries import Func, Noise
-from src.stime.sttypes import MethodType
+
 
 
 class Options:

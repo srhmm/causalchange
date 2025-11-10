@@ -40,12 +40,12 @@ if __name__ == "__main__":
 
 
         if cd_mthd.value in [CD.TopicContextsGP.value, CD.TopicContextsRFF.value]:
-            for node_i in cls.model.topic_graph.nodes:
-                parents_i = list(cls.model.topic_graph.predecessors(node_i))
+            for node_i in cls.model.graph_state.nodes:
+                parents_i = list(cls.model.graph_state.predecessors(node_i))
                 score, res = cls.model._score(parents_i, node_i, ret_full_result=True)
                 print(node_i, res["groups"])
 
-        est_lmg = nxdigraph_to_lmg(cls.model.topic_graph)
+        est_lmg = nxdigraph_to_lmg(cls.model.graph_state)
         metrics = compare_lmg_DAG(true_lmg, est_lmg)
         print(metrics)
 

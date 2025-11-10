@@ -1,6 +1,0 @@
-gadjid==0.1.0
-networkx==3.4.2
-numpy==2.2.3
-scipy==1.15.2
-setuptools==75.8.0
-wheel==0.45.1

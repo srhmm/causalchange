@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from src.exp.exp_stime.utils.context_model_with_regimes import ContextModelTSWithRegimes
-from src.stime.utils.util_regimes import partition_t, r_partition_to_windows_T
+from src.causalchange.util.util_regimes import partition_t, r_partition_to_windows_T
 
 
 class Func(Enum):

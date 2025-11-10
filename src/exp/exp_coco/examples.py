@@ -1,11 +1,11 @@
 import numpy as np
 
-from src.coco.coco import CoCo
+from src.causalchange.coco import CoCo
 from src.coco.gen.dag_confounded import DAGConfounded
 from src.coco.gen.dag_gen import _random_nonlinearity
-from src.coco.util.mi_sampling import Sampler
+from src.causalchange.util.mi_sampling import Sampler
 
-from src.coco.util.co_test_types import CoCoTestType, CoShiftTestType, CoDAGType
+from src.causalchange.util.co_test_types import CoCoTestType, CoShiftTestType, CoDAGType
 from src.exp.exp_coco.method_types import MethodType
 from src.exp.exp_coco.run_coco import run_coco, run_fci
 
@@ -16,7 +16,7 @@ def example_mini():
     import numpy as np
     from src.coco.gen.dag_confounded import DAGConfounded
     from src.coco.gen.dag_gen import _random_nonlinearity
-    from src.coco.util.mi_sampling import Sampler
+    from src.causalchange.util.mi_sampling import Sampler
 
     # parameters to test
     n_nodes, n_confounders, n_contexts, n_samples = (5, 1, 5, 500)
@@ -34,8 +34,8 @@ def example_mini():
 
     D, Dobs = dag.gen_data(seed, n_samples, _functional_form=fun_form, oracle_partition=True, noise_iv=False)
 
-    from src.coco.coco import CoCo
-    from src.coco.util.co_test_types import CoShiftTestType, CoDAGType
+    from src.causalchange.coco import CoCo
+    from src.causalchange.util.co_test_types import CoShiftTestType, CoDAGType
     cocoO = CoCo(D, dag.G.nodes, sampler=sampler, n_components=None,
                     shift_test=CoShiftTestType.SKIP,
                     dag_discovery=CoDAGType.SKIP, dag=dag)
@@ -67,7 +67,7 @@ def example_coco():
     import numpy as np
     from src.coco.gen.dag_confounded import DAGConfounded
     from src.coco.gen.dag_gen import _random_nonlinearity
-    from src.coco.util.mi_sampling import Sampler
+    from src.causalchange.util.mi_sampling import Sampler
 
     # parameters to test
     n_nodes, n_confounders, n_contexts, n_samples = (5, 1, 5, 500)
@@ -86,7 +86,7 @@ def example_coco():
     D, Dobs = dag.gen_data(seed, n_samples, _functional_form=fun_form, oracle_partition=True, noise_iv=False)
 
 
-    from src.coco.coco import CoCo
+    from src.causalchange.coco import CoCo
 
     coco_oZ = CoCo(D, dag.G.nodes, sampler=sampler, n_components=n_confounders, dag=dag)
     coco = CoCo(D, dag.G.nodes, sampler=sampler, n_components=None, dag=dag, verbosity=0)
@@ -110,7 +110,7 @@ def example_coco():
     _show(res, coco, 'caus')
 
 
-    from src.coco.util.co_test_types import CoShiftTestType, CoDAGType
+    from src.causalchange.util.co_test_types import CoShiftTestType, CoDAGType
 
     # CoCo with known causal directions
     coco_oG = CoCo(D, dag.G.nodes, sampler=sampler, n_components=None,

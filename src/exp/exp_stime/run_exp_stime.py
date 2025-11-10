@@ -1,8 +1,8 @@
 from src.exp.exp_stime.options import Options
 from src.exp.exp_stime.utils.gen_timeseries import Func, Noise
-from src.stime.scoring.discrepancy_testing import DiscrepancyTestType
+from src.stime import DiscrepancyTestType
 from src.exp.exp_stime.run import run
-from src.stime.sttypes import MethodType
+from src.stime import MethodType
 
 if __name__ == "__main__":
     import sys

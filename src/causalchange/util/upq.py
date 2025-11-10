@@ -50,8 +50,8 @@ class UPQ():
         return result
 
 # usage
-#while upq.pq:
+# while upq.pq:
 #    try:
- #       task = upq.pop_task()
- #   except (KeyError):
- #       pass
+#       task = upq.pop_task()
+#   except (KeyError):
+#       pass

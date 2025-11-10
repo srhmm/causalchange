@@ -1,7 +1,7 @@
 from src.exp.exp_stime.utils.gen_timeseries import Func, Noise
 from src.exp.exp_stime.options import Options
 from src.exp.exp_stime.run import run
-from src.stime.sttypes import MethodType
+from src.causalchange import MethodType
 
 
 if __name__ == "__main__":

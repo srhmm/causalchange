@@ -29,7 +29,7 @@ def pi_xor_pessimistic(idl_1, idl_2):
     return idl_ave
 
 
-def _get_true_idl(true_idls, parents, target, t_A):
+def get_true_idl(true_idls, parents, target, t_A):
     true_pa_i = [k for k in np.where(t_A[:, target] != 0)[0]]
     true_Z_i = true_idls[target]
     observed_Z_i = true_Z_i.copy()
@@ -38,7 +38,7 @@ def _get_true_idl(true_idls, parents, target, t_A):
         observed_Z_i = pi_join(observed_Z_i, true_idls[parent])
     return observed_Z_i
 
-def _get_true_idl_Z(pa_i, node_i,  t_A, t_Z, t_n_Z, n_samp):
+def get_true_idl_Z(pa_i, node_i,  t_A, t_Z, t_n_Z, n_samp):
     true_pa_i = [k for k in np.where(t_A[:, node_i] != 0)[0]]
 
     # Changes of node_i as combination of all confounders
@@ -273,7 +273,7 @@ def exp_mutual_info_score(
         denominator = min(denominator, -np.finfo("float64").eps)
     else:
         denominator = max(denominator, np.finfo("float64").eps)
-    ami = (mi - emi) / denominator
+    #ami = (mi - emi) / denominator
     return emi, mi
 
 

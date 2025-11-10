@@ -8,14 +8,14 @@ causal-learn
 scikit-learn
 scipy
 pygam
-alive_progress
-tabulate
+#alive_progress
+#tabulate
 gadjid
 pgmpy
 causaldag
 seaborn
 joblib
-rpy2==3.5.17
+#rpy2==3.5.17
 tigramite
 ruptures
 dash

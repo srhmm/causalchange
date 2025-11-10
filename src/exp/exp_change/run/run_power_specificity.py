@@ -58,9 +58,9 @@ def run_case_power_specificity_methods(results, X, truths, options, params, case
     hypparams = dict(truths=truths, oracle_Z=oracle_Z, oracle_K=False, oracle_G=False, k_max=options.KMAX,
                      vb=options.verbosity - 1, lg=options.logger)
     top = CausalChangeTopological(**hypparams)
-    top.fit_Z_given_G(X, base_confd_dag)  # currently only consider directed edges
+    top.fit_Z_given_G(base_confd_dag)  # currently only consider directed edges
 
-    graph = top.topic_graph
+    graph = top.graph_state
     our_dag = nx.to_numpy_array(graph)
     est_lmg = nxdigraph_to_lmg(graph)
     true_lmg = nxdigraph_to_lmg(true_nxg)
@@ -102,7 +102,7 @@ def run_case_power_specificity_methods(results, X, truths, options, params, case
     run_info(
         f"\tPruning improv: \tFPR' {metrics_comp_B['fpr-adjusted-g']:.2f}\tSHD {metrics_comp_B['shd']:.2f} \t{[f'{met}: {vl:.2f}' for met, vl in metrics_comp_B.items()]}",
         options.logger, options.verbosity)
-    metrics_mixing = compare_Z(X.shape[0], truths['t_A'], nx.to_numpy_array(top.topic_graph),
+    metrics_mixing = compare_Z(X.shape[0], truths['t_A'], nx.to_numpy_array(top.graph_state),
                                truths['t_Z'], truths['t_n_Z'], top.e_Z, top.Z_pairs, top.e_n_Z, top.e_Z_n, top.pprobas)
     run_info(
         f"\tMixing Eval: \tJacc {metrics_mixing['jacc']:.2f} \t{[f'{met}: {vl:.2f}' for met, vl in metrics_mixing.items()]}",
