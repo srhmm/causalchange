@@ -345,7 +345,7 @@ class CausalMixtureMethodGES(CausalDiscoveryMthd, ABC):
                          data_mode=DataMode.MIXED, score_type=ScoreType.LIN, mixing_type=MixingType.MIX_LIN)
 
         top = CausalChangeTopological(**hypparams)
-        top.fit_Z_given_G(adj, skip_pruning=True) #pruning is only for the power-speci experiments
+        top.fit_latent_discrete_given_DAG(adj, skip_pruning=True) #pruning is only for the power-speci experiments
         self.metrics = {'time': time.perf_counter() - time_st}
 
         self.model = {'ges-with-latent-bic': ges_obj, 'mixture-variable-extraction': top}

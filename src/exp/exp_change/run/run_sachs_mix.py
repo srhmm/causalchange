@@ -77,7 +77,7 @@ def sachs_run_mixtureutigsp_ours(mixture_samples, intv_args_dict, intv_targets, 
     # %% Ours: discovering targets under true G
     from src.causalchange.causal_change_topo import CausalChangeTopological
     top = CausalChangeTopological(k_max=5)
-    top.fit_Z_given_G(mixture_samples, A.T)
+    top.fit_latent_discrete_given_DAG(mixture_samples, A.T)
     mi_scores_oracle = sachs_eval_iv_targets(top.e_Z_n, t_Z, intv_targets, idx2var_dict, t_intv_args_dict)
     out_fl = os.path.join("../../results_paper/res_sachs", f"results_ivtargets_m_{CD.CausalMixtures}_trueG.tsv")
     write_out_metrs(out_fl, mi_scores_oracle)

@@ -42,7 +42,7 @@ class DAG:
         #self.node_mdl = defaultdict(float)
         self.node_pa = defaultdict(set)
         self.node_ch = defaultdict(set)
-        #self.pair_edges = [[None for _ in range(self.n_n)] for _ in range(self.n_n)]
+        self.pair_edges = [[None for _ in range(self.n_n)] for _ in range(self.n_n)]
         #self.mdl_cache = {}
         #self.cps_cache = {}
 
@@ -121,8 +121,8 @@ class DAG:
         :param pa: pa(Xj), list of node indices
         :return: score(pa(Xj)->Xj)
         """
-        return self.edges_state.score_edge(j, pa)
-
+        score, res_dict = self.edges_state.score_edge(j, pa)
+        return score
 
 
     """ Search - score pairwise edges initially """
@@ -255,10 +255,15 @@ class DAG:
         recStack[v] = False
         return False
 
+    def exists_anticausal_edge(self, parent, node):
+        if self.is_edge( node , parent ):
+            return True
+        return False
 
 class QEntry:
     def __init__(self, i, j, score_ij, score_0):
         self.i = i
+        self.pa = i
         self.j = j
 
         # Score of edge i->j in the empty graph

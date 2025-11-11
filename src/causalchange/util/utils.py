@@ -7,9 +7,10 @@ import itertools
 from sklearn import preprocessing
 
 
-def is_insignificant(gain, alpha=0.05):
+def is_insignificant(gain, alpha=0.05, is_mdl=False):
     """ Significance by MDL no-hypercompression. """
-    return gain < 0 or 2 ** (-gain) > alpha # gain must be over 4.3
+
+    return gain < 0 or 2 ** (-gain) > alpha if is_mdl else gain <0 # gain must be over 4.3
 
 
 def cantor_pairing(x, y):

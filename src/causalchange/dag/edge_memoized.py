@@ -3,9 +3,11 @@ from typing import List, Tuple
 import numpy as np
 
 from src.causalchange.scoring.fit_cond_mixture import conditional_mixture_known_assgn, MixingType, fit_conditional_mixture
-from src.causalchange.scoring.scoring_context import ScoreType, GPType, fit_functional_model_context, \
-    fit_functional_model, fit_score_gp, fit_score_rff, DataMode, fit_fun, RegressorType
-
+from src.causalchange.scoring.fit_score import fit_functional_model, fit_score_gp, fit_score_rff
+from src.causalchange.cc_types import ScoreType, GPType, DataMode
+from src.causalchange.scoring.fit_score import fit_score_ln, fit_score_gam, fit_score_spln
+from src.causalchange.scoring.test_ci import test_fun_kci
+from src.causalchange.search.partition_search import partition_search_scorebased, partition_search_constraintbased
 from src.causalchange.util.utils_idl import get_true_idl, get_true_idl_Z
 
 
@@ -43,18 +45,29 @@ class EdgeMemoized:
             assert hash_key in self.res_cache
             return self.score_cache[hash_key], self.res_cache[hash_key]
 
+        score_fun = fit_score_gp  if self.score_type == GPType.EXACT \
+            else fit_score_rff if self.score_type == GPType.FOURIER \
+            else fit_score_gam if self.score_type == ScoreType.GAM \
+            else fit_score_spln if self.score_type == ScoreType.SPLINE \
+            else fit_score_ln if self.score_type == ScoreType.LIN \
+            else None
+        test_fun = test_fun_kci
+        if self.score_type.is_scorebased(): assert score_fun is not None, f"no scoring function for {self.score_type}"
+        if self.score_type.is_constraintbased(): assert test_fun is not None, f"no ci test for {self.score_type}"
+
         if self.data_mode == DataMode.IID:
             assert self.mixing_type == MixingType.SKIP
-            score, res = fit_functional_model(self.X, pa=pa, target=j, score_type=self.score_type, **self.scoring_params)
+            score, res = fit_functional_model(self.X, pa=pa, target=j, score_fun=score_fun, **self.scoring_params)
         elif self.data_mode == DataMode.CONTEXTS:
             assert self.mixing_type == MixingType.SKIP
             assert isinstance(self.X, dict)
-            fun_gp = fit_score_gp if self.score_type == GPType.EXACT \
-                else fit_score_rff if self.score_type == GPType.FOURIER else None
-            if fun_gp is None: raise ValueError("use either GPs or RFFs here!")
-            alpha_gp_mdl = self.scoring_params.get("alpha_gp_mdl", 0.05)
-            score, res = fit_functional_model_context(
-                self.X, pa=pa, target=j, fun_gp=fun_gp, alpha=alpha_gp_mdl)
+            if self.score_type.is_scorebased():
+                score, res = partition_search_scorebased(
+                    self.X, pa=pa, target=j, score_fun=score_fun)
+            elif self.score_type.is_constraintbased():
+                score, res = partition_search_constraintbased(
+                    self.X, pa=pa, target=j, test_fun=test_fun)
+
         elif self.data_mode == DataMode.TIME:
             raise NotImplementedError
         elif self.data_mode == DataMode.TIME_CONTEXTS.value:
@@ -63,30 +76,13 @@ class EdgeMemoized:
             raise NotImplementedError
         elif self.data_mode.value == DataMode.MIXED.value:
             assert self.mixing_type != MixingType.SKIP
-            assert self.score_type == ScoreType.LIN
-            resi = None if self.scoring_params.get("oracle_Z") else self.resid_edge(j,  pa)  # remove? resids not used in final version
-
             score, res = idl_and_latent_bic_score(self.mixing_type,
-                                     self.X, covariates=pa, target=j, resid=resi, **self.scoring_params)
+                                     self.X, covariates=pa, target=j, resid=None, **self.scoring_params)
         else: raise ValueError(self.data_mode)
 
         self.score_cache[hash_key] = score
         self.res_cache[hash_key] = res
         return score, res
-
-
-
-    def resid_edge(self, j: int, pa: [int]) -> np.array:
-        """Residual for average functional model for edge pa to node j."""
-        hash_key = f"j_{str(j)}_pa_{str(pa)}"
-
-        if self.resid_cache.__contains__(hash_key):
-            return self.resid_cache[hash_key]
-
-        resids, strength = fit_fun(self.X[:, pa], self.X[:, j], RegressorType.LN, 42)
-
-        self.resid_cache[hash_key] = resids
-        return resids
 
 
 

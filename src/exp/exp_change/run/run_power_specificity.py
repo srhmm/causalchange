@@ -58,7 +58,7 @@ def run_case_power_specificity_methods(results, X, truths, options, params, case
     hypparams = dict(truths=truths, oracle_Z=oracle_Z, oracle_K=False, oracle_G=False, k_max=options.KMAX,
                      vb=options.verbosity - 1, lg=options.logger)
     top = CausalChangeTopological(**hypparams)
-    top.fit_Z_given_G(base_confd_dag)  # currently only consider directed edges
+    top.fit_latent_discrete_given_DAG(base_confd_dag)  # currently only consider directed edges
 
     graph = top.graph_state
     our_dag = nx.to_numpy_array(graph)

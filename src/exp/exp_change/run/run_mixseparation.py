@@ -113,8 +113,8 @@ def run_case_clustering_method(
 
         # MM models: one mixture per node was discovered (ignoring the graph)
         if mixing_ty.is_unconditional_mixture():
-            ours.fit_Z_given_G(given_A.copy(), SKIP_PRUNING,
-                               skip_sets=True)  # skip set aggregation using MI stuff which is part of our approach- here only MMs
+            ours.fit_latent_discrete_given_DAG(given_A.copy(), SKIP_PRUNING,
+                                               skip_sets=True)  # skip set aggregation using MI stuff which is part of our approach- here only MMs
             e_Z_n = ours.e_Z_n
             # extract "intervention targets": each node that has more than one cluster
             # e_n_Z = [set(nodei) for nodei in range(e_Z_n) if len(np.unique(e_Z_n[nodei]))>1]
@@ -122,7 +122,7 @@ def run_case_clustering_method(
             metrics_mixing = compare_Z(X.shape[0], truths['t_A'], None,
                                        truths['t_Z'], truths['t_n_Z'], None, None, e_n_Z, e_Z_n, None, exp["GS"])
         else:
-            ours.fit_Z_given_G(given_A.copy(), SKIP_PRUNING)  # copy as pruning modifies it
+            ours.fit_latent_discrete_given_DAG(given_A.copy(), SKIP_PRUNING)  # copy as pruning modifies it
             e_Z, Z_pairs, e_n_Z, e_Z_n, pprobas = ours.e_Z, ours.Z_pairs, ours.e_n_Z, ours.e_Z_n, ours.pprobas
             metrics_mixing = compare_Z(X.shape[0], truths['t_A'], nx.to_numpy_array(ours.graph_state),
                                        truths['t_Z'], truths['t_n_Z'], e_Z, Z_pairs, e_n_Z, e_Z_n, pprobas, exp["GS"])

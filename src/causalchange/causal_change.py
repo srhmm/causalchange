@@ -6,10 +6,11 @@ import networkx as nx
 import numpy as np
 import sklearn
 
+from src.causalchange.dag.dag import DAG
 from src.causalchange.dag.edge_memoized import EdgeMemoized
 from src.causalchange.scoring.fit_cond_mixture import MixingType
-from src.causalchange.scoring.scoring_context import ScoreType, GPType, DataMode, GraphSearch
-from src.causalchange.search.dag_search import dag_tree_search
+from src.causalchange.cc_types import ScoreType, GPType, DataMode, GraphSearch, XArray, XType
+from src.causalchange.util.upq import UPQ
 from src.causalchange.util.utils import is_insignificant
 from src.causalchange.util.utils_idl import exp_mutual_info_score, pi_xor_pessimistic, \
     expected_sampled_mutual_info_score, expected_sampled_adjusted_mutual_info_score, expected_smi, \
@@ -19,18 +20,13 @@ from src.causalchange.util.old.visu import visu_pair_mi, visu_node_pproba, visu_
 
 from numpy.typing import NDArray
 
-XArray = NDArray[np.number]
-XType = XArray | dict[int, XArray]
-#ScoreRes = dict[str, Any]
 
 
 class CausalChange:
     #external
-    # data
     X: XType
     D: int
     N: int
-    # algo and score
     data_mode: DataMode
     graph_search: GraphSearch
     score_type: ScoreType | GPType
@@ -75,7 +71,7 @@ class CausalChange:
     fitted_mixing: bool
 
     def __init__(self, **kwargs):
-        r""" CausalChange: Causal Discovery Algorithms under Distribution Change (iid version using TOPIC, multi-context data, time series, mixtures of causal mechanisms)
+        r""" CausalChange: Causal Discovery Algorithms under Distribution Change (continuous data, multi-context continuous data, continuous-valued time series, mixtures of causal mechanisms)
         :param optargs: optional arguments
 
         :Keyword Arguments:
@@ -99,7 +95,7 @@ class CausalChange:
         * *vb* (``int``) -- verbosity level
         """
         self.defaultargs = {
-            "data_mode": DataMode.CONTEXTS,
+            "data_mode": DataMode.IID,
             "graph_search": GraphSearch.TOPIC,
             "score_type": GPType.EXACT,
             "mixing_type": MixingType.SKIP,
@@ -141,19 +137,25 @@ class CausalChange:
         self._add_greedily = False
 
         self.fitted_graph, self.fitted_mixing = False, False
-
+    def is_score_insignificant(self, gain):
+        if self.score_type.is_scorebased():
+            return is_insignificant(gain)
+        else: return gain < 0
     def initialize(self):
         assert self.X is not None
         print(self.data_mode, self.score_type, self.mixing_type)
-        self.edges_state = EdgeMemoized(self.X, self.data_mode, self.score_type, self.mixing_type,
-                                        **self.get_scoring_params())
+        self.edges_state = EdgeMemoized(
+            self.X, self.data_mode, self.score_type, self.mixing_type,**self.get_scoring_params())
 
     def init_and_check_X(self, X: XType):
         self.X = X
         if isinstance(X, dict):
+            assert self.data_mode.is_dict_like(), "expected np array"
             first = next(iter(X.values()))
             self.D, self.N = first.shape
         else:
+            assert isinstance(X, np.ndarray), "expected np array"
+            assert not self.data_mode.is_dict_like(), "expected dict of np arrays"
             self.D, self.N = X.shape
 
         import warnings
@@ -164,6 +166,10 @@ class CausalChange:
 
     #%% Graph search
     def fit(self, X: XType) -> nx.DiGraph:
+        """ Discover a causal DAG
+       :param X: ``XArray | dict[int, XArray]``: input data
+       :return: ``nx.DiGraph``: causal DAG over nodes in X
+        """
         self.init_and_check_X(X)
         self.initialize()
         if self.data_mode == DataMode.IID:
@@ -184,7 +190,7 @@ class CausalChange:
     def fit_graph_iid(self) -> nx.DiGraph:
         assert self.data_mode == DataMode.IID
         self._info(f"\t*** CausalChange ({self.score_type.value}) ***")
-        self._fit_graph()
+        self._graph_search()
         self.fitted_graph = True
         return self.graph_state
 
@@ -192,7 +198,7 @@ class CausalChange:
     def fit_graph_over_time(self) -> nx.DiGraph:
         assert self.data_mode == DataMode.TIME
         self._info(f"\t*** CausalChange, time series setting ({self.score_type.value}) ***")
-        self._fit_graph()
+        self._graph_search()
         self.fitted_graph = True
         return self.graph_state
 
@@ -200,7 +206,7 @@ class CausalChange:
     def fit_graph_over_contexts(self) -> nx.DiGraph:
         assert self.data_mode == DataMode.CONTEXTS
         self._info(f"\t*** CausalChange, multi-context setting ({self.score_type.value}) ***")
-        self._fit_graph()
+        self._graph_search()
         self.fitted_graph = True
         self._fit_changes()
         return self.graph_state
@@ -220,13 +226,16 @@ class CausalChange:
 
     #%% Mixture of causal mechanisms
     def fit_graph_and_mixtures(self) -> nx.DiGraph:
+        """ Discover a causal DAG and discrete latent "mixing" variables
+       :return: ``nx.DiGraph``: causal DAG
+        """
         assert self.data_mode == DataMode.MIXED
         self._info(f"\t*** CausalMixtures ({self.mixing_type.value}) ***")
 
 
-        self._fit_graph()
-        self._fit_Z_nodes()
-        self._fit_Z_sets()
+        self._graph_search()
+        self._fit_latent_discrete_per_node()
+        self._fit_latent_discrete_per_set()
 
         self.fitted_graph, self.fitted_mixing = True, True
         return self.graph_state
@@ -234,47 +243,453 @@ class CausalChange:
 
     #%% CoCo with TOPIC
     def fit_graph_and_confounders(self) -> nx.DiGraph:
+        """ Discover a causal DAG and latent confounding variables
+       :return: ``nx.DiGraph``: causal DAG
+        """
         raise NotImplementedError("integrate Coco here")
 
     #%% SPACETIME with TOPIC
     def fit_graph_over_time_and_contexts(self) -> nx.DiGraph:
+        """ Discover a causal DAG and causal changepoints
+       :return: ``nx.DiGraph``: causal DAG
+        """
         raise NotImplementedError("integrate Stime here")
 
 
     #%% Graph search algorithms
-    def _fit_graph(self) -> nx.DiGraph:
+    def _graph_search(self) -> nx.DiGraph:
         if self.oracle_G: return self.graph_state
         if self.graph_search == GraphSearch.TOPIC:
-            return self._fit_graph_topological()
+            return self._graph_search_topological()
         elif self.graph_search == GraphSearch.GLOBE:
-            return self._fit_graph_edge_greedy()
+            return self._graph_search_edgegreedy()
         else: raise ValueError(self.graph_search)
 
 
-    def _fit_graph_topological(self) -> nx.DiGraph:
+    #%% Graph search - TOPIC
+    def _graph_search_topological(self) -> nx.DiGraph:
         """ TOPIC (Xu et al., 2025) """
-        #self.edges_state = EdgeMemoized(self.X, self.data_mode, self.score_type, self.mixing_type)
 
         self.graph_state.add_nodes_from(range(self.N))
         self.candidates = list(range(self.N))
-        self.order_nodes()
+        self._graph_search_topological_ordering()
 
         self.fitted_graph = True
         return self.graph_state
 
-    def _fit_graph_edge_greedy(self) -> nx.DiGraph:
+
+    def _graph_search_topological_ordering(self):
+        it = 0
+        while it < self.N:
+            source = self._graph_search_topological_next(self.candidates if not self.oracle_order else self.true_top_order[it])
+            self.candidates.remove(source)
+            self.topological_order.append(source)
+            it += 1
+            self._info(f"\t{it}. Source: {source}\t current {self.topological_order}, true {self.true_top_order}", -2)
+
+            self._graph_search_topological_add_outgoing(source)
+            self._graph_search_topological_remove_ingoing(source)
+
+        if self.extra_refinement:
+            self._graph_search_topological_refine_extra()
+
+    def _graph_search_topological_add_outgoing(self, source):
+        for node in self.candidates:
+            if node in self.topological_order or node == source or self.has_cycle(source, node):
+                continue
+            gain = self._addition_gain(node, source)
+            if self._significant(gain) or self._add_greedily:
+                self._add_edge(source, node, gain=float(gain))
+
+
+    def _graph_search_topological_remove_ingoing(self, source):
+        parents = list(self.graph_state.predecessors(source))
+        n_removed = 0
+        while n_removed < len(parents):
+            removed_found, removed_parent = self._graph_search_topological_refine_step(source, parents)
+
+            if removed_parent is not None:
+                self._remove_edge(removed_parent, source)
+                parents.remove(removed_parent)
+                n_removed += 1
+            else:
+                break
+
+    def _graph_search_topological_refine_step(self, source, parents):
+        removed_found, best_parent, best_diff = False, None, -np.inf
+        old_score = self._score(parents, source)
+
+        for parent in parents:
+            new_parents = parents.copy()
+            new_parents.remove(parent)
+            if len(new_parents) == 0: continue
+            new_score = self._score(new_parents, source)
+            diff = old_score - new_score  # >0 means removing parent improved the score
+
+            if diff > best_diff and self.is_score_insignificant(abs(diff)):#self._significant(diff):
+                best_diff = diff
+                best_parent = parent
+                removed_found = True
+        return removed_found, best_parent
+
+    def _graph_search_topological_next(self, candidates):
+        if self.oracle_order:
+            n = len(self.topological_order)
+            self._info(f"\tTrue Next Node: {self.true_top_order[n]}", -2)
+            return self.true_top_order[n]
+
+        improvement = self._graph_search_topological_improvement_matrix(self.graph_state, candidates)
+        delta = improvement - improvement.T
+        # find the node with the smallest possible delta
+        np.fill_diagonal(delta, -np.inf)
+        best_delta = np.max(delta, axis=1)
+        worst = np.argmin(best_delta)
+
+        self._info(f"\tNext Node: {candidates[worst]}, order {self.topological_order} ", -2)
+        k = len(improvement)
+        top_k_ind = np.argsort(-best_delta)[-k:][::-1]
+        self._info(f"\tbest {k} next nodes:", -3)
+        for i in top_k_ind: self._info(f"\t  node  {candidates[i]}, best_delta: {-best_delta[i]:.4f}", -3)
+
+        return candidates[worst]
+
+    def _graph_search_topological_improvement_matrix(self, graph, candidates):
+        improvement_matrix = np.zeros((len(candidates), len(candidates)))
+        for cause in candidates:
+            for effect in candidates:
+                if cause == effect:
+                    continue
+                parents = list(graph.predecessors(effect))
+                old_score = self._score(
+                    parents, effect)
+                parents.append(cause)
+                new_score = self._score(parents, effect)
+                improvement_matrix[candidates.index(cause), candidates.index(effect)] = \
+                    self._improvement(new_score, old_score)
+        return improvement_matrix
+
+    def _graph_search_topological_refine_extra(self, min_parent_set_size=0):
+        # smallest subset of parents with insignificant score gain
+        for j in self.graph_state.nodes:
+            parents = list(self.graph_state.predecessors(j))
+            if len(parents) == 0:
+                continue
+
+            best_size = np.inf
+            arg_max = None
+
+            old_score = self._score(parents, j)
+            old_parents = parents.copy()
+
+            for k in range(min_parent_set_size, len(parents) + 1 - 1):
+                parent_sets = itertools.combinations(parents, k)
+                for parent_set in parent_sets:
+
+                    new_score = self._score(parent_set, j)
+                    gain = self._gain(new_score, old_score)
+
+                    if self.is_score_insignificant(np.abs(gain)) and len(parent_set) < best_size:  # favor smaller parent sets
+                        best_size = len(parent_set)
+                        arg_max = parent_set
+
+            if arg_max is None:
+                continue
+            self._info(f'\trefine {parents} to {arg_max} -> {j}', -2)
+            for p in old_parents:
+                if p not in arg_max:
+                    self._remove_edge(p, j)
+
+    # %% Graph search - GLOBE
+    def _graph_search_edgegreedy(self) -> nx.DiGraph:
         """ GLOBE (Mian et al., 2021) """
-        #self.edges_state = EdgeMemoized(self.X, self.data_mode, self.score_type, self.mixing_type)
-        self.graph_state.add_nodes_from(range(self.N))
 
-        dag_model = dag_tree_search(self.X, self.N, self.edges_state)
-        self.graph_state = nx.from_numpy_array(dag_model.get_adj(), create_using=nx.DiGraph)
+        self._info(f"\t*** Greedy DAG search (phase 0) ***", -1)
 
+        edge_q = UPQ()
+        dag_model = DAG(self.X, self.N, self.edges_state)
+
+        edge_q = dag_model.initial_edges(edge_q)
+        edge_q, dag_model = self._graph_search_edgegreedy_forward(edge_q, dag_model)
+        #edge_q, dag_model = self._graph_search_edgegreedy_backward(edge_q, dag_model)
+
+        self._info(f'DAG search result:' + ', '.join(
+            f"{i}->{j}" for i, j in set(itertools.product(set(range(self.N)), set(range(self.N)))) if
+            dag_model.get_adj()[i][j] != 0))
         self.fitted_graph = True
+
+        self.graph_state = nx.from_numpy_array(dag_model.get_adj(), create_using=nx.DiGraph)
         return self.graph_state
+
+    def _graph_search_edgegreedy_forward(self, edge_q: UPQ, dag_model: DAG) -> [UPQ, DAG]:
+        self._info(f"\t*** Greedy DAG search (phase 1) ***", -1)
+
+        while edge_q.pq:
+            try: edge_q, dag_model = self._graph_search_edgegreedy_forward_next(edge_q, dag_model)
+            except KeyError: pass  # empty or all remaining entries are tagged as removed
+        return edge_q, dag_model
+
+    def _graph_search_edgegreedy_backward(self, edge_q: UPQ, dag_model: DAG) -> [UPQ, DAG]:
+        self._info(f"\t*** Greedy DAG search (phase 2) ***", -1)
+        for node in dag_model.nodes:
+            edge_q, dag_model = self._graph_search_edgegreedy_backward_refine(node, edge_q, dag_model)
+        return edge_q, dag_model
+
+    def _graph_search_edgegreedy_backward_refine(self, node, edge_q, dag_model):
+        P = list(self._dm_parents_of(dag_model, node))
+        if len(P) <= 1:
+            return edge_q, dag_model
+
+        # search over all subsets of current parents
+        max_gain, arg_max = -np.inf, None
+        old_score = self._score(P, node)
+        for k in range(0, len(P) + 1):
+            for parent_set in itertools.combinations(P, k):
+                new_score = self._score(list(parent_set), node)
+                gain = self._gain(new_score, old_score)  # old - new
+                if gain > max_gain:
+                    max_gain, arg_max = gain, parent_set
+
+        if (arg_max is not None) and (not self.is_score_insignificant(max_gain)):
+            # apply the best parent subset: remove dropped parents, add missing ones
+            keep = set(arg_max)
+            for p in list(P):
+                if p not in keep:
+                    self._dm_remove_edge(dag_model, p, node, vb=-2)
+            for p in keep:
+                if not self._dm_is_edge(dag_model, p, node):
+                    self._dm_add_edge(dag_model, p, node, score=None, gain=None, vb=-2)
+
+            for op in dag_model.nodes:
+                edge_q, dag_model = self._graph_search_edgegreedy_update_parents(op, node, -1, edge_q, dag_model)
+
+        return edge_q, dag_model
+
+    """
+    def _graph_search_edgegreedy_forward(self, edge_q: UPQ, dag_model: DAG) -> [UPQ, DAG]:
+        self._info(f"\t*** Greedy DAG search (phase 1) ***", -1)
+
+        while edge_q.pq:
+            try: edge_q, dag_model = self._graph_search_edgegreedy_forward_next(edge_q, dag_model)
+            except KeyError: pass  # empty or all remaining entries are tagged as removed
+        return edge_q, dag_model
+
+    def _graph_search_edgegreedy_backward(self, edge_q: UPQ, dag_model: DAG) -> [UPQ, DAG]:
+        self._info(f"\t*** Greedy DAG search (phase 2) ***", -1)
+
+        for node in dag_model.nodes:
+            edge_q, dag_model = self._graph_search_edgegreedy_backward_refine(node, edge_q, dag_model)
+
+        return edge_q, dag_model
+
+    def _graph_search_edgegreedy_backward_refine(self, node, edge_q, dag_model):
+        P = list(dag_model.parents_of(node))
+        if len(P) <= 1:
+            return edge_q, dag_model
+        max_gain, arg_max = -np.inf, None
+        min_size = 0  # allow empty set if desired
+        for k in range(min_size, len(P) + 1):
+            for parent_set in itertools.combinations(P, k):
+                gain, _ = dag_model.eval_edges(node, parent_set)
+                if gain > max_gain:
+                    max_gain, arg_max = gain, parent_set
+        if (arg_max is not None) and (not is_score_insignificant(max_gain)):
+            dag_model.update_edges(node, arg_max)
+            # optionally refresh queue entries affected by node’s parents
+            for op in dag_model.nodes:
+                edge_q, dag_model = self._graph_search_edgegreedy_update_parents(op, node, -1, edge_q, dag_model)
+        return edge_q, dag_model
+
+    def _graph_search_edgegreedy_forward_next(self, edge_q: UPQ, dag_model: DAG) -> [UPQ, DAG]:
+        #Greedy tree search, forward phase -- evaluate the next causal edge in the priority queue.  
+        pi_edge = edge_q.pop_task()
+        node, parent = pi_edge.j, pi_edge.pa
+        if dag_model.has_cycle(parent, node) or dag_model.exists_anticausal_edge(parent, node):  return edge_q, dag_model
+        gain, score = dag_model.eval_edge_addition(node, parent, return_score=True)
+        if is_score_insignificant(gain): return edge_q, dag_model
+
+        dag_model.add_edge(parent, node, score, gain)
+        # Reconsider children under current model and remove if reversing the edge improves score
+        for child in dag_model.nodes:
+            edge_q, dag_model = self._graph_search_edgegreedy_update_children(child, node, edge_q, dag_model)
+
+        # Reconsider edges Xk->Xj in q given the current model as their score changed upon adding Xi->Xj
+        for other_parent in dag_model.nodes:
+            edge_q, dag_model = self._graph_search_edgegreedy_update_parents(other_parent, node, parent, edge_q, dag_model)
+
+        return edge_q, dag_model
+
+    def _graph_search_edgegreedy_update_children(self, child, node, edge_q, dag_model):
+        ch = child
+        if not dag_model.is_edge(node, ch):
+            return edge_q, dag_model
+
+        gain = dag_model.eval_edge_flip(node, ch)
+        if is_score_insignificant(gain):
+            return edge_q, dag_model
+
+        dag_model.remove_edge(node, ch)
+
+        edge_fw = dag_model.pair_edges[node][ch]
+        edge_bw = dag_model.pair_edges[ch][node]
+        if edge_q.exists_task(edge_bw):
+            edge_q.remove_task(edge_bw)
+
+        gain_bw = dag_model.eval_edge_addition(edge_bw.i, edge_bw.j)
+        gain_fw = dag_model.eval_edge_addition(edge_fw.i, edge_fw.j)
+
+        if not is_score_insignificant(gain_bw):
+            edge_q.add_task(edge_bw, gain_bw * 100)
+        if not is_score_insignificant(gain_fw):
+            edge_q.add_task(edge_fw, gain_fw * 100)
+        return edge_q, dag_model
+
+    def _graph_search_edgegreedy_update_parents(self, other_parent, node, parent, edge_q, dag_model):
+        if node == other_parent or parent == other_parent \
+                or dag_model.is_edge(other_parent, node) or dag_model.is_edge(node, other_parent):
+            return edge_q, dag_model
+
+        edge_candidate = dag_model.pair_edges[other_parent][node]
+        gain_mom = dag_model.eval_edge_addition(node, other_parent)
+        if edge_q.exists_task(edge_candidate):
+            edge_q.remove_task(edge_candidate)
+        if not is_score_insignificant(gain_mom):
+            edge_q.add_task(edge_candidate, gain_mom * 100)
+        return edge_q, dag_model
+    """
+
+    def _dm_has_cycle(self, dag_model, parent, child):
+        return self.has_cycle(parent, child)
+
+    def _dm_exists_anticausal(self, dag_model, parent, child):
+        try:
+            return dag_model.is_edge(child, parent)
+        except AttributeError:
+            return self.graph_state.has_edge(child, parent)
+
+    def _dm_parents_of(self, dag_model, node):
+        try:
+            return list(dag_model.parents_of(node))
+        except AttributeError:
+            return list(self.graph_state.predecessors(node))
+
+    def _dm_is_edge(self, dag_model, u, v):
+        try:
+            return dag_model.is_edge(u, v)
+        except AttributeError:
+            return self.graph_state.has_edge(u, v)
+
+    def _dm_add_edge(self, dag_model, parent, child, score=None, gain=None, vb=-2):
+        try:
+            dag_model.add_edge(parent, child, score, gain)
+        except AttributeError:
+            pass
+        self._add_edge(parent, child, vb=vb, gain=gain)
+
+    def _dm_remove_edge(self, dag_model, parent, child, vb=-2):
+        try:
+            dag_model.remove_edge(parent, child)
+        except AttributeError:
+            pass
+        if self.graph_state.has_edge(parent, child):
+            self._remove_edge(parent, child, vb=vb)
+
+
+    def _dm_eval_edge_addition(self, dag_model, target, parent, return_score=False):
+        """
+        gain = old_score - new_score (higher better)
+        """
+        parents = self._dm_parents_of(dag_model, target)
+        if parent in parents:
+            gain = 0.0
+            sc = self._score(parents, target)
+            return (gain, sc) if return_score else gain
+        old_score = self._score(parents, target)
+        new_score = self._score(parents + [parent], target)
+        gain = self._gain(new_score, old_score)
+        if return_score:
+            return gain, new_score
+        return gain
+
+    def _dm_eval_edge_flip(self, dag_model, u, v):
+        Pv = self._dm_parents_of(dag_model, v)
+        Pu = self._dm_parents_of(dag_model, u)
+        if u not in Pv:
+            return 0.0
+        old = self._score(Pv, v) + self._score(Pu, u)
+        Pv_new = [p for p in Pv if p != u]
+        Pu_new = Pu + [v] if v not in Pu else Pu
+        new = self._score(Pv_new, v) + self._score(Pu_new, u)
+        return self._gain(new, old)
+
+    def _graph_search_edgegreedy_forward_next(self, edge_q: UPQ, dag_model: DAG) -> [UPQ, DAG]:
+        pi_edge = edge_q.pop_task()
+        node, parent = pi_edge.j, pi_edge.pa
+        if self._dm_has_cycle(dag_model, parent, node) or self._dm_exists_anticausal(dag_model, parent, node):
+            return edge_q, dag_model
+
+        gain, score = self._dm_eval_edge_addition(dag_model, node, parent, return_score=True)
+        if self.is_score_insignificant(gain):
+            return edge_q, dag_model
+
+        self._dm_add_edge(dag_model, parent, node, score, gain)
+
+        for child in dag_model.nodes:
+            edge_q, dag_model = self._graph_search_edgegreedy_update_children(child, node, edge_q, dag_model)
+
+        for other_parent in dag_model.nodes:
+            edge_q, dag_model = self._graph_search_edgegreedy_update_parents(other_parent, node, parent, edge_q,
+                                                                             dag_model)
+
+        return edge_q, dag_model
+
+    def _graph_search_edgegreedy_update_children(self, child, node, edge_q, dag_model):
+        ch = child
+        if not self._dm_is_edge(dag_model, node, ch):
+            return edge_q, dag_model
+
+        gain = self._dm_eval_edge_flip(dag_model, node, ch)
+        if self.is_score_insignificant(gain):
+            return edge_q, dag_model
+
+        self._dm_remove_edge(dag_model, node, ch)
+
+        edge_fw = dag_model.pair_edges[node][ch]  # keep your queue item
+        edge_bw = dag_model.pair_edges[ch][node]
+
+        if edge_q.exists_task(edge_bw):
+            edge_q.remove_task(edge_bw)
+
+        gain_bw = self._dm_eval_edge_addition(dag_model, edge_bw.j, edge_bw.i)
+        gain_fw = self._dm_eval_edge_addition(dag_model, edge_fw.j, edge_fw.i)
+
+        if not self.is_score_insignificant(gain_bw):
+            edge_q.add_task(edge_bw, gain_bw * 100)
+        if not self.is_score_insignificant(gain_fw):
+            edge_q.add_task(edge_fw, gain_fw * 100)
+        return edge_q, dag_model
+
+    def _graph_search_edgegreedy_update_parents(self, other_parent, node, parent, edge_q, dag_model):
+        if node == other_parent or parent == other_parent \
+                or self._dm_is_edge(dag_model, other_parent, node) or self._dm_is_edge(dag_model, node, other_parent):
+            return edge_q, dag_model
+
+        edge_candidate = dag_model.pair_edges[other_parent][node]
+        gain_mom = self._dm_eval_edge_addition(dag_model, node, other_parent)
+
+        if edge_q.exists_task(edge_candidate):
+            edge_q.remove_task(edge_candidate)
+        if not self.is_score_insignificant(gain_mom):
+            edge_q.add_task(edge_candidate, gain_mom * 100)
+        return edge_q, dag_model
+
+    def _dm_eval_parent_set(self, dag_model, node, parent_set):
+        old_parents = self._dm_parents_of(dag_model, node)
+        old = self._score(old_parents, node)
+        new = self._score(list(parent_set), node)
+        return self._gain(new, old)  # old - new
 
     #%% Mixing Variable Search
-    def fit_Z_given_G(self, graph_adj: XArray, skip_pruning=False, skip_sets=False) -> None:
+    def fit_latent_discrete_given_DAG(self, graph_adj: XArray, skip_pruning=False, skip_sets=False) -> None:
         graph = nx.from_numpy_array(graph_adj, create_using=nx.DiGraph)
         self._info(f"\t*** Causal Mixture Modeling (given DIgraph w {len(graph.edges())} edges) ***")
 
@@ -283,17 +698,17 @@ class CausalChange:
         #self.edges_state = EdgeMemoized(self.X, self.data_mode, self.score_type, self.mixing_type)
         self.fitted_mixing = True
 
-        self._fit_Z_nodes()
-        if not skip_sets: self._fit_Z_sets()
+        self._fit_latent_discrete_per_node()
+        if not skip_sets: self._fit_latent_discrete_per_set()
         if skip_pruning: return
 
         #self.edges_state = EdgeMemoized(self.X, self.data_mode, self.score_type, self.mixing_type)
         self.initialize()
         self.prune_spurious_edges(self.graph_state.copy())
-        self._fit_Z_nodes()
-        if not skip_sets: self._fit_Z_sets()
+        self._fit_latent_discrete_per_node()
+        if not skip_sets: self._fit_latent_discrete_per_set()
 
-    def _fit_Z_nodes(self) -> None:
+    def _fit_latent_discrete_per_node(self) -> None:
         X = self.X
         self.e_Z_n = {}
         self.e_Zp_n = {}
@@ -310,7 +725,7 @@ class CausalChange:
                     -1)  # -1
                 if self.vb >= 2: self.visu_scatter_mixing_assignment_node(nodei)
 
-    def _fit_Z_sets(self, n_nodes=None) -> None:
+    def _fit_latent_discrete_per_set(self, n_nodes=None) -> None:
         if n_nodes is None: n_nodes = len(self.graph_state.nodes)
         # adj_A = nx.to_numpy_array(self.topic_graph)
         self.Z_pairs = []
@@ -379,7 +794,7 @@ class CausalChange:
         self._info(f"\t** Confd node sets: {self.e_n_Z}")
 
     # %% GRAPH PRUNING
-    def local_pruning(self, node, parents) -> list:
+    def prune_spurious_edges_local(self, node, parents) -> list:
         parent_subset = []
         for parent in parents:
             # assert (parent, node) in self.topic_graph.edges, f"edge {parent}->{node} not in graph"
@@ -399,7 +814,7 @@ class CausalChange:
             pre = graph.predecessors(node) if nx.is_directed_acyclic_graph(graph) else graph.neighbors(node)
             parents_spurious = [nodem for nodem in pre]
             #parent_subset = self.local_pruning(nodei, parents_spurious)
-            parent_subset = self.local_pruning(node, parents_spurious)
+            parent_subset = self.prune_spurious_edges_local(node, parents_spurious)
 
             for nodej in parents_spurious:
                 pair_confounded = ((nodej, node) in self.Z_pairs or (node, nodej) in self.Z_pairs)
@@ -417,71 +832,6 @@ class CausalChange:
                     f"\t\tPair {nodej}->{node}: {'cfd' if pair_confounded else '1. uncfd'}  {'PRUNED' if prune else 'keep'} {correct}",
                     -2)
 
-    # %% GRAPH SEARCH: TOPOLOGICAL ORDERING
-    def order_nodes(self):
-        it = 0
-        while it < self.N:
-            source = self.get_next_node(self.candidates if not self.oracle_order else self.true_top_order[it])
-            self.candidates.remove(source)
-            self.topological_order.append(source)
-            it += 1
-            self._info(f"\t{it}. Source: {source}\t current {self.topological_order}, true {self.true_top_order}", -2)
-
-            self.add_edges(source)
-            self.refine_edges(source)
-
-        if self.extra_refinement:
-            self.refinement_phase()
-
-    def add_edges(self, source):
-        for node in self.candidates:
-            if node in self.topological_order or node == source or self.has_cycle(source, node):
-                continue
-            gain = self._addition_gain(node, source)
-            if self._significant(gain) or self._add_greedily:
-                self._add_edge(source, node, gain=float(gain))
-
-    def _addition_gain(self, node, source):
-        parents = list(self.graph_state.predecessors(node)).copy() if nx.is_directed_acyclic_graph(self.graph_state) else  list(self.graph_state.neighbors(node)).copy()
-        old_score = self._score(parents, node)
-        parents.append(source)
-        new_score = self._score(parents, node)
-        gain = self._gain(new_score, old_score)
-        return gain
-
-    def refine_edges(self, source):
-        parents = list(self.graph_state.predecessors(source))
-        n_removed = 0
-        while n_removed < len(parents):
-            removed_found, removed_parent = self.refine_step(source, parents)
-
-            if removed_parent is not None:
-                self._remove_edge(removed_parent, source)
-                parents.remove(removed_parent)
-                n_removed += 1
-            else:
-                break
-
-    def refine_step(self, source, parents):
-        removed_found, best_parent, best_diff = False, None, -np.inf
-        old_score = self._score(parents, source)
-
-        for parent in parents:
-            new_parents = parents.copy()
-            new_parents.remove(parent)
-            if len(new_parents) == 0: continue
-            new_score = self._score(new_parents, source)
-            diff = old_score - new_score  # >0 means removing parent improved the score
-
-            if diff > best_diff and is_insignificant(abs(diff)):#self._significant(diff):
-                best_diff = diff
-                best_parent = parent
-                removed_found = True
-        return removed_found, best_parent
-
-
-
-    # %% GRAPH SEARCH: EDGE-GREEDY
 
 
     # %% GRAPH AND SCORING UTILS
@@ -513,6 +863,14 @@ class CausalChange:
         if ret_full_result: return score, res
         return score
 
+    def _addition_gain(self, node, source):
+        parents = list(self.graph_state.predecessors(node)).copy() if nx.is_directed_acyclic_graph(self.graph_state) else  list(self.graph_state.neighbors(node)).copy()
+        old_score = self._score(parents, node)
+        parents.append(source)
+        new_score = self._score(parents, node)
+        gain = self._gain(new_score, old_score)
+        return gain
+
     @staticmethod
     def _gain(new_score, old_score):
         return old_score - new_score
@@ -533,72 +891,7 @@ class CausalChange:
             return False
         return True
 
-    def get_next_node(self, candidates):
-        if self.oracle_order:
-            n = len(self.topological_order)
-            self._info(f"\tTrue Next Node: {self.true_top_order[n]}", -2)
-            return self.true_top_order[n]
 
-        improvement = self.get_improvement_matrix(self.graph_state, candidates)
-        delta = improvement - improvement.T
-        # find the node with the smallest possible delta
-        np.fill_diagonal(delta, -np.inf)
-        best_delta = np.max(delta, axis=1)
-        worst = np.argmin(best_delta)
-
-        self._info(f"\tNext Node: {candidates[worst]}, order {self.topological_order} ", -2)
-        k = len(improvement)
-        top_k_ind = np.argsort(-best_delta)[-k:][::-1]
-        self._info(f"\tbest {k} next nodes:", -3)
-        for i in top_k_ind: self._info(f"\t  node  {candidates[i]}, best_delta: {-best_delta[i]:.4f}", -3)
-
-        return candidates[worst]
-
-    def get_improvement_matrix(self, graph, candidates):
-        improvement_matrix = np.zeros((len(candidates), len(candidates)))
-        for cause in candidates:
-            for effect in candidates:
-                if cause == effect:
-                    continue
-                parents = list(graph.predecessors(effect))
-                old_score = self._score(
-                    parents, effect)
-                parents.append(cause)
-                new_score = self._score(parents, effect)
-                improvement_matrix[candidates.index(cause), candidates.index(effect)] = \
-                    self._improvement(new_score, old_score)
-        return improvement_matrix
-
-    def refinement_phase(self, min_parent_set_size=0):
-        # smallest subset of parents with insignificant score gain
-        for j in self.graph_state.nodes:
-            parents = list(self.graph_state.predecessors(j))
-            if len(parents) == 0:
-                continue
-
-            best_size = np.inf
-            arg_max = None
-
-            old_score = self._score(parents, j)
-            old_parents = parents.copy()
-
-            for k in range(min_parent_set_size, len(parents) + 1 - 1):
-                parent_sets = itertools.combinations(parents, k)
-                for parent_set in parent_sets:
-
-                    new_score = self._score(parent_set, j)
-                    gain = self._gain(new_score, old_score)
-
-                    if is_insignificant(np.abs(gain)) and len(parent_set) < best_size:  # favor smaller parent sets
-                        best_size = len(parent_set)
-                        arg_max = parent_set
-
-            if arg_max is None:
-                continue
-            self._info(f'\trefine {parents} to {arg_max} -> {j}', -2)
-            for p in old_parents:
-                if p not in arg_max:
-                    self._remove_edge(p, j)
     def get_results_graph(self):
         for j in self.graph_state.nodes:
             self._score(list(self.graph_state.predecessors(j)), j, True)
