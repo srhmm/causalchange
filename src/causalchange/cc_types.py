@@ -75,6 +75,8 @@ class DataMode(Enum):
 class GraphSearch(Enum):
     TOPIC = 'topological'
     GLOBE = 'edge-greedy'
+    CHAIN = 'chain'
+    COMBO = 'combo'
 
     def __eq__(self, other):
         return self.value == other.value

@@ -7,7 +7,7 @@ from src.causalchange.scoring.fit_score import fit_functional_model, fit_score_g
 from src.causalchange.cc_types import ScoreType, GPType, DataMode
 from src.causalchange.scoring.fit_score import fit_score_ln, fit_score_gam, fit_score_spln
 from src.causalchange.scoring.test_ci import test_fun_kci
-from src.causalchange.search.partition_search import partition_search_scorebased, partition_search_constraintbased
+from src.causalchange.search.partition_search import partition_search_scorebased, partition_search
 from src.causalchange.util.utils_idl import get_true_idl, get_true_idl_Z
 
 
@@ -65,8 +65,8 @@ class EdgeMemoized:
                 score, res = partition_search_scorebased(
                     self.X, pa=pa, target=j, score_fun=score_fun)
             elif self.score_type.is_constraintbased():
-                score, res = partition_search_constraintbased(
-                    self.X, pa=pa, target=j, test_fun=test_fun)
+                score, res = partition_search(
+                    self.X, pa=pa, target=j ) #, test_fun=test_fun)
 
         elif self.data_mode == DataMode.TIME:
             raise NotImplementedError

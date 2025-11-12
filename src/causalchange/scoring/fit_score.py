@@ -1,7 +1,5 @@
 
 from pygam import GAM
-from src.causalchange.scoring.fit_time_space import fit_gaussian_process
-from src.causalchange.util.sttypes import TimeseriesScoringFunction
 
 
 
@@ -486,7 +484,9 @@ def _null_gaussian_mdl_bits(y):
     return _mdl_bits_from_nll(nll, k, n)
 
 # other
+"""
 
+from src.causalchange.scoring.fit_time_space import fit_gaussian_process
 def fit_score_gp_alt(Xtr, ytr,  **params):
     is_gp=True
     gp = fit_gaussian_process(
@@ -505,7 +505,7 @@ def fit_score_rff_alt(Xtr, ytr,  **params):
     score, lik, model, pen = gp.mdl_score_ytrain()
 
     return gp, float(score)
-
+"""
 def fit_score_gam_alt(Xtr, ytr):
     gam = GAM()
     gam.fit(Xtr, ytr)

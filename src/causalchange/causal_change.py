@@ -10,6 +10,9 @@ from src.causalchange.dag.dag import DAG
 from src.causalchange.dag.edge_memoized import EdgeMemoized
 from src.causalchange.scoring.fit_cond_mixture import MixingType
 from src.causalchange.cc_types import ScoreType, GPType, DataMode, GraphSearch, XArray, XType
+from src.causalchange.search.partition_search import _js_divergence, _entropy_bits_dist, _js_divergence_discrete, \
+    flat_from_context_dict, add_edges_change_mmd_given_order, pick_source_mmd_single, discrepancy_mmd, \
+    residual_dependence_all, add_edges_rel_reduction, prune_incoming_rel, prune_incoming_combo
 from src.causalchange.util.upq import UPQ
 from src.causalchange.util.utils import is_insignificant
 from src.causalchange.util.utils_idl import exp_mutual_info_score, pi_xor_pessimistic, \
@@ -218,7 +221,7 @@ class CausalChange:
         for node_i in self.graph_state.nodes:
             parents_i = list(self.graph_state.predecessors(node_i))
             score, res = self._score(parents_i, node_i, ret_full_result=True)
-            changes[node_i] = {"groups": res["groups"], "partition":  res["partition"]}
+            changes[node_i] = res # {"groups": res["groups"], "partition":  res["partition"]}
             _res_each_node[node_i] = res
         self.changes = changes
         self._res_each_node = _res_each_node #for debugging
@@ -263,10 +266,201 @@ class CausalChange:
             return self._graph_search_topological()
         elif self.graph_search == GraphSearch.GLOBE:
             return self._graph_search_edgegreedy()
+        elif self.graph_search == GraphSearch.CHAIN:
+            return self._graph_search_chain()
+        elif self.graph_search == GraphSearch.COMBO:
+            return self._graph_search_combo()
         else: raise ValueError(self.graph_search)
 
+    #%% Graph search - COMBO
 
-    #%% Graph search - TOPIC
+    def _graph_search_combo(self) -> nx.DiGraph:
+        self.graph_state.add_nodes_from(range(self.N))
+        self.candidates = list(range(self.N))
+        self._graph_search_combo_ordering()
+        self.fitted_graph = True
+        return self.graph_state
+
+    def _graph_search_combo_ordering(self, lam_mix=0.7, krr_lam=1e-2, krr_sigma=None, mmd_sigma=None, eps=1e-9):
+        it = 0
+        while it < self.N:
+            source = self._graph_search_combo_next(
+                self.candidates if not self.oracle_order else self.true_top_order[it],
+                lam_mix=lam_mix, krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma, eps=eps
+            )
+            self.candidates.remove(source)
+            self.topological_order.append(source)
+            it += 1
+            self._info(f"\t{it}. Source: {source}\t current {self.topological_order}, true {self.true_top_order}", -2)
+            #self._graph_search_combo_add_outgoing(source, krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma)
+            #self._graph_search_combo_remove_ingoing(source)
+
+    def _graph_search_combo_next(self, candidates, lam_mix=0.9, krr_lam=1e-2, krr_sigma=None, mmd_sigma=None, eps=1e-9):
+        if self.oracle_order:
+            n = len(self.topological_order)
+            self._info(f"\tTrue Next Node: {self.true_top_order[n]}", -2)
+            return self.true_top_order[n]
+
+        X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
+
+        stats = []
+        for i in candidates:
+            D0 = discrepancy_mmd(i, [], X_all, C_idx, krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma)
+            Dmin = D0
+            for j in candidates:
+                if j == i: continue
+                D1 = discrepancy_mmd(i, [j], X_all, C_idx, krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma)
+                if D1 < Dmin: Dmin = D1
+            R = D0 - Dmin
+            Rn = R / (D0 + eps)
+
+            others = [j for j in candidates if j != i]
+            dep = residual_dependence_all(i, X_all, others, krr_lam=krr_lam, krr_sigma=krr_sigma)
+            stats.append((i, Rn, dep, D0, Dmin, R))
+
+        import numpy as np
+        deps = np.array([t[2] for t in stats])
+        med, mad = float(np.median(deps)), float(np.median(np.abs(deps - np.median(deps))) + 1e-12)
+        dep_z = np.clip((deps - med) / (3.0 * mad + 1e-12), -1.0, 1.0)  # robust z in [-1,1]
+        depN = 0.5 * (dep_z + 1.0)  # map to [0,1]
+        # combo: minimize lam*Rn + (1-lam)*(1 - depN); with lam≈0.9, HSIC can’t drown Rn
+        scores = []
+        for k, (i, Rn, dep, D0, Dmin, R) in enumerate(stats):
+            S = lam_mix * Rn + (1.0 - lam_mix) * (1.0 - depN[k])
+            scores.append((S, i))
+
+        best_i = min(scores)[1]
+
+        self._info(f"\tNext Source (combo weighted λ={lam_mix:.2f}): {best_i}, order {self.topological_order}", -2)
+        self._info(f"\tbest {len(stats)} next nodes:", -3)
+        for (i, Rn, dep, D0, Dmin, R), S in sorted(zip(stats, [s[0] for s in scores]), key=lambda t: t[1]):
+            self._info(f"\t  node {i}: Rn={Rn:.3f} dep={dep:.3g} D0={D0:.4f} Dmin={Dmin:.4f} Δ={R:.4f} | S={S:.3f}", -3)
+
+        return best_i
+
+    def _graph_search_combo_add_outgoing(self, source, rel_min=0.1, lambda_pa=0.0,
+                                         max_parents=None, krr_lam=1e-2,
+                                         krr_sigma=None, mmd_sigma=None):
+        X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
+        order = list(self.topological_order) + [v for v in self.candidates if v not in self.topological_order]
+
+        G_tmp, edges = add_edges_rel_reduction(
+            order, X_all, C_idx,
+            rel_min=rel_min,
+            lambda_pa=lambda_pa,
+            max_parents=max_parents,
+            krr_lam=krr_lam,
+            krr_sigma=krr_sigma,
+            mmd_sigma=mmd_sigma,
+        )
+
+        for u, v in edges:
+            if u == source and not self.graph_state.has_edge(u, v):
+                self.graph_state.add_edge(u, v)
+                self._info(f"\t  +edge {u}->{v} ({self.is_true_edge(u)(v)}) (Δ_rel>={rel_min})", -1)
+
+    def _graph_search_combo_remove_ingoing(self, target,
+                                           lam_mix=0.7,  # weight: invariance vs independence
+                                           keep_min=0.05,  # required combined relative contribution
+                                           krr_lam=1e-2,
+                                           krr_sigma=None,
+                                           mmd_sigma=None):
+        """
+        Combo pruning for incoming edges to `target`.
+        Keeps a parent u only if including it
+          (i) improves cross-context invariance of residuals (ΔMMD), and/or
+          (ii) reduces residual dependence on u (HSIC),
+        with weighted relative contribution ≥ keep_min.
+        """
+        if not hasattr(self, "graph_state") or self.graph_state is None:
+            return
+        X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
+        before = list(self.graph_state.in_edges(target))
+        removed = prune_incoming_combo(
+            target, self.graph_state, X_all, C_idx,
+            lam_mix=lam_mix, keep_min=keep_min,
+            krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma
+        )
+        after = list(self.graph_state.in_edges(target))
+        if removed: self._info(f"\t  combo-pruned incoming to {target}: removed {removed}", -1)
+        else: self._info(f"\t  combo-prune kept incoming for {target}: {after}", -1)
+
+    #%% Graph search - NOVEL
+    def _graph_search_chain(self):
+        self.graph_state.add_nodes_from(range(self.N))
+        self.candidates = list(range(self.N))
+        it = 0
+        while it < self.N:
+            source = self._graph_search_chain_next(self.candidates if not self.oracle_order else self.true_top_order[it])
+            self.candidates.remove(source)
+            self.topological_order.append(source)
+            it += 1
+            self._info(f"\t{it}. Source: {source}\t current {self.topological_order}, true {self.true_top_order}", -1)
+
+            self._graph_search_chain_add_outgoing(source)
+            self._graph_search_chain_remove_ingoing(source)
+
+        self.fitted_graph = True
+        return self.graph_state
+
+    def _graph_search_chain_next(self, candidates, krr_lam=1e-2, krr_sigma=None, mmd_sigma=None, eps=1e-9):
+        X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
+        node, stats = pick_source_mmd_single(candidates, X_all, C_idx, krr_lam, krr_sigma, mmd_sigma, eps)
+        self._info(f"\tNext Source (MMD-single): {node}, order {self.topological_order}", -1)
+        self._info(f"\tbest {len(stats)} next nodes:", -2)
+        for i, D0, Dmin, R, Rn in sorted(stats, key=lambda t: (t[4], -t[1])):
+            self._info(f"\t  node {i}: D0={D0:.4f} Dmin={Dmin:.4f} Δ={R:.4f} Δnorm={Rn:.3f}", -2)
+        return node
+
+    def _graph_search_chain_add_outgoing(self, source,
+                                         rel_min=0.10,  # min relative reduction to accept
+                                         lambda_pa=0.0,  # tiny penalty per added parent (optional)
+                                         max_parents=None,  # cap indegree (e.g., 2 or 3)
+                                         krr_lam=1e-2,  # KRR ridge
+                                         krr_sigma=None,  # KRR kernel bandwidth (None=median heuristic)
+                                         mmd_sigma=None):  # MMD bandwidth (None=median heuristic)
+        X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
+
+        # Build an order = discovered-so-far + the rest (same policy as before)
+        order = list(self.topological_order) + [v for v in self.candidates if v not in self.topological_order]
+
+        # Run the fast edge adder (heuristic relative-reduction)
+        G_tmp, edges = add_edges_rel_reduction(
+            order, X_all, C_idx,
+            rel_min=rel_min, lambda_pa=lambda_pa,
+            max_parents=max_parents,
+            krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma
+        )
+
+        added = 0
+        for u, v in edges:
+            if u == source and not self.graph_state.has_edge(u, v):
+                self.graph_state.add_edge(u, v)
+                added += 1
+                self._info(f"\t  +edge {u}->{v} ({self.is_true_edge(u)(v)}) (rel≥{rel_min:.3f})", -1)
+        if added == 0:
+            self._info(f"\t  no outgoing edges added from {source} (rel_min={rel_min:.3f})", -1)
+
+    def _graph_search_chain_remove_ingoing(self, target,
+                                           rel_keep=0.02,  # require ≥2% contribution to keep an edge
+                                           krr_lam=1e-2,
+                                           krr_sigma=None,
+                                           mmd_sigma=None):
+        X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
+        before = list(self.graph_state.in_edges(target))
+        removed = prune_incoming_rel(
+            target, self.graph_state, X_all, C_idx,
+            rel_keep=rel_keep, krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma
+        )
+        after = list(self.graph_state.in_edges(target))
+        if removed:
+            self._info(f"\t  pruned incoming to {target}: removed {removed}", -1)
+        else:
+            self._info(f"\t  no incoming pruned for {target} (kept {after})", -2)
+
+
+
+            #%% Graph search - TOPIC
     def _graph_search_topological(self) -> nx.DiGraph:
         """ TOPIC (Xu et al., 2025) """
 
@@ -399,7 +593,7 @@ class CausalChange:
                 if p not in arg_max:
                     self._remove_edge(p, j)
 
-    # %% Graph search - GLOBE
+    # %% Graph search - GLOBE - not fully tested
     def _graph_search_edgegreedy(self) -> nx.DiGraph:
         """ GLOBE (Mian et al., 2021) """
 
@@ -463,99 +657,6 @@ class CausalChange:
                 edge_q, dag_model = self._graph_search_edgegreedy_update_parents(op, node, -1, edge_q, dag_model)
 
         return edge_q, dag_model
-
-    """
-    def _graph_search_edgegreedy_forward(self, edge_q: UPQ, dag_model: DAG) -> [UPQ, DAG]:
-        self._info(f"\t*** Greedy DAG search (phase 1) ***", -1)
-
-        while edge_q.pq:
-            try: edge_q, dag_model = self._graph_search_edgegreedy_forward_next(edge_q, dag_model)
-            except KeyError: pass  # empty or all remaining entries are tagged as removed
-        return edge_q, dag_model
-
-    def _graph_search_edgegreedy_backward(self, edge_q: UPQ, dag_model: DAG) -> [UPQ, DAG]:
-        self._info(f"\t*** Greedy DAG search (phase 2) ***", -1)
-
-        for node in dag_model.nodes:
-            edge_q, dag_model = self._graph_search_edgegreedy_backward_refine(node, edge_q, dag_model)
-
-        return edge_q, dag_model
-
-    def _graph_search_edgegreedy_backward_refine(self, node, edge_q, dag_model):
-        P = list(dag_model.parents_of(node))
-        if len(P) <= 1:
-            return edge_q, dag_model
-        max_gain, arg_max = -np.inf, None
-        min_size = 0  # allow empty set if desired
-        for k in range(min_size, len(P) + 1):
-            for parent_set in itertools.combinations(P, k):
-                gain, _ = dag_model.eval_edges(node, parent_set)
-                if gain > max_gain:
-                    max_gain, arg_max = gain, parent_set
-        if (arg_max is not None) and (not is_score_insignificant(max_gain)):
-            dag_model.update_edges(node, arg_max)
-            # optionally refresh queue entries affected by node’s parents
-            for op in dag_model.nodes:
-                edge_q, dag_model = self._graph_search_edgegreedy_update_parents(op, node, -1, edge_q, dag_model)
-        return edge_q, dag_model
-
-    def _graph_search_edgegreedy_forward_next(self, edge_q: UPQ, dag_model: DAG) -> [UPQ, DAG]:
-        #Greedy tree search, forward phase -- evaluate the next causal edge in the priority queue.  
-        pi_edge = edge_q.pop_task()
-        node, parent = pi_edge.j, pi_edge.pa
-        if dag_model.has_cycle(parent, node) or dag_model.exists_anticausal_edge(parent, node):  return edge_q, dag_model
-        gain, score = dag_model.eval_edge_addition(node, parent, return_score=True)
-        if is_score_insignificant(gain): return edge_q, dag_model
-
-        dag_model.add_edge(parent, node, score, gain)
-        # Reconsider children under current model and remove if reversing the edge improves score
-        for child in dag_model.nodes:
-            edge_q, dag_model = self._graph_search_edgegreedy_update_children(child, node, edge_q, dag_model)
-
-        # Reconsider edges Xk->Xj in q given the current model as their score changed upon adding Xi->Xj
-        for other_parent in dag_model.nodes:
-            edge_q, dag_model = self._graph_search_edgegreedy_update_parents(other_parent, node, parent, edge_q, dag_model)
-
-        return edge_q, dag_model
-
-    def _graph_search_edgegreedy_update_children(self, child, node, edge_q, dag_model):
-        ch = child
-        if not dag_model.is_edge(node, ch):
-            return edge_q, dag_model
-
-        gain = dag_model.eval_edge_flip(node, ch)
-        if is_score_insignificant(gain):
-            return edge_q, dag_model
-
-        dag_model.remove_edge(node, ch)
-
-        edge_fw = dag_model.pair_edges[node][ch]
-        edge_bw = dag_model.pair_edges[ch][node]
-        if edge_q.exists_task(edge_bw):
-            edge_q.remove_task(edge_bw)
-
-        gain_bw = dag_model.eval_edge_addition(edge_bw.i, edge_bw.j)
-        gain_fw = dag_model.eval_edge_addition(edge_fw.i, edge_fw.j)
-
-        if not is_score_insignificant(gain_bw):
-            edge_q.add_task(edge_bw, gain_bw * 100)
-        if not is_score_insignificant(gain_fw):
-            edge_q.add_task(edge_fw, gain_fw * 100)
-        return edge_q, dag_model
-
-    def _graph_search_edgegreedy_update_parents(self, other_parent, node, parent, edge_q, dag_model):
-        if node == other_parent or parent == other_parent \
-                or dag_model.is_edge(other_parent, node) or dag_model.is_edge(node, other_parent):
-            return edge_q, dag_model
-
-        edge_candidate = dag_model.pair_edges[other_parent][node]
-        gain_mom = dag_model.eval_edge_addition(node, other_parent)
-        if edge_q.exists_task(edge_candidate):
-            edge_q.remove_task(edge_candidate)
-        if not is_score_insignificant(gain_mom):
-            edge_q.add_task(edge_candidate, gain_mom * 100)
-        return edge_q, dag_model
-    """
 
     def _dm_has_cycle(self, dag_model, parent, child):
         return self.has_cycle(parent, child)

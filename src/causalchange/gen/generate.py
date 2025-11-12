@@ -5,8 +5,8 @@ import networkx as nx
 import numpy as np
 from numpy.random import SeedSequence
 
-from src.exp.exp_change.gen.synthetic.data_gen_context import DataGenContext
-from src.exp.exp_change.gen.synthetic.data_gen_mixing import DataGen
+from src.causalchange.gen.synthetic.data_gen_context import DataGenContext
+from src.causalchange.gen.synthetic.data_gen_mixing import DataGen
 
 """ synthetic data generation """
 
@@ -95,13 +95,13 @@ class GSType(Enum):
                                                    GSType.MV_CONFD.value, GSType.MV_CAUSAL_CONFD.value]
 
 
+
 class IvType(Enum):
     COEF = 'coef'
-    FLIP = 'flip'
     SHIFT = 'shift'
-
-    def __eq__(self, other): return self.value == other.value
-
+    HARD = 'hard'
+    MIX = 'mix'
+    def __eq__(self, other): return self.value == getattr(other, "value", other)
 
 class FunType(Enum):
     LIN = 'lin'
@@ -111,9 +111,7 @@ class FunType(Enum):
     LOG = 'log'
     SIN = 'sin'
     MIX = 'mix'
-
-    def __eq__(self, other): return self.value == other.value
-
+    def __eq__(self, other): return self.value == getattr(other, "value", other)
 
 class NoiseType(Enum):
     GAUSS = 'normal'
@@ -121,8 +119,7 @@ class NoiseType(Enum):
     GUMBEL = 'gumbel'
     UNIF = 'unif'
     MIX = 'mix'
-
-    def __eq__(self, other): return self.value == other.value
+    def __eq__(self, other): return self.value == getattr(other, "value", other)
 
 
 def gen_data_type(dataparams, seed, vb=0, lg=None, ret_params=False):
@@ -411,11 +408,7 @@ def gen_synthetic_data(iv_mode, params, graph, random_state, seed, vb, lg=None):
 
 
 def gen_synthetic_data_context(iv_mode, params, graph, random_state=None, seed=0, vb=0, lg=None):
-    #defaults
-    if 'NS' not in params: params['NS'] = NoiseType.MIX
-    if 'F' not in params: params['F'] = FunType.MIX
-    if 'IVT' not in params: params['IVT'] = IvType.COEF
-    # (iv_mode, random_state, lg are kept for parity/hooks; not used here directly)
+    print(params)
     dg = DataGenContext(params, graph=graph, seed=seed, vb=vb)
     X, contexts = dg.gen_X()
 

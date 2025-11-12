@@ -1,7 +1,6 @@
 import numpy as np
 import networkx as nx
 
-# Optional: if you prefer scipy's sinc, replace with from numpy import sinc as np_sinc
 def _sinc(x):  # plain sinc: sin(x)/x with safe handling
     out = np.ones_like(x)
     nz = x != 0
@@ -23,21 +22,20 @@ class DataGenContext(object):
       - nodes optionally change mechanisms across contexts by partitioning contexts into K groups
     """
     def __init__(self, params, graph, seed=0, vb=0):
-        self.N = params["S"]                 # samples
-        self.M = params["N"]                 # variables
-        self.C = params["C"]                 # number of contexts
-        self.noise_type = params["NS"].value # 'normal' or 'unif' expected (others ignored to keep spec)
+        self.N = params["S"]
+        self.M = params["N"]
+        self.C = params["C"]
+        self.noise_type = params["NS"].value
         self._graph = graph
         self.vb = vb
         self.rng = np.random.default_rng(seed)
 
-        # hyperparams / knobs (feel free to surface in params)
         self.W_MIN, self.W_MAX = 0.5, 2.5
         self.SIG_MIN, self.SIG_MAX = 1.0, 3.0
-        self.SIG2_MIN, self.SIG2_MAX = 2.0, 5.0  # for noise-scaling interventions
-        self.NOISE_SC_BASE = 1.0                # noise scale multiplier
-        self.HARD_IV_PROB = 0.2                 # chance to zero inbound weights for one group (hard intervention)
-        self.NOISE_SCALE_PROB = 0.5             # chance to resample sigma in one group
+        self.SIG2_MIN, self.SIG2_MAX = 2.0, 5.0
+        self.NOISE_SC_BASE = 1.0
+        self.HARD_IV_PROB = 0.2
+        self.NOISE_SCALE_PROB = 0.5
 
         # per-node "is variant?" coin using P_C
         self.P_C = float(params.get("PC", 0.0))
@@ -163,7 +161,6 @@ class DataGenContext(object):
                         details.append((int(c), float(s), dist))
                     print(f"    [setup]   g={g} noise per context: {details}")
 
-    # ---- vectorized noise (fixes your earlier error) ----
     def _draw_noise(self, is_normal, scale, size=None):
         """
         Vectorized noise drawer.
