@@ -3,7 +3,7 @@ import networkx as nx
 
 import matplotlib.pyplot as plt
 
-from src.causalchange.gen.generate import IvType, FunType, NoiseType
+from src.causalchange.gen.synthetic.gen_types import IvType, FunType, NoiseType
 
 
 def _id(x): return x

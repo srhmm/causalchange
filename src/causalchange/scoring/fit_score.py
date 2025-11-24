@@ -2,12 +2,13 @@
 from pygam import GAM
 
 
+import numpy as np
 
 from numpy.linalg import inv
 from math import log
 
-def fit_functional_model(
-        X, pa, target, score_fun, **scoring_params):
+def fit_fun_IID(
+        X, pa, target, score_fun, ret_residuals=False, **scoring_params):
     r""" fitting and scoring functional models
 
     :param X: parents
@@ -18,22 +19,106 @@ def fit_functional_model(
     :Keyword Arguments:
     * *score_type* (``ScoreType``) -- regressor and associated information-theoretic score
     """
-    params_scale = scoring_params.get("scale", False)
 
     X_pa = np.random.normal(size=X[:, [target]].shape) if len(pa) == 0 else  X[:, pa]
     X_target = X[:, target]
-    model, L = score_fun(X_pa, X_target, **scoring_params)
-
+    model, L, resid = score_fun(X_pa, X_target, **scoring_params)
+    if ret_residuals:  return resid, dict(model=model)
     return L, dict(model=model)
 
 
+def fit_resid_CONTEXTS(X_dict, target, parents, score_fun, **score_params) -> list[np.ndarray]:
+    """
+    X_dict: {ctx_id: np.ndarray [n_ctx_samples, n_nodes]}
+    """
+    residual_sets = []
+    for ctx_id, Xc in X_dict.items():
+        y = Xc[:, target]
+        if parents:
+            X_pa = Xc[:, parents]
+        else:
+            # intercept-only model: one constant feature
+            X_pa = np.ones((Xc.shape[0], 1), dtype=float)
 
-def fit_score_gp(Xtr, ytr, **params):
+        _, _, resid = score_fun(X_pa, y, return_residuals=True, **score_params)
+        residual_sets.append(resid)
+
+    return residual_sets
+
+def fit_resid_TIME(X, target, parents, score_fun, changepoints, lag: int = 1, **score_params) -> list[np.ndarray]:
+    """
+    X: np.ndarray [T, n_nodes]
+    changepoints: list of ints, including 0 and T, e.g., [0, 50, 100]
+    lag: autoregressive lag to use for time-based parents
+    """
+    T, d = X.shape
+    residual_sets = []
+
+    for k in range(len(changepoints) - 1):
+        start, end = changepoints[k], changepoints[k + 1]
+        X_seg = X[start:end]      # [L, d]
+        L = X_seg.shape[0]
+        if L <= lag:
+            continue  # not enough data for this segment
+
+        # response at times lag..L-1
+        y = X_seg[lag:, target]
+
+        if parents:
+            # here we take parents at the same time index (t); could be changed to lags if desired
+            X_pa = X_seg[lag:, parents]
+        else:
+            # intercept-only: one constant feature
+            X_pa = np.ones((L - lag, 1), dtype=float)
+
+        _, _, res = score_fun(X_pa, y, return_residuals=True, **score_params)
+        residual_sets.append(res)
+
+    return residual_sets
+
+
+def fit_resid_TIME_CONTEXTS(X_dict, target, parents, score_fun, cp_per_ctx, lag: int = 1, **score_params) -> list[np.ndarray]:
+    """
+    X_dict: {ctx_id: np.ndarray [T_ctx, n_nodes]}
+    cp_per_ctx: {ctx_id: list of changepoints within that context's time axis}
+    """
+    residual_sets = []
+
+    for ctx_id, Xc in X_dict.items():
+        cps = list(cp_per_ctx[ctx_id])
+
+        # ensure the changepoints cover the full range
+        if len(cps) == 0 or cps[0] != 0:
+            cps = [0] + cps
+        if cps[-1] != Xc.shape[0]:
+            cps = cps + [Xc.shape[0]]
+
+        for k in range(len(cps) - 1):
+            start, end = cps[k], cps[k + 1]
+            X_seg = Xc[start:end]
+            L = X_seg.shape[0]
+            if L <= lag:
+                continue
+
+            y = X_seg[lag:, target]
+
+            if parents:
+                X_pa = X_seg[lag:, parents]
+            else:
+                # intercept-only
+                X_pa = np.ones((L - lag, 1), dtype=float)
+
+            _, _, res = score_fun(X_pa, y, return_residuals=True, **score_params)
+            residual_sets.append(res)
+
+    return residual_sets
+
+
+def fit_score_gp(Xtr, ytr, return_residuals=False, **params):
     Xtr = np.asarray(Xtr, float)
     ytr = np.asarray(ytr, float).reshape(-1)
     # guard: finite data
     if not np.all(np.isfinite(Xtr)) or not np.all(np.isfinite(ytr)):
-        # replace non-finite with zeros (and continue)
         Xtr = np.nan_to_num(Xtr, nan=0.0, posinf=0.0, neginf=0.0)
         ytr = np.nan_to_num(ytr, nan=0.0, posinf=0.0, neginf=0.0)
 
@@ -41,7 +126,7 @@ def fit_score_gp(Xtr, ytr, **params):
     Xn, yn, scalers = _standardize(Xtr, ytr)
     n = Xn.shape[0]
 
-    # hyperparam search config
+    # hyperparam search config (unchanged)
     restarts = params.get("restarts", 10)
     low = params.get("bounds", {}).get("low", -5.0)
     high = params.get("bounds", {}).get("high", 5.0)
@@ -51,15 +136,14 @@ def fit_score_gp(Xtr, ytr, **params):
     k_params = params.get("k_params", 3)
     use_bic = params.get("bic_penalty", False)
 
-    # candidates
+    # candidates (unchanged)
     cands = _random_restarts_bounds(3, low=low, high=high, rng=rng, n=restarts)
-    # Add anchor candidates tuned to standardized y (var ~ 1)
     cands += [
-        np.array([0.0, 0.0, -2.0]),   # ell=1, sf2=1, sn2≈0.135
-        np.array([1.0, 0.0, -1.0]),   # ell≈2.7, sf2=1, sn2≈0.368
-        np.array([-1.0, 0.0, 0.0]),   # ell≈0.37, sf2=1, sn2=1
-        np.array([0.0, -2.0, 0.0]),   # low sf2 (underfit)
-        np.array([0.0,  2.0,  2.0]),  # high sf2 & sn2 (noise-dominated)
+        np.array([0.0, 0.0, -2.0]),
+        np.array([1.0, 0.0, -1.0]),
+        np.array([-1.0, 0.0,  0.0]),
+        np.array([0.0, -2.0, 0.0]),
+        np.array([0.0,  2.0, 2.0]),
     ]
 
     best = None
@@ -69,7 +153,6 @@ def fit_score_gp(Xtr, ytr, **params):
 
     def eval_params(theta):
         log_ell, log_sf2, log_sn2 = theta
-        # clamp noise variance to a minimum to avoid pathological sn2->0
         log_sn2 = max(log_sn2, np.log(1e-6))
         K, used_jitter = _build_K_adaptive(Xn, log_ell, log_sf2, log_sn2, base_jitter=base_jitter)
         try:
@@ -80,7 +163,7 @@ def fit_score_gp(Xtr, ytr, **params):
             return np.inf, None, used_jitter
         return nll, (theta, K, L, alpha), used_jitter
 
-    # coarse
+    # coarse search
     for th in cands:
         nll, cache, used_jit = eval_params(th)
         if nll < best_nll:
@@ -93,33 +176,40 @@ def fit_score_gp(Xtr, ytr, **params):
             if nll < best_nll:
                 best_nll, best, best_cache, best_jitter = nll, th, cache, used_jit
 
-    # Fallback if nothing worked
+    # fallback
     if (best is None) or (not np.isfinite(best_nll)):
-        score_bits = _null_gaussian_mdl_bits(yn) if use_bic else (_null_gaussian_mdl_bits(yn))
-        # return a trivial model (predict mean in original scale)
+        score_bits = _null_gaussian_mdl_bits(yn) if use_bic else _null_gaussian_mdl_bits(yn)
         Xmu, Xsd, ymu, ysd = scalers
+
         def predict(Xte, return_var=False):
-            m = np.full((np.asarray(Xte).shape[0],), ymu)
+            Xte = np.asarray(Xte, float)
+            m = np.full((Xte.shape[0],), ymu)
             if return_var:
                 return m, np.full_like(m, ysd**2)
             return m
+
         model = dict(
             kind="fallback_null",
             mdl_bits=float(score_bits),
             predict=predict,
             scalers=dict(Xmu=Xmu, Xsd=Xsd, ymu=ymu, ysd=ysd),
         )
+
+        if return_residuals:
+            yhat = predict(Xtr)
+            resid = ytr - yhat
+            return model, float(score_bits), resid
+
         return model, float(score_bits)
 
-    # unpack best cache
+    # unpack
     (log_ell, log_sf2, log_sn2), K, L, alpha = best_cache
 
-    # MDL score (in bits)
     penalty = (0.5 * k_params * np.log(max(n, 2))) if use_bic else 0.0
     score_bits = (best_nll + penalty) / np.log(2.0)
 
-    # prediction in ORIGINAL scale
     Xmu, Xsd, ymu, ysd = scalers
+
     def predict(Xte, return_var=False):
         Xte = np.asarray(Xte, float)
         Xte_n = (Xte - Xmu) / Xsd
@@ -137,7 +227,7 @@ def fit_score_gp(Xtr, ytr, **params):
         "log_ell": float(log_ell),
         "log_sf2": float(log_sf2),
         "log_sn2": float(max(log_sn2, np.log(1e-6))),
-        "Xtr_std": Xn,  # standardized copy (for debugging)
+        "Xtr_std": Xn,
         "ytr_std": yn,
         "L": L,
         "alpha": alpha,
@@ -147,10 +237,15 @@ def fit_score_gp(Xtr, ytr, **params):
         "used_jitter": float(best_jitter),
         "scalers": dict(Xmu=Xmu, Xsd=Xsd, ymu=ymu, ysd=ysd),
     }
+
+    if return_residuals:
+        yhat = predict(Xtr)
+        resid = ytr - yhat
+        return model, float(score_bits), resid
+
     return model, float(score_bits)
 
-
-def fit_score_rff(Xtr, ytr, **params):
+def fit_score_rff(Xtr, ytr, return_residuals=False, **params):
     Xtr = np.asarray(Xtr, float)
     ytr = np.asarray(ytr, float).reshape(-1)
     if not np.all(np.isfinite(Xtr)) or not np.all(np.isfinite(ytr)):
@@ -168,9 +263,7 @@ def fit_score_rff(Xtr, ytr, **params):
     k_params = int(params.get("k_params", 3))
     use_bic = bool(params.get("bic_penalty", False))
 
-    # RFF controls
-    D = int(params.get("D", 300))#1000))
-    # one fixed draw per call (keeps objective smooth across restarts)
+    D = int(params.get("D", 300))
     omegas = rng.standard_normal(size=(d, D))
     biases = rng.uniform(0.0, 2.0*np.pi, size=(D,))
 
@@ -178,7 +271,6 @@ def fit_score_rff(Xtr, ytr, **params):
         proj = Xscaled @ omegas
         return np.sqrt(2.0 / D) * np.cos(proj + biases)
 
-    # evidence S = sn2*I + sf2*Phi Phi^T, using Woodbury
     def _evidence_nlml_nats(log_ell, log_sf2, log_sn2):
         log_sn2 = max(log_sn2, np.log(1e-12))
         ell = np.exp(log_ell)
@@ -186,12 +278,12 @@ def fit_score_rff(Xtr, ytr, **params):
         sn2 = np.exp(log_sn2)
 
         Xs = Xn / (ell + 1e-12)
-        Phi = _rff_features(Xs)           # (n, D)
-        PtP = Phi.T @ Phi                 # (D, D)
-        b = Phi.T @ yn                    # (D,)
+        Phi = _rff_features(Xs)
+        PtP = Phi.T @ Phi
+        b = Phi.T @ yn
 
         a = sf2 / sn2
-        A = np.eye(D) + a * PtP           # (D, D)
+        A = np.eye(D) + a * PtP
         try:
             L_A = np.linalg.cholesky(A)
         except np.linalg.LinAlgError:
@@ -206,7 +298,6 @@ def fit_score_rff(Xtr, ytr, **params):
         cache = (ell, sf2, sn2, L_A, b, PtP)
         return nll, cache
 
-    # candidates (unchanged style)
     cands = _random_restarts_bounds(3, low=low, high=high, rng=rng, n=restarts)
     cands += [
         np.array([0.0, 0.0, -2.0]),
@@ -220,46 +311,50 @@ def fit_score_rff(Xtr, ytr, **params):
     best_nll = np.inf
     best_cache = None
 
-    # coarse
     for th in cands:
         nll, cache = _evidence_nlml_nats(*th)
         if np.isfinite(nll) and nll < best_nll:
             best_nll, best, best_cache = nll, th, cache
 
-    # refine (small grid around best)
     if refine and (best is not None) and np.isfinite(best_nll):
         for th in _grid_around(best, width=0.75, steps=3):
             nll, cache = _evidence_nlml_nats(*th)
             if np.isfinite(nll) and nll < best_nll:
                 best_nll, best, best_cache = nll, th, cache
 
-    # Fallback if nothing worked
     if (best is None) or (not np.isfinite(best_nll)):
         score_bits = _null_gaussian_mdl_bits(yn)
         Xmu, Xsd, ymu, ysd = scalers
+
         def predict(Xte, return_var=False):
-            m = np.full((np.asarray(Xte).shape[0],), ymu)
+            Xte = np.asarray(Xte, float)
+            m = np.full((Xte.shape[0],), ymu)
             if return_var:
                 return m, np.full_like(m, ysd**2)
             return m
+
         model = dict(
             kind="fallback_null_rff",
             mdl_bits=float(score_bits),
             predict=predict,
             scalers=dict(Xmu=Xmu, Xsd=Xsd, ymu=ymu, ysd=ysd),
         )
+
+        if return_residuals:
+            yhat = predict(Xtr)
+            resid = ytr - yhat
+            return model, float(score_bits), resid
+
         return model, float(score_bits)
 
-    # unpack winner
     (log_ell, log_sf2, log_sn2) = best
     ell, sf2, sn2, L_A, b_vec, PtP = best_cache
 
-    # MDL/BIC (same as your code)
     penalty_nats = (0.5 * k_params * np.log(max(n, 2))) if use_bic else 0.0
     score_bits = (best_nll + penalty_nats) / np.log(2.0)
 
-    # predictor (original scale); fast mean+variance
     Xmu, Xsd, ymu, ysd = scalers
+
     def predict(Xte, return_var=False):
         Xte = np.asarray(Xte, float)
         Xte_n = (Xte - Xmu) / Xsd
@@ -296,110 +391,14 @@ def fit_score_rff(Xtr, ytr, **params):
         "rff": {"D": D, "omegas": omegas, "biases": biases, "PtP": PtP, "A_chol": L_A, "b": b_vec},
         "scalers": dict(Xmu=Xmu, Xsd=Xsd, ymu=ymu, ysd=ysd),
     }
+
+    if return_residuals:
+        yhat = predict(Xtr)
+        resid = ytr - yhat
+        return model, float(score_bits), resid
+
     return model, float(score_bits)
 
-"""
-def _std_data(X, y):
-    Xm = X.mean(axis=0, keepdims=True); Xs = X.std(axis=0, keepdims=True) + 1e-12
-    ym = y.mean(); ys = y.std() + 1e-12
-    Xz = (X - Xm) / Xs
-    yz = (y - ym) / ys
-    return Xz, yz, (Xm, Xs, ym, ys)
-
-def _rff_features(X, W, b, sf2):
-    # phi(x) = sqrt(2/D) * sqrt(sf2) * cos(W x + b)
-    Z = X @ W.T + b  # (n, D)
-    return np.sqrt(2.0 / W.shape[0]) * np.sqrt(sf2) * np.cos(Z)
-
-def fit_score_rff_altern(Xtr, ytr, **params):
-    X = np.asarray(Xtr, float)
-    y = np.asarray(ytr, float).reshape(-1)
-    n, p = X.shape
-
-    D = int(params.get("D", 300))
-    restarts = int(params.get("restarts", 5))
-    ell_low, ell_high = params.get("ell_bounds", (-1.5, 1.5))
-    sf2_low, sf2_high = params.get("sf2_bounds", (-1.0, 1.0))
-    ridge_low, ridge_high = params.get("ridge_bounds", (-6.0, 2.0))
-    bic_penalty = params.get("bic_penalty", True)
-    rng = np.random.default_rng(params.get("seed", None))
-
-    # standardize once (keeps search stable)
-    Xz, yz, stats = _std_data(X, y)
-
-    def fit_once(log_ell, log_sf2, log_lambda):
-        ell = np.exp(log_ell)
-        sf2 = np.exp(log_sf2)
-        lam = np.exp(log_lambda)
-
-        # sample RFFs
-        # W ~ N(0, 1/ell^2 I), b ~ U(0, 2π)
-        W = rng.normal(0.0, 1.0 / (ell + 1e-12), size=(D, p))
-        b = rng.uniform(0.0, 2*np.pi, size=(D,))
-
-        Phi = _rff_features(Xz, W, b, sf2)  # (n, D)
-
-        # ridge closed-form
-        # w = (Phi^T Phi + lam I)^(-1) Phi^T y
-        # Use Cholesky on D x D (D usually << n)
-        G = Phi.T @ Phi
-        A = G + lam * np.eye(D)
-        try:
-            L = np.linalg.cholesky(A)
-            w = np.linalg.solve(L.T, np.linalg.solve(L, Phi.T @ yz))
-        except np.linalg.LinAlgError:
-            return np.inf, None
-
-        yhat = Phi @ w
-        resid = yz - yhat
-        RSS = float(resid.T @ resid)
-        # MLE noise variance
-        sigma2 = max(RSS / n, 1e-12)
-
-        # Negative log-likelihood at sigma2 MLE: (n/2) * (1 + log(2π σ^2))
-        nll_nats = 0.5 * n * (1.0 + np.log(2.0 * np.pi * sigma2))
-
-        # MDL/BIC: add (k/2) log n, k ~ D + 1 (weights + noise variance)
-        k_params = D + 1
-        if bic_penalty and n > 1:
-            nll_nats += 0.5 * k_params * np.log(n)
-
-        mdl_bits = nll_nats / np.log(2.0)
-
-        model = {
-            "W": W, "b": b, "w": w,
-            "log_ell": float(log_ell), "log_sf2": float(log_sf2), "log_lambda": float(log_lambda),
-            "stats": stats, "D": D, "sigma2_mle": float(sigma2),
-        }
-        return mdl_bits, model
-
-    best_bits, best_model = np.inf, None
-    # coarse random search
-    for _ in range(restarts):
-        log_ell = rng.uniform(ell_low, ell_high)
-        log_sf2 = rng.uniform(sf2_low, sf2_high)
-        log_lambda = rng.uniform(ridge_low, ridge_high)
-        bits, model = fit_once(log_ell, log_sf2, log_lambda)
-        if bits < best_bits:
-            best_bits, best_model = bits, model
-
-    # prediction closure (returns mean; optional variance under linear-Gaussian model)
-    def predict(Xte, return_var=False):
-        Xte = np.asarray(Xte, float)
-        Xm, Xs, ym, ys = best_model["stats"]
-        Xtez = (Xte - Xm) / Xs
-        Phi_te = _rff_features(Xtez, best_model["W"], best_model["b"], np.exp(best_model["log_sf2"]))
-        yhat_z = Phi_te @ best_model["w"]
-        yhat = yhat_z * ys + ym
-        if not return_var:
-            return yhat
-        # Predictive variance under fixed w is σ²; under Bayesian linear model you’d add Phi Σw Phi^T
-        return yhat, np.full(Xte.shape[0], best_model["sigma2_mle"] * (ys**2))
-
-    best_model["predict"] = predict
-    return best_model, float(best_bits)
-
-"""
 
 def _standardize(X, y, eps=1e-12):
     X = np.asarray(X, float)
@@ -483,29 +482,6 @@ def _null_gaussian_mdl_bits(y):
     k = 2  # mu, var
     return _mdl_bits_from_nll(nll, k, n)
 
-# other
-"""
-
-from src.causalchange.scoring.fit_time_space import fit_gaussian_process
-def fit_score_gp_alt(Xtr, ytr,  **params):
-    is_gp=True
-    gp = fit_gaussian_process(
-        Xtr, ytr,
-        scoring_function=  TimeseriesScoringFunction.GP if is_gp else TimeseriesScoringFunction.GP_QFF,
-        check_fit=False)
-    score, lik, model, pen = gp.mdl_score_ytrain()
-
-    return gp, float(score)
-def fit_score_rff_alt(Xtr, ytr,  **params):
-    is_gp=False
-    gp = fit_gaussian_process(
-        Xtr, ytr,
-        scoring_function=  TimeseriesScoringFunction.GP if is_gp else TimeseriesScoringFunction.GP_QFF,
-        check_fit=False)
-    score, lik, model, pen = gp.mdl_score_ytrain()
-
-    return gp, float(score)
-"""
 def fit_score_gam_alt(Xtr, ytr):
     gam = GAM()
     gam.fit(Xtr, ytr)
@@ -518,17 +494,7 @@ def fit_score_gam_alt(Xtr, ytr):
     gam.mdl_pen_train = 0
     gam.mdl_train = gam.mdl_lik_train + gam.mdl_model_train + gam.mdl_pen_train
     return gam, gam.mdl_train
-
-
-
-def fit_score_ln(Xtr, ytr, **params):
-    """
-    Params (optional):
-      model_type: 'ols' | 'ridge' (default 'ols')
-      alpha: ridge strength if model_type='ridge' (default 1.0)
-      param_penalty: 'none' | 'rissanen' | 'bic' (default 'rissanen')
-      fit_intercept: bool (default True)
-    """
+def fit_score_ln(Xtr, ytr, return_residuals=False, **params):
     model_type = params.get("model_type", "ols").lower()
     alpha = float(params.get("alpha", 1.0))
     fit_intercept = bool(params.get("fit_intercept", True))
@@ -547,10 +513,8 @@ def fit_score_ln(Xtr, ytr, **params):
     model.fit(Xtr, ytr)
     yhat = model.predict(Xtr)
 
-    # design matrix after scaling (no intercept column here)
     Phi = model[:-1].transform(Xtr)
 
-    # degrees of freedom
     if isinstance(base, Ridge) and alpha > 0:
         k = _ridge_df_hat(Phi, alpha)
     else:
@@ -558,24 +522,15 @@ def fit_score_ln(Xtr, ytr, **params):
 
     nlml_bits, rss, sigma2 = _gaussian_nlml_bits(ytr, yhat)
     score_bits = nlml_bits + _penalty_bits(param_penalty, k, n)
+
+    if return_residuals:
+        resid = ytr - yhat
+        return model, float(score_bits), resid
+
     return model, float(score_bits)
 
 
-
-def fit_score_gam(Xtr, ytr, **params):
-    """
-    Additive model via per-feature splines.
-    Params
-      n_knots: int (default 10)
-      degree: int (default 3)
-      include_bias: bool (default False)
-      knots: 'quantile' | 'uniform' (default 'quantile')
-      extrapolation: 'continue' | 'constant' | 'linear' | 'error' (default 'continue')
-      model_type: 'ols' | 'ridge' (default 'ridge')
-      alpha: ridge strength if model_type='ridge' (default 1.0)
-      param_penalty: 'none' | 'rissanen' | 'bic' (default 'rissanen')
-      fit_intercept: bool (default True)
-    """
+def fit_score_gam(Xtr, ytr, return_residuals=False, **params):
     n_knots = int(params.get("n_knots", 10))
     degree = int(params.get("degree", 3))
     include_bias = bool(params.get("include_bias", False))
@@ -615,9 +570,71 @@ def fit_score_gam(Xtr, ytr, **params):
 
     nlml_bits, rss, sigma2 = _gaussian_nlml_bits(ytr, yhat)
     score_bits = nlml_bits + _penalty_bits(param_penalty, k, n)
+
+    if return_residuals:
+        resid = ytr - yhat
+        return model, float(score_bits), resid
+
     return model, float(score_bits)
 
+from sklearn.kernel_ridge import KernelRidge
 
+def fit_score_krr(Xtr, ytr, return_residuals=False, **params):
+    """
+    Kernel ridge regression with RBF kernel.
+
+    Params:
+      alpha: regularization strength (default 1.0)
+      gamma: RBF kernel parameter (default 'scale' -> sklearn default)
+      param_penalty: 'none' | 'rissanen' | 'bic' (default 'rissanen')
+      fit_intercept: currently assumed False (we standardize X, but not y)
+    """
+    alpha = float(params.get("alpha", 1.0))
+    gamma = params.get("gamma", None)  # None -> sklearn default
+    param_penalty = params.get("param_penalty", "rissanen")
+
+    Xtr = np.asarray(Xtr, float)
+    ytr = np.asarray(ytr, float).ravel()
+    n = Xtr.shape[0]
+
+    # Standardize features (like in linear case)
+    scaler = StandardScaler()
+    Xtr_std = scaler.fit_transform(Xtr)
+
+    krr = KernelRidge(alpha=alpha, kernel="rbf", gamma=gamma)
+    krr.fit(Xtr_std, ytr)
+    yhat = krr.predict(Xtr_std)
+
+    # We don't have a precise df for KernelRidge here.
+    # As a simple proxy, set k = n (very conservative) or use 'none' penalty.
+    k = n
+    nlml_bits, rss, sigma2 = _gaussian_nlml_bits(ytr, yhat)
+    score_bits = nlml_bits + _penalty_bits(param_penalty, k, n)
+
+    # Wrap predict to include scaling
+    def predict(Xte, return_var=False):
+        Xte = np.asarray(Xte, float)
+        Xte_std = scaler.transform(Xte)
+        m = krr.predict(Xte_std)
+        if return_var:
+            # No analytic variance; return zeros (or a constant) for now.
+            return m, np.zeros_like(m)
+        return m
+
+    model = dict(
+        kind="krr_rbf",
+        mdl_bits=float(score_bits),
+        predict=predict,
+        scaler=scaler,
+        alpha=float(alpha),
+        gamma=gamma,
+    )
+
+    if return_residuals:
+        resid = ytr - yhat
+        return model, float(score_bits), resid
+
+    return model, float(score_bits)
 
 def _gaussian_nlml_bits(y_true, y_pred):
     n = y_true.shape[0]
@@ -711,8 +728,7 @@ def _aggregate_hinges(interactions, k, slope_bits, F):
     for M in interactions:
         cost += slope_bits.logN(M) + _combinator(M, k) + M * np.log2(F)
     return float(cost)
-
-def fit_score_spln(Xtr, ytr, **params):
+def fit_score_spln(Xtr, ytr, return_residuals: bool = False, **params):
     """
     Python spline-MDL scorer mirroring the R 'earth' + GLOBE bits.
 
@@ -770,7 +786,7 @@ def fit_score_spln(Xtr, ytr, **params):
 
     model_bits = slope.model_score(coeffs_concat)
 
-    # "hinges": we’ll use the number of basis functions produced
+    # "hinges": number of basis functions produced
     Phi = model[:-1].transform(X)
     hinge_count = np.array([Phi.shape[1]], dtype=int)
 
@@ -783,7 +799,6 @@ def fit_score_spln(Xtr, ytr, **params):
 
     cost_bits = slope.gaussian_score_emp_sse(sse, rows, mindiff) + model_bits + base_cost
 
-    # predictor passthrough
     def predict(Xte, return_var=False):
         ypred = model.predict(np.asarray(Xte, float))
         if return_var:
@@ -809,4 +824,8 @@ def fit_score_spln(Xtr, ytr, **params):
             "alpha": alpha if model_type == "ridge" else 0.0,
         },
     }
+
+    if return_residuals:
+        return out, float(cost_bits), resid
+
     return out, float(cost_bits)

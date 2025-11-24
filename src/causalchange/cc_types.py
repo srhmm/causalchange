@@ -31,6 +31,7 @@ class ScoreType(Enum):
     LIN = 'lin'
     GAM = 'gam'
     SPLINE = 'spline'
+    KRR = 'krr'
     GP = GPType
     CI = CIType
 

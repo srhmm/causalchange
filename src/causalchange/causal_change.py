@@ -5,6 +5,7 @@ import itertools
 import networkx as nx
 import numpy as np
 import sklearn
+import warnings
 
 from src.causalchange.dag.dag import DAG
 from src.causalchange.dag.edge_memoized import EdgeMemoized
@@ -12,7 +13,10 @@ from src.causalchange.scoring.fit_cond_mixture import MixingType
 from src.causalchange.cc_types import ScoreType, GPType, DataMode, GraphSearch, XArray, XType
 from src.causalchange.search.partition_search import _js_divergence, _entropy_bits_dist, _js_divergence_discrete, \
     flat_from_context_dict, add_edges_change_mmd_given_order, pick_source_mmd_single, discrepancy_mmd, \
-    residual_dependence_all, add_edges_rel_reduction, prune_incoming_rel, prune_incoming_combo
+    residual_dependence_all, add_edges_rel_reduction, prune_incoming_rel, prune_incoming_combo, hsic_parent_reduction, \
+    add_outgoing_from_source_combo, add_edges_combo_given_order, gain_min_from_sample_size, edge_improvement_combo, \
+    hsic_resit_dependence, hsic_gamma_pvalue, resit_dep_pvalue_per_context, resit_dep_score_joint_pairwise, \
+    edge_dep_resit_per_context, resit_dep_score_joint, hsic_unbiased, edge_gain_combo_mmd_resit
 from src.causalchange.util.upq import UPQ
 from src.causalchange.util.utils import is_insignificant
 from src.causalchange.util.utils_idl import exp_mutual_info_score, pi_xor_pessimistic, \
@@ -20,9 +24,6 @@ from src.causalchange.util.utils_idl import exp_mutual_info_score, pi_xor_pessim
     soft_mutual_information, get_true_idl_Z
 from src.causalchange.util.old.visu import visu_pair_mi, visu_node_pproba, visu_node_idls, \
     visu_node_idl, visu_node_true_idl, visu_pproba_dens
-
-from numpy.typing import NDArray
-
 
 
 class CausalChange:
@@ -35,6 +36,8 @@ class CausalChange:
     score_type: ScoreType | GPType
     mixing_type: MixingType
     #hyperparams and kwargs
+    lam_mmd_hsic: int
+    gain_edge_min: int
     k_max: int
     mi_thresh: float
     smi_thresh: float
@@ -50,6 +53,7 @@ class CausalChange:
     truths: dict[str, Any]
     true_graph: nx.DiGraph | None
     true_top_order: list[int] | None
+    node_nms: list[str] | None
 
     #internal
     _add_greedily: bool
@@ -98,6 +102,8 @@ class CausalChange:
         * *vb* (``int``) -- verbosity level
         """
         self.defaultargs = {
+            "lam_mmd_hsic": 0.5,
+            #"gain_edge_min": 0.1,
             "data_mode": DataMode.IID,
             "graph_search": GraphSearch.TOPIC,
             "score_type": GPType.EXACT,
@@ -116,6 +122,7 @@ class CausalChange:
             "use_smi": False,
             "extra_refinement": True,
             "lg": None,
+            "node_nms": None,
             "vb": 0}
 
         self.__dict__.update((k, v) for k, v in self.defaultargs.items() if k not in kwargs.keys())
@@ -131,22 +138,24 @@ class CausalChange:
             (lambda node: lambda other: 'causal' if self.truths['true_g'].has_edge(node, other) else (
                 'rev' if self.truths['true_g'].has_edge(other, node) else 'spurious'))
 
-        if self.oracle_G or self.oracle_order: assert 'true_g' in self.truths, 'need truths if oracle_G'
+        if self.oracle_G:assert 'true_g' in self.truths, 'need truths if oracle_G'
+        if self.oracle_order: assert 'true_order' in self.truths, 'need true order'
         self.graph_state =  nx.DiGraph() if not self.oracle_G else self.truths['true_g']
         if self.oracle_Z: self.use_smi = False
-        self.topological_order = [] if not self.oracle_order else list(nx.topological_sort(self.truths['true_g']))
-        self.true_top_order = [] if 'true_g' not in self.truths else list(
+        self.topological_order = []
+        self.true_top_order = [] if ('true_order' not in self.truths  and 'true_g' not in self.truths) else list(self.truths['true_order']) if  'true_order'  in self.truths else list(
             nx.topological_sort(self.truths['true_g']))
         self._add_greedily = False
 
         self.fitted_graph, self.fitted_mixing = False, False
+
     def is_score_insignificant(self, gain):
         if self.score_type.is_scorebased():
             return is_insignificant(gain)
         else: return gain < 0
+
     def initialize(self):
         assert self.X is not None
-        print(self.data_mode, self.score_type, self.mixing_type)
         self.edges_state = EdgeMemoized(
             self.X, self.data_mode, self.score_type, self.mixing_type,**self.get_scoring_params())
 
@@ -161,11 +170,13 @@ class CausalChange:
             assert not self.data_mode.is_dict_like(), "expected dict of np arrays"
             self.D, self.N = X.shape
 
-        import warnings
         if not (0 < self.N < self.D):
             warnings.warn("n. samples < n. nodes", RuntimeWarning)
         assert self.D > 0 and self.N > 0
-
+        if self.node_nms is not None:
+            assert len(self.node_nms)==self.N, 'wrong number of node names'
+        else:
+            self.node_nms = [str(i) for i in range(self.N)]
 
     #%% Graph search
     def fit(self, X: XType) -> nx.DiGraph:
@@ -208,10 +219,11 @@ class CausalChange:
     #%% Multi-context datasets
     def fit_graph_over_contexts(self) -> nx.DiGraph:
         assert self.data_mode == DataMode.CONTEXTS
-        self._info(f"\t*** CausalChange, multi-context setting ({self.score_type.value}) ***")
+        self._info(f"*** CausalChange (data={self.data_mode.value}, search={self.graph_search}, s={self.score_type.value}) ***")
+        #self._info("Nodes: " +', '.join(self.node_nms))
         self._graph_search()
         self.fitted_graph = True
-        self._fit_changes()
+        #self._fit_changes()
         return self.graph_state
 
     def _fit_changes(self) -> None:
@@ -266,201 +278,431 @@ class CausalChange:
             return self._graph_search_topological()
         elif self.graph_search == GraphSearch.GLOBE:
             return self._graph_search_edgegreedy()
-        elif self.graph_search == GraphSearch.CHAIN:
-            return self._graph_search_chain()
         elif self.graph_search == GraphSearch.COMBO:
             return self._graph_search_combo()
+        elif self.graph_search == GraphSearch.CHAIN:
+            return self._graph_search_chain()
         else: raise ValueError(self.graph_search)
 
-    #%% Graph search - COMBO
-
-    def _graph_search_combo(self) -> nx.DiGraph:
+    #%% Graph search - CHAIN
+    def _graph_search_chain(self) -> nx.DiGraph:
         self.graph_state.add_nodes_from(range(self.N))
         self.candidates = list(range(self.N))
-        self._graph_search_combo_ordering()
+        self._graph_search_chain_order()
+        self._graph_search_chain_prune()
         self.fitted_graph = True
         return self.graph_state
 
-    def _graph_search_combo_ordering(self, lam_mix=0.7, krr_lam=1e-2, krr_sigma=None, mmd_sigma=None, eps=1e-9):
+    def _graph_search_chain_order(self) -> None:
         it = 0
         while it < self.N:
-            source = self._graph_search_combo_next(
-                self.candidates if not self.oracle_order else self.true_top_order[it],
-                lam_mix=lam_mix, krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma, eps=eps
-            )
+            if self.oracle_order:
+                self._info(f"order |\t\t{it}. True next node: {self.node_nms[self.true_top_order[it]]}", -1)
+                source = self.true_top_order[it]
+            else: source = self._graph_search_chain_next()
             self.candidates.remove(source)
             self.topological_order.append(source)
             it += 1
-            self._info(f"\t{it}. Source: {source}\t current {self.topological_order}, true {self.true_top_order}", -2)
-            #self._graph_search_combo_add_outgoing(source, krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma)
-            #self._graph_search_combo_remove_ingoing(source)
+            self._info(
+                f"order |\t\t{it}. Source: {self.node_nms[source]}\t current {self.topological_order}, true {self.true_top_order}",
+                -1)
 
-    def _graph_search_combo_next(self, candidates, lam_mix=0.9, krr_lam=1e-2, krr_sigma=None, mmd_sigma=None, eps=1e-9):
+    def _graph_search_chain_next(
+            self,
+            K_max: int = 3,
+            eps_add: float = 0.0,
+            allow_prev_as_parents: bool = True,
+    ) -> int:
+        """
+        Pick next source using CAM-IA style score:
+          S(j) = d(j | ∅) - d(j | P*_j),
+        where P*_j is obtained by forward selection of parents under discrepancy.
+        Nodes with smaller S(j) are 'more source-like'.
+        """
+        candidates = self.candidates
+        best_score = float("inf")
+        best_node = None
+
+        # define pool of potential parents for each j
+        # (here: all other nodes; you can restrict if you want)
+        if allow_prev_as_parents:
+            parent_pool_all = list(range(self.N))
+        else:
+            parent_pool_all = candidates
+
+        for xj in candidates:
+            # forward selection of parents for xj
+            parent_pool = [i for i in parent_pool_all if i != xj]
+
+            # start with empty parent set
+            P = []
+            d_curr = self._discrepancy(xj, P)
+            d_base = d_curr
+
+            for _ in range(K_max):
+                best_drop = 0.0
+                best_cand = None
+
+                for xi in parent_pool:
+                    # skip if already included
+                    if xi in P:
+                        continue
+
+                    d_new = self._discrepancy(xj, P + [xi])
+                    drop = d_curr - d_new
+
+                    if drop > best_drop:
+                        best_drop = drop
+                        best_cand = xi
+
+                # stopping criterion: no useful parent
+                if best_cand is None or best_drop <= eps_add:
+                    break
+
+                # accept new parent
+                P.append(best_cand)
+                d_curr -= best_drop  # or d_curr = d_new
+
+            # total reduction in discrepancy for xj
+            S_j = d_base - d_curr
+
+            # source = node with smallest S_j
+            if S_j < best_score:
+                best_score = S_j
+                best_node = xj
+
+        # safety: if all S_j are exactly 0 and best_node is None,
+        # fall back to arbitrary candidate
+        if best_node is None:
+            best_node = candidates[0]
+
+        return best_node
+
+    def _graph_search_chain_next_test(self, take_mx=True) -> int:
+        candidates = self.candidates
+        delta_mn, arg_min = np.inf, None
+        for xj in candidates:
+            delta_mx, deltas = -np.inf, []
+            d_marg = self._discrepancy(xj, [])
+            for xi in [xk for xk in candidates if xk!=xj]:
+                d_cond = self._discrepancy(xj, [xi])
+                delta_ji = d_marg - d_cond if d_marg - d_cond > 0 else 0
+                delta_mx = max(delta_mx, delta_ji)
+                deltas.append(delta_ji)
+                # todo could do normalized sum, softmx etc
+            delta_xj = delta_mx if take_mx else float(np.mean(deltas)) if len(deltas) > 0 else 0
+            if delta_xj == -np.inf: delta_xj = 0
+            if delta_xj < delta_mn: delta_mn, arg_min = delta_xj, xj
+            self._info(f"order |\t\tX{xj} \ts={delta_xj} ", -3)
+        return arg_min
+
+
+    def _graph_search_chain_prune(self) -> None:
+        leaves_to_sources = self.topological_order[::-1]
+        for jind, xj in enumerate(leaves_to_sources):
+            anc = [xk for xk in leaves_to_sources[jind:] if xk!=xj]
+            d_anc_plus_i = self._discrepancy(xj, anc)
+            for xi in anc:
+                d_anc_minus_i = self._discrepancy(xj, [xa for xa in anc if xa!=xi])
+                delta_ji = d_anc_minus_i - d_anc_plus_i
+                if not self.is_discrepancy_insignificant(delta_ji):
+                    self.graph_state.add_edge(xi, xj, weight=d_anc_minus_i)
+
+
+    def _discrepancy(self, child, parents, ret_full_result=False, vb=-3) -> float | (float, dict):
+        discrep, res = self.edges_state.discrepancy(child, parents)
+        self._info(f"score |\t\t{parents}->{child}, {', '.join([self.is_true_edge(parent)(child) for parent in parents]) if len(parents)>0 and any([len(st) for st in [self.is_true_edge(parent)(child) for parent in parents]]) else ''}, d={discrep:.2f}", vb)
+
+        if ret_full_result: return discrep, res
+        return discrep
+
+    def is_discrepancy_insignificant(self, delta) -> bool:
+        return delta > 0 #todo
+
+
+    #%% Graph search - COMBO
+    def _graph_search_combo(self) -> nx.DiGraph:
+        self.graph_state.add_nodes_from(range(self.N))
+        self.candidates = list(range(self.N))
+        self._graph_search_combo_ordering(self.lam_mmd_hsic)
+        self.fitted_graph = True
+        return self.graph_state
+
+    def _graph_search_combo_ordering(self, lam_mmd_hsic, krr_lam=1e-2, krr_sigma=None, mmd_sigma=None, eps=1e-9):
+        it = 0
+
+        X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
+        #gain_edge_min = gain_min_from_sample_size(C_idx, c_edge=1.0, mode="min_ctx")
+        gain_edge_min = 0
+        self.gain_edge_min = gain_edge_min
+        indep_test_fun = lambda R, X: hsic_gamma_pvalue(R, X)
+        while it < self.N:
+            source = self._graph_search_combo_next(
+                self.candidates if not self.oracle_order else [self.true_top_order[it]],
+                lam_mix=lam_mmd_hsic, krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma, eps=eps,indep_test_fun=indep_test_fun
+            )
+            it += 1
+            self.candidates.remove(source)
+            self.topological_order.append(source)
+            self._info(f"\t{it}. Source: {self.node_nms[source]}\t current {self.topological_order}, true {self.true_top_order}", -1)
+
+
+        self._graph_search_combo_add_edges_after_order( )
+        self._graph_search_combo_prune_edges_resit(lam_edge=gain_edge_min)
+
+    def _graph_search_combo_next(
+            self,
+            candidates,
+            lam_mix,  # weight between MMD and RESIT-HSIC parts
+            krr_lam=1e-2,
+            krr_sigma=None,
+            mmd_sigma=None,
+            indep_test_fun=None,  # unused now; kept for backwards compat
+            eps=1e-9,
+    ):
         if self.oracle_order:
-            n = len(self.topological_order)
-            self._info(f"\tTrue Next Node: {self.true_top_order[n]}", -2)
-            return self.true_top_order[n]
+            self._info(f"\tUsing true next node: {self.node_nms[candidates[0]]}", -1)
+            return candidates[0]
 
         X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
 
-        stats = []
+        stats = []  # (i, Rn_mmd, dep_raw, D0, Dmin, R_mmd)
+        dep_raw_list = []
+
         for i in candidates:
-            D0 = discrepancy_mmd(i, [], X_all, C_idx, krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma)
-            Dmin = D0
-            for j in candidates:
-                if j == i: continue
-                D1 = discrepancy_mmd(i, [j], X_all, C_idx, krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma)
-                if D1 < Dmin: Dmin = D1
-            R = D0 - Dmin
-            Rn = R / (D0 + eps)
+            if lam_mix > 0:
+                D0 = discrepancy_mmd(i, [], X_all, C_idx, krr_lam, krr_sigma, mmd_sigma)
+                if (not np.isfinite(D0)) or D0 <= 0.0:
+                    R_mmd = 0.0
+                    Rn_mmd = 0.0
+                    Dmin = D0
+                else:
+                    Dmin = D0
+                    for j in candidates:
+                        if j == i:
+                            continue
+                        D1 = discrepancy_mmd(i, [j], X_all, C_idx, krr_lam, krr_sigma, mmd_sigma)
+                        if not np.isfinite(D1):
+                            continue
+                        if D1 < Dmin:
+                            Dmin = D1
+                    R_mmd = max(0.0, D0 - Dmin)
+                    Rn_mmd = R_mmd / (D0 + eps)
+            else:
+                D0 = 0.0
+                Dmin = 0.0
+                R_mmd = 0.0
+                Rn_mmd = 0.0
 
-            others = [j for j in candidates if j != i]
-            dep = residual_dependence_all(i, X_all, others, krr_lam=krr_lam, krr_sigma=krr_sigma)
-            stats.append((i, Rn, dep, D0, Dmin, R))
+            if lam_mix < 1:
+                dep_raw = resit_dep_score_joint_pairwise(
+                    effect=i,
+                    candidates=candidates,
+                    X_all=X_all,
+                    C_idx=C_idx,
+                    krr_lam=krr_lam,
+                    krr_sigma=krr_sigma,
+                    agg_parents="max",
+                    agg_contexts="mean",
+                    min_n_ctx=10,
+                )
+            else:
+                dep_raw = 0.0
 
-        import numpy as np
-        deps = np.array([t[2] for t in stats])
-        med, mad = float(np.median(deps)), float(np.median(np.abs(deps - np.median(deps))) + 1e-12)
-        dep_z = np.clip((deps - med) / (3.0 * mad + 1e-12), -1.0, 1.0)  # robust z in [-1,1]
-        depN = 0.5 * (dep_z + 1.0)  # map to [0,1]
-        # combo: minimize lam*Rn + (1-lam)*(1 - depN); with lam≈0.9, HSIC can’t drown Rn
-        scores = []
-        for k, (i, Rn, dep, D0, Dmin, R) in enumerate(stats):
-            S = lam_mix * Rn + (1.0 - lam_mix) * (1.0 - depN[k])
-            scores.append((S, i))
+            if not np.isfinite(dep_raw):
+                dep_raw = 0.0
 
-        best_i = min(scores)[1]
+            dep_raw_list.append(dep_raw)
+            stats.append((i, Rn_mmd, dep_raw, D0, Dmin, R_mmd))
 
-        self._info(f"\tNext Source (combo weighted λ={lam_mix:.2f}): {best_i}, order {self.topological_order}", -2)
-        self._info(f"\tbest {len(stats)} next nodes:", -3)
-        for (i, Rn, dep, D0, Dmin, R), S in sorted(zip(stats, [s[0] for s in scores]), key=lambda t: t[1]):
-            self._info(f"\t  node {i}: Rn={Rn:.3f} dep={dep:.3g} D0={D0:.4f} Dmin={Dmin:.4f} Δ={R:.4f} | S={S:.3f}", -3)
+        dep_max = max(dep_raw_list) if dep_raw_list else 0.0
+        if dep_max <= 0.0 or not np.isfinite(dep_max):
+            dep_max = 0.0
 
-        return best_i
+        scores = []  # (S, i, Rn_dep)
+        for (i, Rn_mmd, dep_raw, D0, Dmin, R_mmd) in stats:
+            if dep_max > 0.0:
+                Rn_dep = dep_raw / (dep_max + eps)  # ∈ [0,1]
+            else:
+                Rn_dep = 0.0
 
-    def _graph_search_combo_add_outgoing(self, source, rel_min=0.1, lambda_pa=0.0,
-                                         max_parents=None, krr_lam=1e-2,
-                                         krr_sigma=None, mmd_sigma=None):
+            if not np.isfinite(Rn_mmd):
+                Rn_mmd = 0.0
+            if not np.isfinite(Rn_dep):
+                Rn_dep = 0.0
+
+            # Both Rn_mmd and Rn_dep are "badness" (0 = good source, 1 = bad)
+            S = lam_mix * Rn_mmd + (1.0 - lam_mix) * Rn_dep
+            if not np.isfinite(S):
+                S = float("inf")
+
+            scores.append((S, i, Rn_dep))
+
+        # pick node with **smallest** score S; tie-break by larger D0 (more overall change)
+        best_idx = min(
+            range(len(stats)),
+            key=lambda k: (scores[k][0], -stats[k][3])
+        )
+        node = stats[best_idx][0]
+
+        self._info(f"\tNext Source (combo RESIT-ctx λ={lam_mix:.2f}): {self.node_nms[node]}, order {self.topological_order}", -2)
+        self._info(f"\tbest {len(stats)} next nodes:", -2)
+        for (i, Rn_mmd, dep_raw, D0, Dmin, R_mmd), (S, _, Rn_dep) in sorted(
+                zip(stats, scores),
+                key=lambda t: (t[1][0], -t[0][3])
+        ):
+            self._info(
+                f"\t  node {self.node_nms[i]}: Rn_mmd={Rn_mmd:.3f} Rn_dep={Rn_dep:.3f} "
+                f"D0={D0:.4f} Dmin={Dmin:.4f} ΔMMD={R_mmd:.4f} | S={S:.3f}",
+                -2
+            )
+
+        return node
+
+    def _graph_search_combo_add_edges_after_order(self,
+                                                  lam_edge=0.7,
+                                                  gain_min=0.05,
+                                                  max_parents=None,
+                                                  krr_lam=1e-2,
+                                                  krr_sigma=None,
+                                                  mmd_sigma=None,
+                                                  eps=1e-9):
+        """
+        After the combo ordering is found, build edges by per-target greedy selection.
+        """
         X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
-        order = list(self.topological_order) + [v for v in self.candidates if v not in self.topological_order]
+        order = list(self.topological_order)
 
-        G_tmp, edges = add_edges_rel_reduction(
+        self.graph_state, added = add_edges_combo_given_order(
             order, X_all, C_idx,
-            rel_min=rel_min,
-            lambda_pa=lambda_pa,
+            lam_edge=lam_edge,
+            gain_min=gain_min,
             max_parents=max_parents,
             krr_lam=krr_lam,
             krr_sigma=krr_sigma,
             mmd_sigma=mmd_sigma,
+            eps=eps,
         )
 
-        for u, v in edges:
-            if u == source and not self.graph_state.has_edge(u, v):
-                self.graph_state.add_edge(u, v)
-                self._info(f"\t  +edge {u}->{v} ({self.is_true_edge(u)(v)}) (Δ_rel>={rel_min})", -1)
+        for u, v, gain, r_mmd, r_hsic, D_base, D_with in added:
+            self._info(
+                f"\t  +edge {u}->{v} (gain={gain:.3f}, r_mmd={r_mmd:.3f}, "
+                f"r_hsic={r_hsic:.3f}, D_base={D_base:.4f}, D_with={D_with:.4f})",
+                -2
+            )
 
-    def _graph_search_combo_remove_ingoing(self, target,
-                                           lam_mix=0.7,  # weight: invariance vs independence
-                                           keep_min=0.05,  # required combined relative contribution
-                                           krr_lam=1e-2,
-                                           krr_sigma=None,
-                                           mmd_sigma=None):
+    def _graph_search_combo_prune_edges_resit(
+            self,
+            lam_edge=None,
+            prune_min=None,
+            krr_lam=1e-2,
+            krr_sigma=None,
+            mmd_sigma=None,
+            eps=1e-9,
+            agg_parents="max",
+            agg_contexts="mean",
+            min_n_ctx=10,
+    ):
         """
-        Combo pruning for incoming edges to `target`.
-        Keeps a parent u only if including it
-          (i) improves cross-context invariance of residuals (ΔMMD), and/or
-          (ii) reduces residual dependence on u (HSIC),
-        with weighted relative contribution ≥ keep_min.
+        RESIT-style pruning: remove parents whose removal does not reduce
+        invariance / independence enough, using the same combo of MMD + RESIT.
+
+        prune_min is a threshold on the *drop* in combined score when removing
+        an edge: if drop < prune_min, the edge is considered superfluous.
         """
-        if not hasattr(self, "graph_state") or self.graph_state is None:
-            return
-        X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
-        before = list(self.graph_state.in_edges(target))
-        removed = prune_incoming_combo(
-            target, self.graph_state, X_all, C_idx,
-            lam_mix=lam_mix, keep_min=keep_min,
-            krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma
-        )
-        after = list(self.graph_state.in_edges(target))
-        if removed: self._info(f"\t  combo-pruned incoming to {target}: removed {removed}", -1)
-        else: self._info(f"\t  combo-prune kept incoming for {target}: {after}", -1)
+        if lam_edge is None:
+            lam_edge = getattr(self, "lam_mmd_hsic", 0.5)
+        if prune_min is None:
+            # heuristic: smaller than edge-add threshold
+            prune_min = getattr(self, "gain_edge_min", 0.0) * 0.5
 
-    #%% Graph search - NOVEL
-    def _graph_search_chain(self):
-        self.graph_state.add_nodes_from(range(self.N))
-        self.candidates = list(range(self.N))
-        it = 0
-        while it < self.N:
-            source = self._graph_search_chain_next(self.candidates if not self.oracle_order else self.true_top_order[it])
-            self.candidates.remove(source)
-            self.topological_order.append(source)
-            it += 1
-            self._info(f"\t{it}. Source: {source}\t current {self.topological_order}, true {self.true_top_order}", -1)
-
-            self._graph_search_chain_add_outgoing(source)
-            self._graph_search_chain_remove_ingoing(source)
-
-        self.fitted_graph = True
-        return self.graph_state
-
-    def _graph_search_chain_next(self, candidates, krr_lam=1e-2, krr_sigma=None, mmd_sigma=None, eps=1e-9):
-        X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
-        node, stats = pick_source_mmd_single(candidates, X_all, C_idx, krr_lam, krr_sigma, mmd_sigma, eps)
-        self._info(f"\tNext Source (MMD-single): {node}, order {self.topological_order}", -1)
-        self._info(f"\tbest {len(stats)} next nodes:", -2)
-        for i, D0, Dmin, R, Rn in sorted(stats, key=lambda t: (t[4], -t[1])):
-            self._info(f"\t  node {i}: D0={D0:.4f} Dmin={Dmin:.4f} Δ={R:.4f} Δnorm={Rn:.3f}", -2)
-        return node
-
-    def _graph_search_chain_add_outgoing(self, source,
-                                         rel_min=0.10,  # min relative reduction to accept
-                                         lambda_pa=0.0,  # tiny penalty per added parent (optional)
-                                         max_parents=None,  # cap indegree (e.g., 2 or 3)
-                                         krr_lam=1e-2,  # KRR ridge
-                                         krr_sigma=None,  # KRR kernel bandwidth (None=median heuristic)
-                                         mmd_sigma=None):  # MMD bandwidth (None=median heuristic)
         X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
 
-        # Build an order = discovered-so-far + the rest (same policy as before)
-        order = list(self.topological_order) + [v for v in self.candidates if v not in self.topological_order]
+        self._info(f"\t[prune] using prune_min≈{prune_min:.3f}", -1)
 
-        # Run the fast edge adder (heuristic relative-reduction)
-        G_tmp, edges = add_edges_rel_reduction(
-            order, X_all, C_idx,
-            rel_min=rel_min, lambda_pa=lambda_pa,
-            max_parents=max_parents,
-            krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma
-        )
+        # iterate over nodes; reverse topo often works slightly better
+        for child in reversed(self.topological_order):
+            parents_full = list(self.graph_state.predecessors(child))
+            if len(parents_full) <= 1:
+                continue
 
-        added = 0
-        for u, v in edges:
-            if u == source and not self.graph_state.has_edge(u, v):
-                self.graph_state.add_edge(u, v)
-                added += 1
-                self._info(f"\t  +edge {u}->{v} ({self.is_true_edge(u)(v)}) (rel≥{rel_min:.3f})", -1)
-        if added == 0:
-            self._info(f"\t  no outgoing edges added from {source} (rel_min={rel_min:.3f})", -1)
+            # full scores with all parents
+            D_full = discrepancy_mmd(child, parents_full, X_all, C_idx,
+                                     krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma)
+            if (not np.isfinite(D_full)) or D_full < 0:
+                D_full = 0.0
 
-    def _graph_search_chain_remove_ingoing(self, target,
-                                           rel_keep=0.02,  # require ≥2% contribution to keep an edge
-                                           krr_lam=1e-2,
-                                           krr_sigma=None,
-                                           mmd_sigma=None):
-        X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
-        before = list(self.graph_state.in_edges(target))
-        removed = prune_incoming_rel(
-            target, self.graph_state, X_all, C_idx,
-            rel_keep=rel_keep, krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma
-        )
-        after = list(self.graph_state.in_edges(target))
-        if removed:
-            self._info(f"\t  pruned incoming to {target}: removed {removed}", -1)
-        else:
-            self._info(f"\t  no incoming pruned for {target} (kept {after})", -2)
+            dep_full = resit_dep_score_joint_pairwise(
+                effect=child,
+                candidates=parents_full,
+                X_all=X_all,
+                C_idx=C_idx,
+                krr_lam=krr_lam,
+                krr_sigma=krr_sigma,
+                agg_parents=agg_parents,
+                agg_contexts=agg_contexts,
+                min_n_ctx=min_n_ctx,
+            )
+            if (not np.isfinite(dep_full)) or dep_full < 0:
+                dep_full = 0.0
 
+            for p in parents_full:
+                P_minus = [q for q in parents_full if q != p]
+                if not P_minus:
+                    continue  # don't make node parentless here
 
+                D_minus = discrepancy_mmd(child, P_minus, X_all, C_idx,
+                                          krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma)
+                if (not np.isfinite(D_minus)) or D_minus < 0:
+                    D_minus = D_full
 
-            #%% Graph search - TOPIC
+                dep_minus = resit_dep_score_joint_pairwise(
+                    effect=child,
+                    candidates=P_minus,
+                    X_all=X_all,
+                    C_idx=C_idx,
+                    krr_lam=krr_lam,
+                    krr_sigma=krr_sigma,
+                    agg_parents=agg_parents,
+                    agg_contexts=agg_contexts,
+                    min_n_ctx=min_n_ctx,
+                )
+                if (not np.isfinite(dep_minus)) or dep_minus < 0:
+                    dep_minus = dep_full
+
+                # relative drop in "goodness" when removing p
+                if D_minus > 0:
+                    rdrop_mmd = max(0.0, D_minus - D_full) / (D_minus + eps)
+                else:
+                    rdrop_mmd = 0.0
+                if dep_minus > 0:
+                    rdrop_dep = max(0.0, dep_minus - dep_full) / (dep_minus + eps)
+                else:
+                    rdrop_dep = 0.0
+
+                drop_combo = lam_edge * rdrop_mmd + (1.0 - lam_edge) * rdrop_dep
+
+                if drop_combo < prune_min:
+                    # edge is superfluous -> prune
+                    edge_type = ""
+                    if hasattr(self, "true_g"):
+                        if self.true_g.has_edge(p, child):
+                            edge_type = "causal"
+                        elif self.true_g.has_edge(child, p):
+                            edge_type = "rev"
+                        else:
+                            edge_type = "spurious"
+
+                    self.graph_state.remove_edge(p, child)
+                    self._info(
+                        (
+                            f"\t  -edge {self.node_nms[p]}->{self.node_nms[child]} "
+                            f"({edge_type}) pruned (drop={drop_combo:.3f} < prune_min={prune_min:.3f})"
+                        ),
+                        -1
+                    )
+
+    #%% Graph search - TOPIC
     def _graph_search_topological(self) -> nx.DiGraph:
         """ TOPIC (Xu et al., 2025) """
 
@@ -479,7 +721,7 @@ class CausalChange:
             self.candidates.remove(source)
             self.topological_order.append(source)
             it += 1
-            self._info(f"\t{it}. Source: {source}\t current {self.topological_order}, true {self.true_top_order}", -2)
+            self._info(f"\t{it}. Source: {self.node_nms[source]}\t current {self.topological_order}, true {self.true_top_order}", -2)
 
             self._graph_search_topological_add_outgoing(source)
             self._graph_search_topological_remove_ingoing(source)
@@ -528,9 +770,8 @@ class CausalChange:
 
     def _graph_search_topological_next(self, candidates):
         if self.oracle_order:
-            n = len(self.topological_order)
-            self._info(f"\tTrue Next Node: {self.true_top_order[n]}", -2)
-            return self.true_top_order[n]
+            self._info(f"\tUsing true next node: {self.node_nms[candidates[0]]}", -1)
+            return candidates[0]
 
         improvement = self._graph_search_topological_improvement_matrix(self.graph_state, candidates)
         delta = improvement - improvement.T
@@ -539,11 +780,11 @@ class CausalChange:
         best_delta = np.max(delta, axis=1)
         worst = np.argmin(best_delta)
 
-        self._info(f"\tNext Node: {candidates[worst]}, order {self.topological_order} ", -2)
+        self._info(f"\tNext Node: {self.node_nms[candidates[worst]]}, order {self.topological_order} ", -2)
         k = len(improvement)
         top_k_ind = np.argsort(-best_delta)[-k:][::-1]
         self._info(f"\tbest {k} next nodes:", -3)
-        for i in top_k_ind: self._info(f"\t  node  {candidates[i]}, best_delta: {-best_delta[i]:.4f}", -3)
+        for i in top_k_ind: self._info(f"\t  node  {self.node_nms[candidates[i]]}, best_delta: {-best_delta[i]:.4f}", -3)
 
         return candidates[worst]
 
@@ -607,7 +848,7 @@ class CausalChange:
         #edge_q, dag_model = self._graph_search_edgegreedy_backward(edge_q, dag_model)
 
         self._info(f'DAG search result:' + ', '.join(
-            f"{i}->{j}" for i, j in set(itertools.product(set(range(self.N)), set(range(self.N)))) if
+            f"{self.node_nms[i]}->{self.node_nms[j]}" for i, j in set(itertools.product(set(range(self.N)), set(range(self.N)))) if
             dag_model.get_adj()[i][j] != 0))
         self.fitted_graph = True
 
@@ -954,12 +1195,12 @@ class CausalChange:
         self.graph_state.remove_edge(parent, child)
         self._info(f"\tRemoving {self.is_true_edge(parent)(child)} edge {parent} -> {child}", vb)
 
-    def _score(self, parents, child, ret_full_result=False, vb=-3):
-        score, res = self.edges_state.score_edge(child, parents) #, **self.get_scoring_params())
-        if len(parents):
-            self._info(
-                f"\tScoring {'&'.join([self.is_true_edge(parent)(child) for parent in parents])} edge {parents} -> {child}\t{score:.2f}",
-                vb)
+    def _score(self, parents, child, ret_full_result=False, vb=-3) -> float | (float, dict):
+        score, res = self.edges_state.score_edge(child, parents)
+        #if len(parents): self._info( f"\tScoring {'&'.join([self.is_true_edge(parent)(child) for parent in parents])} edge {parents} -> {child}\t{score:.2f}", vb)
+        self._info(
+            f"score |\t\t{parents}->{child}, {', '.join([self.is_true_edge(parent)(child) for parent in parents]) if len(parents) > 0 and any([len(st) for st in [self.is_true_edge(parent)(child) for parent in parents]]) else ''}, s={score:.2f}",
+            vb)
 
         if ret_full_result: return score, res
         return score

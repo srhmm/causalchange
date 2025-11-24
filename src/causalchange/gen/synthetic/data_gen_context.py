@@ -4,9 +4,11 @@ from enum import Enum
 
 import matplotlib.pyplot as plt
 
-from src.causalchange.gen.generate import IvType, FunType, NoiseType
 
 from sklearn.neighbors import KernelDensity
+
+from src.causalchange.gen.synthetic.gen_types import FunType, NoiseType, IvType
+
 
 def _id(x): return x
 def _quad(x): return x**2
@@ -14,6 +16,8 @@ def _cub(x): return x**3
 def _exp(x): return np.exp(x)
 def _log(x): return np.log(np.clip(x, 1e-6, None))
 def _sin(x): return np.sin(x)
+
+
 
 _FUN_LIB_ALL = {
     'lin':  [('lin',  _id)],
@@ -244,6 +248,84 @@ class DataGenContext(object):
                 part_sets_str = ", ".join("{" + ",".join(map(str, v)) + "}" for _, v in group_to_ctx.items())
                 print(f"[setup] Node {i}: parents={parents}, variant={bool(self.variant_flags[i])}, "
                       f"groups={K_i}, IV={iv_mode}, partition={part_sets_str}")
+
+    def gen_X_std(self):
+        S = self.N
+        M = self.M
+        C = self.C
+        X = np.zeros((S, M), dtype=float)
+
+        reps = int(np.ceil(S / C))
+        C_idx = np.tile(np.arange(C), reps)[:S]
+        self.rng.shuffle(C_idx)
+        if self.vb >= 1:
+            counts = {int(c): int((C_idx == c).sum()) for c in range(C)}
+            print(f"[gen] Sampled context counts: {counts}")
+
+        for i in self.topo:
+            parents = self.mech[i][0]["parents"]
+
+            if len(parents) == 0:
+                sig_per_sample = np.zeros(S)
+                kind_per_sample = np.empty(S, dtype=object)
+                for g, bundle in self.mech[i].items():
+                    ctx = bundle["ctx_idx"]
+                    sigma_map = {int(c): float(s) for c, s in zip(ctx, bundle["sigma"])}
+                    for c in ctx:
+                        m = (C_idx == c)
+                        if not np.any(m):
+                            continue
+                        sig_per_sample[m] = sigma_map[int(c)]
+                        kind_per_sample[m] = bundle["noise_kind"][int(c)]
+                x_i = self._draw_noise_vec(kind_per_sample, sig_per_sample)
+            else:
+                x_i = np.zeros(S)
+                for g, bundle in self.mech[i].items():
+                    ctx = bundle["ctx_idx"]
+                    if len(ctx) == 0:
+                        continue
+                    mask_ctx = np.isin(C_idx, ctx)
+                    if not np.any(mask_ctx):
+                        continue
+
+                    W_col = bundle["W_col"]
+                    bias = bundle["bias"]
+                    p_idx = np.array(parents, dtype=int)
+
+                    if len(p_idx):
+                        f_funcs = bundle["f_funcs"]
+                        T = np.zeros((mask_ctx.sum(), len(p_idx)))
+                        for k, j in enumerate(p_idx):
+                            T[:, k] = f_funcs[k](X[mask_ctx, j])
+                        contrib = T @ W_col[p_idx] + bias
+                    else:
+                        contrib = bias
+
+                    sig_vec = np.zeros(mask_ctx.sum())
+                    kind_vec = np.empty(mask_ctx.sum(), dtype=object)
+                    sigma_map = {int(c): float(s) for c, s in zip(ctx, bundle["sigma"])}
+                    for c in ctx:
+                        m_local = (C_idx[mask_ctx] == c)
+                        if not np.any(m_local):
+                            continue
+                        sig_vec[m_local] = sigma_map[int(c)]
+                        kind_vec[m_local] = bundle["noise_kind"][int(c)]
+
+                    noise = self._draw_noise_vec(kind_vec, sig_vec)
+                    x_i[mask_ctx] = contrib + noise
+
+            # --- per-node standardization (across all contexts) ---
+            mean_i = np.nanmean(x_i)
+            std_i = np.nanstd(x_i)
+            if std_i < 1e-8:
+                std_i = 1.0
+            x_i = (x_i - mean_i) / std_i
+            # optional: clip extreme standardized values
+            x_i = np.clip(x_i, -5.0, 5.0)
+
+            X[:, i] = x_i
+
+        return X, C_idx
 
     def gen_X(self):
         S = self.N
