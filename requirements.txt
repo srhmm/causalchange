@@ -23,3 +23,5 @@ folium
 geopandas
 geodatasets
 hyppo
+pytest
+hypothesis

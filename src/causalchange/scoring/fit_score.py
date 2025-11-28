@@ -22,8 +22,10 @@ def fit_fun_IID(
 
     X_pa = np.random.normal(size=X[:, [target]].shape) if len(pa) == 0 else  X[:, pa]
     X_target = X[:, target]
-    model, L, resid = score_fun(X_pa, X_target, **scoring_params)
-    if ret_residuals:  return resid, dict(model=model)
+    if ret_residuals:
+        model, L, resid = score_fun(X_pa, X_target, ret_residuals=ret_residuals, **scoring_params)
+        return resid, dict(model=model)
+    else: model, L = score_fun(X_pa, X_target, ret_residuals=ret_residuals, **scoring_params)
     return L, dict(model=model)
 
 

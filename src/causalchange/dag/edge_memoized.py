@@ -115,11 +115,11 @@ class EdgeMemoized:
                     self.X, pa=pa, target=j )
         elif self.data_mode == DataMode.TIME:
             raise NotImplementedError #fit_fun_partition_TIME
-        elif self.data_mode == DataMode.TIME_CONTEXTS.value:
+        elif self.data_mode == DataMode.TIME_CONTEXTS:
             raise NotImplementedError #fit_fun_partition_TIME_CONTEXTS
-        elif self.data_mode == DataMode.CONFOUNDED.value:
+        elif self.data_mode == DataMode.CONFOUNDED:
             raise NotImplementedError#? something w coco?
-        elif self.data_mode.value == DataMode.MIXED.value:
+        elif self.data_mode == DataMode.MIXED:
             assert self.mixing_type != MixingType.SKIP
             score, res = fit_fun_MIXED(self.mixing_type,
                                        self.X, covariates=pa, target=j, resid=None, **self.scoring_params)

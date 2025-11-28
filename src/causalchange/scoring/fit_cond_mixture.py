@@ -128,64 +128,78 @@ def fit_resid_mixture(mty, X, node_i, pa_i, range_k, resid, true_idl):
     return fit_mixture_model(mty, resid, range_k)
 
 
-def fit_functional_mixture(X, node_i, pa_i, range_k, resid, true_idl, lg=None, vb=0, degree=3, method="lin"):
+def fit_functional_mixture(
+        X, node_i, pa_i, range_k, resid, true_idl,
+        lg=None, vb=0, degree=3, method="lin"
+):
     if not len(pa_i):
-        return fit_marginal_mixture(MixingType.BASE_GMM, X, node_i, pa_i, range_k, resid, true_idl)
-    if lg is not None and vb > 0: lg.info(f"Fitting mixture ({method})")
+        return fit_marginal_mixture(
+            MixingType.BASE_GMM, X, node_i, pa_i, range_k, resid, true_idl
+        )
+    if lg is not None and vb > 0:
+        lg.info(f"Fitting mixture ({method})")
 
-    import rpy2.robjects as robjects
     import numpy as np
-    from rpy2.robjects import Formula
+    import rpy2.robjects as robjects
+    from rpy2.robjects import Formula, default_converter
+    from rpy2.robjects.conversion import localconverter
     from rpy2.robjects.packages import importr
     from rpy2.robjects import numpy2ri
-    numpy2ri.activate()
-    flexmix = importr('flexmix')
-    splines = importr('splines')
 
-    y = X[:, node_i].reshape(-1, 1)
-    X_pa = X[:, pa_i]
+    with localconverter(default_converter + numpy2ri.converter):
+        flexmix = importr("flexmix")
+        splines = importr("splines")
 
-    data_np = np.hstack([y, X_pa])
-    data_r = robjects.r.matrix(data_np, nrow=data_np.shape[0], ncol=data_np.shape[1])
-    robjects.r.assign("data_r", data_r)
-    r_df = robjects.r['data.frame'](x=data_r)
+        y = X[:, node_i].reshape(-1, 1)
+        X_pa = X[:, pa_i]
 
-    rhs_terms = []
-    for i in range(X_pa.shape[1]):
-        xi = f"x.{i + 2}"
-        if method == "quad": rhs_terms.append(f"poly({xi}, {2})")
-        elif method == "cub":
-            degree = 3
-            rhs_terms.append(f"poly({xi}, {degree})")
-        #deg >3 useful? mixed?
-        elif method == "ns":
-            rhs_terms.append(f"ns({xi}, df={degree})")
-        elif method == "bs":
-            rhs_terms.append(f"bs({xi}, df={degree})")
-        else:
-            rhs_terms.append(xi)#linear
+        data_np = np.hstack([y, X_pa])
+        data_r = robjects.r.matrix(
+            data_np,
+            nrow=data_np.shape[0],
+            ncol=data_np.shape[1],
+        )
+        robjects.r.assign("data_r", data_r)
+        r_df = robjects.r["data.frame"](x=data_r)
 
-    formula_str = f"x.1 ~ " + " + ".join(rhs_terms)
-    formula = Formula(formula_str)
+        # build RHS terms depending on method
+        rhs_terms = []
+        for i in range(X_pa.shape[1]):
+            xi = f"x.{i + 2}"
+            if method == "quad":
+                rhs_terms.append(f"poly({xi}, {2})")
+            elif method == "cub":
+                degree = 3
+                rhs_terms.append(f"poly({xi}, {degree})")
+            elif method == "ns":
+                rhs_terms.append(f"ns({xi}, df={degree})")
+            elif method == "bs":
+                rhs_terms.append(f"bs({xi}, df={degree})")
+            else:
+                rhs_terms.append(xi)  # linear
 
-    if lg is not None and vb > 0: lg.info(f"Formula: {formula}")
+        formula_str = "x.1 ~ " + " + ".join(rhs_terms)
+        formula = Formula(formula_str)
 
-    best_bic = np.inf
-    best_model = None
-    best_k = None
+        if lg is not None and vb > 0:
+            lg.info(f"Formula: {formula}")
 
-    for k in range_k:
-        m = flexmix.flexmix(formula, data=r_df, k=k)
-        bic = robjects.r['BIC'](m)[0]
-        if vb:
-            print(f"k={k}, BIC={bic}")
-        if bic < best_bic:
-            best_bic = bic
-            best_model = m
-            best_k = k
+        best_bic = np.inf
+        best_model = None
+        best_k = None
 
-    post_probs = np.array(robjects.r['posterior'](best_model))
-    hard_assign = post_probs.argmax(axis=1)
+        for k in range_k:
+            m = flexmix.flexmix(formula, data=r_df, k=k)
+            bic = robjects.r["BIC"](m)[0]
+            if vb:
+                print(f"k={k}, BIC={bic}")
+            if bic < best_bic:
+                best_bic = bic
+                best_model = m
+                best_k = k
+
+        post_probs = np.array(robjects.r["posterior"](best_model))
+        hard_assign = post_probs.argmax(axis=1)
 
     def post_entropy(p_proba, eps=1e-12):
         p_safe = np.clip(p_proba, eps, 1.0)
@@ -197,7 +211,7 @@ def fit_functional_mixture(X, node_i, pa_i, range_k, resid, true_idl, lg=None, v
         idl=hard_assign,
         pproba=post_probs,
         entropy=ent_idl,
-        best_k=best_k
+        best_k=best_k,
     )
     return res_dict
 

@@ -58,8 +58,6 @@ def score_type_get_all():
     return variants
 
 
-
-
 class DataMode(Enum):
     IID = 'iid'
     CONTEXTS = 'contexts'
@@ -82,3 +80,17 @@ class GraphSearch(Enum):
     def __eq__(self, other):
         return self.value == other.value
 
+    def compatible_modes(self) -> list[DataMode]:
+        if self is GraphSearch.TOPIC:
+            return [DataMode.IID, DataMode.CONTEXTS, DataMode.MIXED, DataMode.TIME, DataMode.TIME_CONTEXTS]
+        elif self is GraphSearch.GLOBE:
+            return [DataMode.IID]
+        elif self is GraphSearch.CHAIN:
+            return [DataMode.CONTEXTS]
+        elif self is GraphSearch.COMBO:
+            return [DataMode.CONTEXTS]
+        else:
+            return []
+
+    def is_compatible_with(self, data_mode: DataMode) -> bool:
+        return data_mode in self.compatible_modes()

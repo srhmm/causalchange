@@ -103,7 +103,6 @@ class CausalChange:
         """
         self.defaultargs = {
             "lam_mmd_hsic": 0.5,
-            #"gain_edge_min": 0.1,
             "data_mode": DataMode.IID,
             "graph_search": GraphSearch.TOPIC,
             "score_type": GPType.EXACT,
@@ -130,6 +129,10 @@ class CausalChange:
 
         assert self.mixing_type != MixingType.SKIP if self.data_mode == DataMode.MIXED else self.mixing_type == MixingType.SKIP
         assert not self.oracle_order or 'true_g' in self.truths
+        assert self.graph_search.is_compatible_with(self.data_mode), (
+            f"Graph search {self.graph_search} is not compatible with data_mode {self.data_mode}"
+        )
+
 
         def _info(st, strength=0):
             (self.lg.info(st) if self.lg is not None else print(st)) if self.vb + strength > 0 else None
@@ -717,7 +720,7 @@ class CausalChange:
     def _graph_search_topological_ordering(self):
         it = 0
         while it < self.N:
-            source = self._graph_search_topological_next(self.candidates if not self.oracle_order else self.true_top_order[it])
+            source = self._graph_search_topological_next(self.candidates if not self.oracle_order else [self.true_top_order[it]])
             self.candidates.remove(source)
             self.topological_order.append(source)
             it += 1
@@ -853,6 +856,7 @@ class CausalChange:
         self.fitted_graph = True
 
         self.graph_state = nx.from_numpy_array(dag_model.get_adj(), create_using=nx.DiGraph)
+        self.topological_order = [i for i in nx.topological_sort(self.graph_state)]
         return self.graph_state
 
     def _graph_search_edgegreedy_forward(self, edge_q: UPQ, dag_model: DAG) -> [UPQ, DAG]:
