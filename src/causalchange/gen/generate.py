@@ -7,8 +7,96 @@ from numpy.random import SeedSequence
 
 from src.causalchange.gen.synthetic.data_gen_context import DataGenContext
 from src.causalchange.gen.synthetic.data_gen_mixing import DataGen
+from src.causalchange.gen.synthetic.gen_types import FunType, NoiseType, IvType
 
 """ synthetic data generation """
+def gen_example_continuous(n_nodes=5, seed=42):
+    n_c = 1
+    n_s_c = 1000
+    params = {
+        'N': n_nodes,
+        'S': n_s_c ,
+        'P': 0.4,
+        'C': n_c,
+        'PC': 1,
+        'Kmn': 1,
+        'Kmx': 3,
+        'IVM': GenDataType.IID,
+        'IVT': IvType.MIX,
+        'GS': GSType.GRAPH,
+        'DG': DagType.ERDOS,
+        'F': FunType.MIX,
+        'NS': NoiseType.GAUSS,
+    }
+    X, truths = gen_data_type(params, seed)
+
+    return X, truths
+
+def gen_example_context(n_nodes=5, n_c=10, seed=42):
+    n_s_c = 1000
+    params = {
+        'N': n_nodes,
+        'S': n_s_c * n_c,
+        'P': 0.4,
+        'C': n_c,
+        'PC': 1,
+        'Kmn': 1,
+        'Kmx': 3,
+        'IVM': GenDataType.MULTI_CONTEXT,
+        'IVT': IvType.MIX,
+        'GS': GSType.GRAPH,
+        'DG': DagType.ERDOS,
+        'F': FunType.MIX,
+        'NS': NoiseType.GAUSS,
+    }
+    X, truths = gen_data_type(params, seed)
+
+    return X, truths
+
+
+
+
+def to_json_G(G_hat, truths, cc, fname='output'):
+    def sanitize_matrix(mat):
+        mat = np.array(mat, dtype=float)
+        mat[~np.isfinite(mat)] = np.nan  # will become null in JSON
+        return mat.tolist()
+
+    def sanitize_value(v):
+        return float(v) if np.isfinite(v) else None
+
+    def replace_nans_with_none(obj):
+        if isinstance(obj, dict):
+            return {k: replace_nans_with_none(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [replace_nans_with_none(v) for v in obj]
+        elif isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj)):
+            return None
+        return obj
+
+    if 'true_g' in truths:
+        true_edges = [
+            {"from": int(u), "to": int(v)}
+            for u, v in truths['true_g'].edges()
+        ]
+    else:
+        true_edges = []
+
+    history_out = {
+        "nodes": list(range(cc.N)),
+        "node_names": cc.node_nms,
+        "steps": cc.topic_history,
+        "true_edges": true_edges,
+    }
+
+    history_clean = replace_nans_with_none(history_out)
+
+    from pathlib import Path
+    import json
+    out_path = Path(f"{fname}.json")
+
+    out_path.write_text(json.dumps(history_clean, indent=2))
+
 
 class GenDataType(Enum):
     """type of synthetic data: synthetic data from iid distribution, mult context, w unknown mixing"""

@@ -1,12 +1,39 @@
+from tests.utils.test_causal_change import TestableCausalChange
+
+
 import numpy as np
 import networkx as nx
 import pytest
 
+from src.causalchange.causal_change import CausalChange
 from src.causalchange.cc_types import DataMode, GraphSearch, GPType
-from src.causalchange.scoring.fit_cond_mixture import MixingType
-from tests.utils_test_causal_change import TestableCausalChange
 
-"""Test all approaches end to end, pure graph search with a fake edge scoring inside"""
+
+@pytest.mark.parametrize("N", [2, 3, 4])
+@pytest.mark.parametrize("graph_search", [GraphSearch.TOPIC])
+def test_fit_produces_dag_and_valid_order_iid(N, graph_search):
+    D = 100
+    X = np.random.randn(D, N)
+
+    cc = CausalChange(
+        data_mode=DataMode.IID,
+        graph_search=graph_search,
+        score_type=GPType.EXACT,
+        vb=0,
+    )
+
+    G = cc.fit(X)
+
+    assert isinstance(G, nx.DiGraph)
+    assert set(G.nodes) == set(range(N))
+    assert nx.is_directed_acyclic_graph(G)
+
+    assert all(u != v for u, v in G.edges)
+    topo = cc.topological_order
+    assert sorted(topo) == sorted(G.nodes)
+    pos = {node: i for i, node in enumerate(topo)}
+    for u, v in G.edges:
+        assert pos[u] < pos[v], f"Edge {u}->{v} violates topological order {topo}"
 
 
 def _check_graph_invariants(cc, G, N, expect_topo: bool):
@@ -26,7 +53,7 @@ def _check_graph_invariants(cc, G, N, expect_topo: bool):
 
 def _run_graph_search_iid(graph_search: GraphSearch, N: int = 3):
     D = 50
-    X = np.random.randn(D, N)  # (D, N)
+    X = np.random.randn(D, N)
 
     cc = TestableCausalChange(
         data_mode=DataMode.IID,
@@ -73,8 +100,6 @@ def _run_graph_search_mixed(graph_search: GraphSearch, N: int = 3):
         score_type=GPType.EXACT,
         vb=0,
     )
-
-    # test graph-search only for now, not mix inference here
     cc.init_and_check_X(X)
     cc.initialize()
     G = cc._graph_search()

@@ -18,7 +18,7 @@ from src.causalchange.search.partition_search import (
     fit_citest_CONTEXTS,
     fit_fun_MIXED,
 )
-from tests.conftest import (
+from tests.utils.sample import (
     sample_linear_sem,
     sample_linear_sem_mixed,
     sample_time_series,
@@ -292,13 +292,13 @@ def test_fit_resid_time_basic():
         [0, 1],
         [0, 0],
     ])
-    X_time = sample_time_series(adj, T=200, noise_std=0.2, seed=1)
+    X_time = sample_time_series(adj, n_timepoints=200, noise_std=0.2, seed=1)
 
     score_fun = fit_score_ln
     target = 1
     parents = [0]
 
-    residual_sets = fit_resid_TIME(X_time, target, parents, score_fun, changepoints=None)
+    residual_sets = fit_resid_TIME(X_time, target, parents, score_fun, changepoints=[50, 200])
 
     assert isinstance(residual_sets, list)
     assert len(residual_sets) >= 1
@@ -319,8 +319,8 @@ def test_fit_resid_time_contexts_basic():
         [0, 1],
         [0, 0],
     ])
-    X0 = sample_time_series(adj, T=150, noise_std=0.2, seed=2)
-    X1 = sample_time_series(adj, T=160, noise_std=0.2, seed=3)
+    X0 = sample_time_series(adj, n_timepoints=150, noise_std=0.2, seed=2)
+    X1 = sample_time_series(adj, n_timepoints=160, noise_std=0.2, seed=3)
     X_dict = {0: X0, 1: X1}
 
     score_fun = fit_score_ln
@@ -332,7 +332,7 @@ def test_fit_resid_time_contexts_basic():
         target,
         parents,
         score_fun,
-        changepoints_per_context=None,
+        cp_per_ctx={0: [], 1: []},
     )
 
     assert isinstance(residual_sets, list)

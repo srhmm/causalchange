@@ -84,7 +84,7 @@ class GraphSearch(Enum):
         if self is GraphSearch.TOPIC:
             return [DataMode.IID, DataMode.CONTEXTS, DataMode.MIXED, DataMode.TIME, DataMode.TIME_CONTEXTS]
         elif self is GraphSearch.GLOBE:
-            return [DataMode.IID]
+            return [DataMode.IID, DataMode.CONTEXTS]
         elif self is GraphSearch.CHAIN:
             return [DataMode.CONTEXTS]
         elif self is GraphSearch.COMBO:

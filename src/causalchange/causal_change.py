@@ -149,8 +149,9 @@ class CausalChange:
         self.true_top_order = [] if ('true_order' not in self.truths  and 'true_g' not in self.truths) else list(self.truths['true_order']) if  'true_order'  in self.truths else list(
             nx.topological_sort(self.truths['true_g']))
         self._add_greedily = False
-
         self.fitted_graph, self.fitted_mixing = False, False
+
+        self.topic_history: list[dict] = []
 
     def is_score_insignificant(self, gain):
         if self.score_type.is_scorebased():
@@ -314,30 +315,29 @@ class CausalChange:
             self,
             K_max: int = 3,
             eps_add: float = 0.0,
-            allow_prev_as_parents: bool = True,
+            allow_prev_as_parents: bool = False,
     ) -> int:
         """
         Pick next source using CAM-IA style score:
           S(j) = d(j | ∅) - d(j | P*_j),
         where P*_j is obtained by forward selection of parents under discrepancy.
         Nodes with smaller S(j) are 'more source-like'.
+
+        Important: by default we only allow conditioning on *remaining candidates*
+        (excluding xj), which avoids conditioning on "future" nodes in the order.
         """
         candidates = self.candidates
         best_score = float("inf")
         best_node = None
 
-        # define pool of potential parents for each j
-        # (here: all other nodes; you can restrict if you want)
-        if allow_prev_as_parents:
-            parent_pool_all = list(range(self.N))
-        else:
-            parent_pool_all = candidates
-
         for xj in candidates:
-            # forward selection of parents for xj
-            parent_pool = [i for i in parent_pool_all if i != xj]
+            # Parent pool: either remaining candidates or already-ordered nodes,
+            # but never "all nodes".
+            if allow_prev_as_parents:
+                parent_pool = [i for i in self.topological_order if i != xj]
+            else:
+                parent_pool = [i for i in candidates if i != xj]
 
-            # start with empty parent set
             P = []
             d_curr = self._discrepancy(xj, P)
             d_base = d_curr
@@ -345,9 +345,9 @@ class CausalChange:
             for _ in range(K_max):
                 best_drop = 0.0
                 best_cand = None
+                best_d_new = None
 
                 for xi in parent_pool:
-                    # skip if already included
                     if xi in P:
                         continue
 
@@ -357,25 +357,19 @@ class CausalChange:
                     if drop > best_drop:
                         best_drop = drop
                         best_cand = xi
+                        best_d_new = d_new
 
-                # stopping criterion: no useful parent
                 if best_cand is None or best_drop <= eps_add:
                     break
 
-                # accept new parent
                 P.append(best_cand)
-                d_curr -= best_drop  # or d_curr = d_new
+                d_curr = float(best_d_new)
 
-            # total reduction in discrepancy for xj
             S_j = d_base - d_curr
-
-            # source = node with smallest S_j
             if S_j < best_score:
                 best_score = S_j
                 best_node = xj
 
-        # safety: if all S_j are exactly 0 and best_node is None,
-        # fall back to arbitrary candidate
         if best_node is None:
             best_node = candidates[0]
 
@@ -399,18 +393,26 @@ class CausalChange:
             self._info(f"order |\t\tX{xj} \ts={delta_xj} ", -3)
         return arg_min
 
-
-    def _graph_search_chain_prune(self) -> None:
+    def _graph_search_chain_prune(self, eps_keep: float = 1e-8) -> None:
         leaves_to_sources = self.topological_order[::-1]
-        for jind, xj in enumerate(leaves_to_sources):
-            anc = [xk for xk in leaves_to_sources[jind:] if xk!=xj]
-            d_anc_plus_i = self._discrepancy(xj, anc)
-            for xi in anc:
-                d_anc_minus_i = self._discrepancy(xj, [xa for xa in anc if xa!=xi])
-                delta_ji = d_anc_minus_i - d_anc_plus_i
-                if not self.is_discrepancy_insignificant(delta_ji):
-                    self.graph_state.add_edge(xi, xj, weight=d_anc_minus_i)
 
+        for jind, xj in enumerate(leaves_to_sources):
+            anc = [xk for xk in leaves_to_sources[jind:] if xk != xj]
+            if not anc:
+                continue
+
+            d_full = self._discrepancy(xj, anc)
+
+            for xi in anc:
+                anc_minus = [xa for xa in anc if xa != xi]
+                if not anc_minus:
+                    continue
+
+                d_minus = self._discrepancy(xj, anc_minus)
+                delta_ji = float(d_minus - d_full)
+
+                if not self.is_discrepancy_insignificant(delta_ji, eps=eps_keep):
+                    self.graph_state.add_edge(xi, xj, weight=delta_ji)
 
     def _discrepancy(self, child, parents, ret_full_result=False, vb=-3) -> float | (float, dict):
         discrep, res = self.edges_state.discrepancy(child, parents)
@@ -419,12 +421,20 @@ class CausalChange:
         if ret_full_result: return discrep, res
         return discrep
 
-    def is_discrepancy_insignificant(self, delta) -> bool:
-        return delta > 0 #todo
-
+    def is_discrepancy_insignificant(self, delta: float, eps: float = 1e-8) -> bool:
+        """
+        delta = d(parents_without_i) - d(parents_with_all)
+        If delta is large positive, removing i makes discrepancy worse -> i matters -> significant.
+        So 'insignificant' means delta is small (<= eps).
+        """
+        if not np.isfinite(delta):
+            return True
+        return delta <= eps
 
     #%% Graph search - COMBO
     def _graph_search_combo(self) -> nx.DiGraph:
+        if not self.data_mode.is_dict_like():
+            raise ValueError("COMBO graph search requires dict-like context data (DataMode.CONTEXTS).")
         self.graph_state.add_nodes_from(range(self.N))
         self.candidates = list(range(self.N))
         self._graph_search_combo_ordering(self.lam_mmd_hsic)
@@ -436,8 +446,8 @@ class CausalChange:
 
         X_all, C_idx = flat_from_context_dict(self.X, getattr(self, "context_labels", None))
         #gain_edge_min = gain_min_from_sample_size(C_idx, c_edge=1.0, mode="min_ctx")
-        gain_edge_min = 0
-        self.gain_edge_min = gain_edge_min
+        gain_edge_min = 0.05
+        self.gain_edge_min = float(gain_edge_min)
         indep_test_fun = lambda R, X: hsic_gamma_pvalue(R, X)
         while it < self.N:
             source = self._graph_search_combo_next(
@@ -711,85 +721,180 @@ class CausalChange:
 
         self.graph_state.add_nodes_from(range(self.N))
         self.candidates = list(range(self.N))
+        self.topic_history = []
         self._graph_search_topological_ordering()
 
         self.fitted_graph = True
-        return self.graph_state
 
+        return self.graph_state
 
     def _graph_search_topological_ordering(self):
         it = 0
         while it < self.N:
-            source = self._graph_search_topological_next(self.candidates if not self.oracle_order else [self.true_top_order[it]])
+            source, source_meta = self._graph_search_topological_next(
+                self.candidates if not self.oracle_order else [self.true_top_order[it]]
+            )
             self.candidates.remove(source)
             self.topological_order.append(source)
             it += 1
-            self._info(f"\t{it}. Source: {self.node_nms[source]}\t current {self.topological_order}, true {self.true_top_order}", -2)
+            self._info(
+                f"\t{it}. Source: {self.node_nms[source]}\t current {self.topological_order}, true {self.true_top_order}",
+                -2,
+            )
 
-            self._graph_search_topological_add_outgoing(source)
-            self._graph_search_topological_remove_ingoing(source)
+            added_edges, outgoing_scores = self._graph_search_topological_add_outgoing(source)
+            pruned_edges, incoming_scores = self._graph_search_topological_remove_ingoing(source)
+
+            self.topic_history.append({
+                "iteration": int(it),
+                "source": int(source),
+                "topological_order": [int(n) for n in self.topological_order],
+                "remaining_candidates": [int(c) for c in self.candidates],
+
+                "source_selection": source_meta,
+                "added_edges": added_edges,
+                "pruned_edges": pruned_edges,
+                "outgoing_scores": outgoing_scores,
+                "incoming_scores": incoming_scores,
+            })
 
         if self.extra_refinement:
             self._graph_search_topological_refine_extra()
 
     def _graph_search_topological_add_outgoing(self, source):
+        added_edges = []
+        all_scores = []
+
         for node in self.candidates:
             if node in self.topological_order or node == source or self.has_cycle(source, node):
                 continue
-            gain = self._addition_gain(node, source)
-            if self._significant(gain) or self._add_greedily:
-                self._add_edge(source, node, gain=float(gain))
 
+            gain = self._addition_gain(node, source)
+            significant = not self.is_score_insignificant(gain)# bool(self._significant(gain) or self._add_greedily)
+
+            all_scores.append({
+                "from": int(source),
+                "to": int(node),
+                "gain": float(gain),
+                "significant": significant,
+            })
+
+            if significant:
+                self._add_edge(source, node, gain=float(gain))
+                added_edges.append({
+                    "from": int(source),
+                    "to": int(node),
+                    "gain": float(gain),
+                })
+
+        return added_edges, all_scores
 
     def _graph_search_topological_remove_ingoing(self, source):
         parents = list(self.graph_state.predecessors(source))
         n_removed = 0
+        pruned_edges = []
+        incoming_scores = []
+
         while n_removed < len(parents):
-            removed_found, removed_parent = self._graph_search_topological_refine_step(source, parents)
+            removed_found, removed_parent, best_diff, candidate_diffs = \
+                self._graph_search_topological_refine_step(source, parents)
+
+            # record all diffs considered in this refinement step
+            for parent, diff in candidate_diffs:
+                incoming_scores.append({
+                    "from": int(parent),
+                    "to": int(source),
+                    "diff": float(diff),
+                })
 
             if removed_parent is not None:
                 self._remove_edge(removed_parent, source)
                 parents.remove(removed_parent)
                 n_removed += 1
+
+                pruned_edges.append({
+                    "from": int(removed_parent),
+                    "to": int(source),
+                    "diff": float(best_diff),
+                })
             else:
                 break
 
-    def _graph_search_topological_refine_step(self, source, parents):
-        removed_found, best_parent, best_diff = False, None, -np.inf
-        old_score = self._score(parents, source)
+        return pruned_edges, incoming_scores
+
+    def _graph_search_topological_refine_step(self, child, parents):
+        old_score = self._score(parents, child)
+
+        best_parent = None
+        best_harm = float("inf")
+        candidate_stats = []
 
         for parent in parents:
-            new_parents = parents.copy()
-            new_parents.remove(parent)
-            if len(new_parents) == 0: continue
-            new_score = self._score(new_parents, source)
-            diff = old_score - new_score  # >0 means removing parent improved the score
+            new_parents = [p for p in parents if p != parent]
+            if not new_parents:
+                continue
 
-            if diff > best_diff and self.is_score_insignificant(abs(diff)):#self._significant(diff):
-                best_diff = diff
-                best_parent = parent
-                removed_found = True
-        return removed_found, best_parent
+            new_score = self._score(new_parents, child)
+
+            harm = new_score - old_score
+            candidate_stats.append((parent, harm))
+
+            if is_insignificant(harm, is_mdl=True, alpha=getattr(self, "alpha_gp_mdl", 0.05)):
+                if harm < best_harm:
+                    best_harm = harm
+                    best_parent = parent
+
+        removed_found = best_parent is not None
+        return removed_found, best_parent, best_harm, candidate_stats
 
     def _graph_search_topological_next(self, candidates):
         if self.oracle_order:
             self._info(f"\tUsing true next node: {self.node_nms[candidates[0]]}", -1)
-            return candidates[0]
-
+            meta = {
+                "candidates": [int(c) for c in candidates],
+                "improvement_matrix": None,
+                "delta_matrix": None,
+                "best_delta": None,
+                "ranking": [{"node": int(c), "best_delta": None} for c in candidates],
+            }
+            return candidates[0], meta
         improvement = self._graph_search_topological_improvement_matrix(self.graph_state, candidates)
         delta = improvement - improvement.T
-        # find the node with the smallest possible delta
         np.fill_diagonal(delta, -np.inf)
-        best_delta = np.max(delta, axis=1)
-        worst = np.argmin(best_delta)
 
-        self._info(f"\tNext Node: {self.node_nms[candidates[worst]]}, order {self.topological_order} ", -2)
-        k = len(improvement)
-        top_k_ind = np.argsort(-best_delta)[-k:][::-1]
-        self._info(f"\tbest {k} next nodes:", -3)
-        for i in top_k_ind: self._info(f"\t  node  {self.node_nms[candidates[i]]}, best_delta: {-best_delta[i]:.4f}", -3)
+        incoming_pressure = np.max(delta, axis=0)
+        source_idx = int(np.argmin(incoming_pressure))
+        source = candidates[source_idx]
 
-        return candidates[worst]
+        # old-style summaries (if you used them before)
+        best_delta_per_node = np.max(delta, axis=1)  # "how much i wants to go before others"
+        worst_idx_old = int(np.argmin(best_delta_per_node))  # old "source" choice if you used it
+
+        order_idx = np.argsort(incoming_pressure)
+        ranking = [
+            {
+                "node": int(candidates[i]),
+                "incoming_pressure": float(incoming_pressure[i]),
+                # keep these if you used them in logs/plots
+                "best_delta": float(best_delta_per_node[i]),
+            }
+            for i in order_idx
+        ]
+
+        meta = {
+            "candidates": [int(c) for c in candidates],
+            "improvement_matrix": improvement.tolist(),  # old key
+            "gain_matrix": improvement.tolist(),  # optional alias (keep if you introduced it)
+            "delta_matrix": delta.tolist(),
+            "best_delta": [float(x) for x in best_delta_per_node],  # old field (vector form)
+            "ranking": ranking,
+            "incoming_pressure": [float(v) for v in incoming_pressure],
+            "source_idx": int(source_idx),
+            "source_old_rule_idx": int(worst_idx_old),  # optional: helps compare behaviors
+        }
+        return source, meta
+
+
 
     def _graph_search_topological_improvement_matrix(self, graph, candidates):
         improvement_matrix = np.zeros((len(candidates), len(candidates)))
@@ -803,7 +908,7 @@ class CausalChange:
                 parents.append(cause)
                 new_score = self._score(parents, effect)
                 improvement_matrix[candidates.index(cause), candidates.index(effect)] = \
-                    self._improvement(new_score, old_score)
+                    self._gain(new_score, old_score)
         return improvement_matrix
 
     def _graph_search_topological_refine_extra(self, min_parent_set_size=0):
@@ -824,11 +929,12 @@ class CausalChange:
                 for parent_set in parent_sets:
 
                     new_score = self._score(parent_set, j)
-                    gain = self._gain(new_score, old_score)
-
-                    if self.is_score_insignificant(np.abs(gain)) and len(parent_set) < best_size:  # favor smaller parent sets
+                    #gain = self._gain(new_score, old_score)
+                    delta = new_score - old_score  # harm
+                    if self.is_score_insignificant(delta) and len(parent_set) < best_size:
                         best_size = len(parent_set)
                         arg_max = parent_set
+
 
             if arg_max is None:
                 continue
@@ -841,6 +947,7 @@ class CausalChange:
     def _graph_search_edgegreedy(self) -> nx.DiGraph:
         """ GLOBE (Mian et al., 2021) """
 
+        self.graph_state.add_nodes_from(range(self.N))
         self._info(f"\t*** Greedy DAG search (phase 0) ***", -1)
 
         edge_q = UPQ()
@@ -848,7 +955,7 @@ class CausalChange:
 
         edge_q = dag_model.initial_edges(edge_q)
         edge_q, dag_model = self._graph_search_edgegreedy_forward(edge_q, dag_model)
-        #edge_q, dag_model = self._graph_search_edgegreedy_backward(edge_q, dag_model)
+        edge_q, dag_model = self._graph_search_edgegreedy_backward(edge_q, dag_model)
 
         self._info(f'DAG search result:' + ', '.join(
             f"{self.node_nms[i]}->{self.node_nms[j]}" for i, j in set(itertools.product(set(range(self.N)), set(range(self.N)))) if
@@ -907,10 +1014,7 @@ class CausalChange:
         return self.has_cycle(parent, child)
 
     def _dm_exists_anticausal(self, dag_model, parent, child):
-        try:
-            return dag_model.is_edge(child, parent)
-        except AttributeError:
-            return self.graph_state.has_edge(child, parent)
+        return dag_model.is_edge(child, parent)
 
     def _dm_parents_of(self, dag_model, node):
         try:
@@ -925,20 +1029,15 @@ class CausalChange:
             return self.graph_state.has_edge(u, v)
 
     def _dm_add_edge(self, dag_model, parent, child, score=None, gain=None, vb=-2):
-        try:
-            dag_model.add_edge(parent, child, score, gain)
-        except AttributeError:
-            pass
-        self._add_edge(parent, child, vb=vb, gain=gain)
+        dag_model.add_edge(parent, child, score, gain)  # must succeed
+        self._add_edge(parent, child, vb=vb, gain=gain)  # optional mirror/log
+        self._assert_sync(dag_model)
 
     def _dm_remove_edge(self, dag_model, parent, child, vb=-2):
-        try:
-            dag_model.remove_edge(parent, child)
-        except AttributeError:
-            pass
+        dag_model.remove_edge(parent, child)  # must succeed
         if self.graph_state.has_edge(parent, child):
             self._remove_edge(parent, child, vb=vb)
-
+        self._assert_sync(dag_model)
 
     def _dm_eval_edge_addition(self, dag_model, target, parent, return_score=False):
         """
@@ -967,6 +1066,13 @@ class CausalChange:
         new = self._score(Pv_new, v) + self._score(Pu_new, u)
         return self._gain(new, old)
 
+    def _assert_sync(self, dag_model):
+        A_dm = dag_model.get_adj()
+        A_nx = nx.to_numpy_array(self.graph_state, dtype=int)
+        assert A_dm.shape == A_nx.shape
+        assert np.all((A_dm != 0) == (A_nx != 0)), "dag_model and graph_state diverged!"
+
+
     def _graph_search_edgegreedy_forward_next(self, edge_q: UPQ, dag_model: DAG) -> [UPQ, DAG]:
         pi_edge = edge_q.pop_task()
         node, parent = pi_edge.j, pi_edge.pa
@@ -988,8 +1094,23 @@ class CausalChange:
 
         return edge_q, dag_model
 
+    def _dm_flip_is_legal(self, u: int, v: int) -> bool:
+        if not self.graph_state.has_edge(u, v):
+            return False
+
+        G = self.graph_state.copy()
+        G.remove_edge(u, v)
+        G.add_edge(v, u)
+
+        try:
+            _ = nx.find_cycle(G, orientation="original")
+            return False
+        except nx.exception.NetworkXNoCycle:
+            return True
+
     def _graph_search_edgegreedy_update_children(self, child, node, edge_q, dag_model):
         ch = child
+
         if not self._dm_is_edge(dag_model, node, ch):
             return edge_q, dag_model
 
@@ -997,9 +1118,12 @@ class CausalChange:
         if self.is_score_insignificant(gain):
             return edge_q, dag_model
 
+        if not self._dm_flip_is_legal(node, ch):
+            return edge_q, dag_model
+
         self._dm_remove_edge(dag_model, node, ch)
 
-        edge_fw = dag_model.pair_edges[node][ch]  # keep your queue item
+        edge_fw = dag_model.pair_edges[node][ch]
         edge_bw = dag_model.pair_edges[ch][node]
 
         if edge_q.exists_task(edge_bw):
@@ -1009,9 +1133,10 @@ class CausalChange:
         gain_fw = self._dm_eval_edge_addition(dag_model, edge_fw.j, edge_fw.i)
 
         if not self.is_score_insignificant(gain_bw):
-            edge_q.add_task(edge_bw, gain_bw * 100)
+            edge_q.add_task(edge_bw, -gain_bw * 100)
         if not self.is_score_insignificant(gain_fw):
-            edge_q.add_task(edge_fw, gain_fw * 100)
+            edge_q.add_task(edge_fw, -gain_fw * 100)
+
         return edge_q, dag_model
 
     def _graph_search_edgegreedy_update_parents(self, other_parent, node, parent, edge_q, dag_model):
@@ -1024,8 +1149,10 @@ class CausalChange:
 
         if edge_q.exists_task(edge_candidate):
             edge_q.remove_task(edge_candidate)
+
         if not self.is_score_insignificant(gain_mom):
-            edge_q.add_task(edge_candidate, gain_mom * 100)
+            edge_q.add_task(edge_candidate, -gain_mom * 100)
+
         return edge_q, dag_model
 
     def _dm_eval_parent_set(self, dag_model, node, parent_set):
@@ -1148,7 +1275,7 @@ class CausalChange:
                 self.graph_state.remove_edge(parent, node)
         for parent in parents:  # try score-pruning under the node's true partition
             gain = self._addition_gain(node, parent)  # during scoring&fitting: values of Z will be used
-            if self._significant(gain) or self._add_greedily:
+            if not self.is_score_insignificant(gain): #self._significant(gain) or self._add_greedily:
                 self._add_edge(parent, node, gain=float(gain))
                 parent_subset.append(parent)
         return parent_subset
@@ -1225,8 +1352,8 @@ class CausalChange:
     def _improvement(new_score, old_score):
         return new_score - old_score
 
-    def _significant(self, gain):
-        return gain > self.bic_thresh
+    #def _significant(self, gain):
+    #    return gain > self.bic_thresh
 
     def has_cycle(self, source, node):
         G_hat = self.graph_state.copy()

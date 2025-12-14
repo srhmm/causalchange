@@ -127,7 +127,7 @@ class DAG:
 
     """ Search - score pairwise edges initially """
 
-    def initial_edges(self, q: UPQ, skip_insignificant=False) -> UPQ:
+    def initial_edges(self, q: UPQ, skip_insignificant=True) -> UPQ:
         for j in self.nodes:
             pa = []
             score = self.eval_edge(j, pa)
@@ -136,11 +136,12 @@ class DAG:
                 score_ij = self.eval_edge(j, [i])
 
                 edge_ij = QEntry(i, j, score_ij, score)
-
                 gain = score - score_ij
-                prio = gain * 100
-                if (not skip_insignificant) or (not is_insignificant(gain)):
+                prio = -gain*100
+
+                if (not skip_insignificant) or (not is_insignificant(gain, is_mdl=True)):
                     q.add_task(task=edge_ij, priority=prio)
+
                 self.pair_edges[i][j] = edge_ij
         return q
 
@@ -275,8 +276,7 @@ class QEntry:
         return hash((self.i, self.j))
 
     def __eq__(self, other):
-        return (self.i == other.i
-                & self.j == other.j)
+        return (self.i == other.i) and (self.j == other.j)
 
     def __str__(self):
         return f'j_{str(self.i)}_i_{str(self.j)}'

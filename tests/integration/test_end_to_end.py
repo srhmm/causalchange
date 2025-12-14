@@ -5,11 +5,10 @@ import pytest
 from causalchange.scoring.fit_cond_mixture import MixingType
 from src.causalchange.causal_change import CausalChange
 from src.causalchange.cc_types import DataMode, GraphSearch, GPType
-from tests.conftest import sample_linear_sem, sample_time_series, sample_time_series_contexts
+from tests.utils.sample import sample_linear_sem, sample_time_series, sample_time_series_contexts, sample_linear_sem_mixed
 
-"""Test all approaches end to end"""
+"""End to end tests for all data types (DataMode) and algos (GraphSearch)"""
 
-#%% Test all approaches end to end
 
 def _run_e2e_iid(graph_search: GraphSearch):
     adj = np.array([
@@ -84,7 +83,6 @@ def _run_e2e_contexts(graph_search: GraphSearch):
         for u, v in G_hat.edges:
             assert pos[u] < pos[v], f"Edge {u}->{v} violates topological order {topo}"
 
-from tests.conftest import sample_linear_sem_mixed
 
 def _run_e2e_mixed(graph_search: GraphSearch):
     adj = np.array([
@@ -121,10 +119,6 @@ def _run_e2e_mixed(graph_search: GraphSearch):
 
 
 def _run_e2e_time(graph_search: GraphSearch):
-    """
-    End-to-end test for DataMode.TIME using a simple 3-node chain
-    as the lag-1 adjacency A^{(1)}: 0_t -> 1_t+1 -> 2_t+2 (in effect).
-    """
     adj = np.array([
         [0, 1, 0],
         [0, 0, 1],
@@ -153,7 +147,6 @@ def _run_e2e_time(graph_search: GraphSearch):
     assert nx.is_directed_acyclic_graph(G_hat)
     assert all(u != v for u, v in G_hat.edges)
 
-    # TOPIC builds a topological order even in TIME mode
     if graph_search.value in [GraphSearch.TOPIC.value]:
         topo = cc.topological_order
         assert sorted(topo) == sorted(G_hat.nodes)
@@ -164,11 +157,6 @@ def _run_e2e_time(graph_search: GraphSearch):
 
 
 def _run_e2e_time_contexts(graph_search: GraphSearch):
-    """
-    End-to-end test for DataMode.TIME_CONTEXTS.
-    NOTE: if fit_graph_over_time_and_contexts is not implemented yet,
-    we xfail this test.
-    """
     adj = np.array([
         [0, 1, 0],
         [0, 0, 1],

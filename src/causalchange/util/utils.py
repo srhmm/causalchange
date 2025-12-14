@@ -7,11 +7,11 @@ import itertools
 from sklearn import preprocessing
 
 
-def is_insignificant(gain, alpha=0.05, is_mdl=False):
+def is_insignificant(val, alpha=0.05, is_mdl=True):
     """ Significance by MDL no-hypercompression. """
 
-    return gain < 0 or 2 ** (-gain) > alpha if is_mdl else gain <0 # gain must be over 4.3
-
+    #return gain < 0 or 2 ** (-gain) > alpha if is_mdl else gain <0 # gain must be over 4.3
+    return val <= 0 if not is_mdl else (val <= 0 or 2 ** (-val) > alpha)
 
 def cantor_pairing(x, y):
     return int((x + y) * (x + y + 1) / 2 + y)

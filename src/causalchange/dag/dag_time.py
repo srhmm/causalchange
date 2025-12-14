@@ -165,7 +165,7 @@ class TimeDAG(DAG):
             mdl = mdl + score_j
         return mdl
 
-    def initial_edges(self, q: UPQ, skip_insignificant=False) -> UPQ:
+    def initial_edges(self, q: UPQ, skip_insignificant=True) -> UPQ:
         for j in self.nodes:
             pa = []
             score = self.eval_edge(j, pa)

@@ -1,4 +1,3 @@
-# tests/test_init.py
 import numpy as np
 import pytest
 import networkx as nx
@@ -17,17 +16,14 @@ def test_defaults_are_set():
     assert cc.lambda_mix == 1
     assert cc.vb == 0
 
-# tests/test_init.py
 
 def test_graph_search_data_mode_compatibility():
     CausalChange(data_mode=DataMode.IID,      graph_search=GraphSearch.TOPIC)
     CausalChange(data_mode=DataMode.IID,      graph_search=GraphSearch.GLOBE)
+    CausalChange(data_mode=DataMode.CONTEXTS, graph_search=GraphSearch.GLOBE)
     CausalChange(data_mode=DataMode.CONTEXTS, graph_search=GraphSearch.TOPIC)
     CausalChange(data_mode=DataMode.CONTEXTS, graph_search=GraphSearch.CHAIN)
     CausalChange(data_mode=DataMode.CONTEXTS, graph_search=GraphSearch.COMBO)
-
-    with pytest.raises(AssertionError):
-        CausalChange(data_mode=DataMode.CONTEXTS, graph_search=GraphSearch.GLOBE)
 
     with pytest.raises(AssertionError):
         CausalChange(data_mode=DataMode.IID, graph_search=GraphSearch.CHAIN)
