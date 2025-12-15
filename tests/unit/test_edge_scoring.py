@@ -1,5 +1,3 @@
-# tests/test_edge_scoring.py
-
 import numpy as np
 import pytest
 
@@ -25,16 +23,8 @@ from tests.utils.sample import (
 )
 
 
-# -------------------------------------------------------------------
-# Helpers
-# -------------------------------------------------------------------
-
 
 def _get_score_fun_for(X, data_mode: DataMode, score_type):
-    """
-    Use EdgeMemoized.get_score_fun to get the underlying regression score_fun
-    for a given ScoreType/GPType and data_mode.
-    """
     edge = EdgeMemoized(
         X=X,
         data_mode=data_mode,
@@ -45,13 +35,11 @@ def _get_score_fun_for(X, data_mode: DataMode, score_type):
         oracle_K=False,
     )
     score_fun = edge.get_score_fun()
-    # For score-based types this must not be None
     if hasattr(score_type, "is_scorebased") and score_type.is_scorebased():
         assert score_fun is not None, f"Expected a score_fun for {score_type}"
     return score_fun
 
 
-# Representative score-based types (fast-ish) for testing
 SCOREBASED_TYPES = [
     ScoreType.LIN,
     GPType.EXACT,
@@ -60,18 +48,9 @@ SCOREBASED_TYPES = [
 CONSTRAINT_TYPES = [CIType.KCI]
 
 
-# -------------------------------------------------------------------
-# 1. fit_fun_IID
-# -------------------------------------------------------------------
-
 
 @pytest.mark.parametrize("score_type", SCOREBASED_TYPES)
 def test_fit_fun_iid_basic(score_type):
-    """
-    fit_fun_IID should:
-      - accept pa (possibly non-empty),
-      - return (score, dict(model=...)) when not asking for residuals.
-    """
     adj = np.array([
         [0, 1, 0],
         [0, 0, 1],
@@ -94,11 +73,6 @@ def test_fit_fun_iid_basic(score_type):
 
 @pytest.mark.parametrize("score_type", SCOREBASED_TYPES)
 def test_fit_fun_iid_with_residuals(score_type):
-    """
-    fit_fun_IID with ret_residuals=True should return:
-      - residuals of shape (D,)
-      - info dict with a model
-    """
     adj = np.array([
         [0, 1, 0],
         [0, 0, 1],
@@ -120,9 +94,6 @@ def test_fit_fun_iid_with_residuals(score_type):
 
 
 def test_fit_fun_iid_empty_parents():
-    """
-    Special case: pa=[]. fit_fun_IID should still run, using noise predictors.
-    """
     D, N = 150, 3
     X = np.random.randn(D, N)
 
@@ -138,18 +109,10 @@ def test_fit_fun_iid_empty_parents():
     assert "model" in info
 
 
-# -------------------------------------------------------------------
-# 2. fit_fun_CONTEXTS
-# -------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("score_type", SCOREBASED_TYPES)
 def test_fit_fun_contexts_basic(score_type):
-    """
-    fit_fun_CONTEXTS:
-      - X is dict[context_id -> (D_c, N)]
-      - returns (score, dict(model=...)).
-    """
     adj = np.array([
         [0, 1, 0],
         [0, 0, 1],
@@ -159,7 +122,6 @@ def test_fit_fun_contexts_basic(score_type):
     X1 = sample_linear_sem(adj, n_samples=180, noise_std=0.2, seed=2)
     X_contexts = {0: X0, 1: X1}
 
-    # We only need X from one context to build score_fun
     score_fun = _get_score_fun_for(X0, DataMode.CONTEXTS, score_type)
 
     j = 1
@@ -171,17 +133,8 @@ def test_fit_fun_contexts_basic(score_type):
     assert isinstance(info, dict)
 
 
-# -------------------------------------------------------------------
-# 3. fit_fun_MIXED
-# -------------------------------------------------------------------
-
 
 def test_fit_fun_mixed_basic():
-    """
-    fit_fun_MIXED:
-      - X is (D, N) with mixed mechanisms
-      - returns (score, dict(...)).
-    """
     adj = np.array([
         [0, 1, 0],
         [0, 0, 1],
@@ -207,26 +160,16 @@ def test_fit_fun_mixed_basic():
     assert isinstance(info, dict)
 
 
-# -------------------------------------------------------------------
-# 4. fit_citest_CONTEXTS
-# -------------------------------------------------------------------
-
 
 @pytest.mark.parametrize("score_type", CONSTRAINT_TYPES)
 def test_fit_citest_contexts_basic(score_type):
-    """
-    fit_citest_CONTEXTS:
-      - Should return (score_bits, results dict) with expected fields.
-    """
     rng = np.random.default_rng(0)
     D = 150
 
-    # Context 0: X0 -> X1
     X0_0 = rng.normal(size=D)
     X1_0 = X0_0 + rng.normal(scale=0.3, size=D)
     X_ctx0 = np.column_stack([X0_0, X1_0])
 
-    # Context 1: same mechanism
     X0_1 = rng.normal(size=D)
     X1_1 = X0_1 + rng.normal(scale=0.3, size=D)
     X_ctx1 = np.column_stack([X0_1, X1_1])
@@ -242,23 +185,12 @@ def test_fit_citest_contexts_basic(score_type):
     assert np.isfinite(score_bits)
     assert isinstance(results, dict)
 
-    # Basic expected keys
     for key in ["contexts", "y_grid", "dy", "cond_density", "entropy_bits_per_context", "labels_pred", "groups"]:
         assert key in results
 
 
-# -------------------------------------------------------------------
-# 5. fit_resid_* family
-# -------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("with_parents", [True, False])
 def test_fit_resid_contexts_basic(with_parents):
-    """
-    fit_resid_CONTEXTS:
-      - returns one residual array per context
-      - each residual has length equal to n_samples of that context
-    """
     rng = np.random.default_rng(0)
     D0, D1 = 100, 120
     N = 3
@@ -283,11 +215,6 @@ def test_fit_resid_contexts_basic(with_parents):
 
 
 def test_fit_resid_time_basic():
-    """
-    fit_resid_TIME:
-      - X is (T, N)
-      - returns list of residual arrays per segment (we pass changepoints=None).
-    """
     adj = np.array([
         [0, 1],
         [0, 0],
@@ -310,11 +237,6 @@ def test_fit_resid_time_basic():
 
 
 def test_fit_resid_time_contexts_basic():
-    """
-    fit_resid_TIME_CONTEXTS:
-      - X is dict[ctx -> (T_c, N)]
-      - returns list of residual arrays per segment across contexts.
-    """
     adj = np.array([
         [0, 1],
         [0, 0],
@@ -344,16 +266,8 @@ def test_fit_resid_time_contexts_basic():
         assert resid.shape[0] > 0
 
 
-# -------------------------------------------------------------------
-# 6. discrepancy_from_resid
-# -------------------------------------------------------------------
-
 
 def test_discrepancy_from_resid_single_set():
-    """
-    With a single residual set, discrepancy_from_resid should
-    return 0.0 and an empty pairwise dict.
-    """
     resid = np.random.randn(100)
     discrep, details = discrepancy_from_resid([resid])
 
@@ -362,11 +276,6 @@ def test_discrepancy_from_resid_single_set():
 
 
 def test_discrepancy_from_resid_multiple_sets():
-    """
-    With multiple residual sets, we expect:
-      - pairwise entries for all (i,j)
-      - discrepancy >= ~0 (allow small negative due to unbiased MMD)
-    """
     rng = np.random.default_rng(0)
     r0 = rng.normal(size=100)
     r1 = rng.normal(loc=1.0, scale=1.0, size=100)
@@ -377,26 +286,23 @@ def test_discrepancy_from_resid_multiple_sets():
     discrep_sum, details_sum = discrepancy_from_resid(residual_sets, aggregate="sum")
     discrep_avg, details_avg = discrepancy_from_resid(residual_sets, aggregate="avg")
 
-    # keys should be all pairs (0,1), (0,2), (1,2)
+
     expected_keys = {(0, 1), (0, 2), (1, 2)}
     assert set(details_sum.keys()) == expected_keys
     assert set(details_avg.keys()) == expected_keys
 
-    # Allow tiny negative numbers due to unbiased MMD estimator
+
     assert discrep_sum >= -1e-6
     assert discrep_avg >= -1e-6
     assert np.isfinite(discrep_sum)
     assert np.isfinite(discrep_avg)
 
-    # sum and avg should differ but be consistent
+
     assert discrep_sum >= discrep_avg - 1e-8
     assert discrep_sum > 0 or discrep_avg > 0
 
 
 def test_discrepancy_from_resid_invalid_aggregate():
-    """
-    Invalid aggregate argument should raise ValueError.
-    """
     residual_sets = [np.random.randn(50), np.random.randn(50)]
     with pytest.raises(ValueError):
         discrepancy_from_resid(residual_sets, aggregate="invalid")

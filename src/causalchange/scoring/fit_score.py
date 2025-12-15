@@ -746,6 +746,28 @@ def fit_score_spln(Xtr, ytr, return_residuals: bool = False, **params):
     """
     X = np.asarray(Xtr, float)
     y = np.asarray(ytr, float).reshape(-1)
+    if X.ndim == 1:
+        X = X.reshape(-1, 1)
+
+    finite = np.isfinite(y) & np.all(np.isfinite(X), axis=1)
+    X = X[finite]
+    y = y[finite]
+
+    min_n = max(5, int(params.get("min_n", 5)))
+    if y.size < min_n:
+        dummy = {
+            "kind": "splines_sklearn",
+            "model": None,
+            "predict": (lambda Xte, return_var=False: (
+            np.full(len(Xte), np.nan), np.full(len(Xte), np.nan)) if return_var else np.full(len(Xte), np.nan)),
+            "sse": float("inf"),
+            "mdl_bits": float("inf"),
+            "details": {"reason": f"too_few_finite_rows: {y.size}"},
+        }
+        if return_residuals:
+            return dummy, float("inf"), np.array([])
+        return dummy, float("inf")
+
     n, d = X.shape
 
     n_knots = int(params.get("n_knots", 10))
@@ -766,6 +788,13 @@ def fit_score_spln(Xtr, ytr, return_residuals: bool = False, **params):
     )
     reg = Ridge(alpha=alpha) if model_type == "ridge" else LinearRegression()
     model = make_pipeline(StandardScaler(), spline, reg)
+    print("X finite:", np.isfinite(X).all(),
+          "n_nan:", np.isnan(X).sum(),
+          "n_inf:", np.isinf(X).sum(),
+          "col_nan_counts:", np.isnan(X).sum(axis=0))
+
+
+
     model.fit(X, y)
 
     yhat = model.predict(X)

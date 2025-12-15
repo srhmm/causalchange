@@ -11,12 +11,8 @@ from src.causalchange.dag.dag import DAG
 from src.causalchange.dag.edge_memoized import EdgeMemoized
 from src.causalchange.scoring.fit_cond_mixture import MixingType
 from src.causalchange.cc_types import ScoreType, GPType, DataMode, GraphSearch, XArray, XType
-from src.causalchange.search.partition_search import _js_divergence, _entropy_bits_dist, _js_divergence_discrete, \
-    flat_from_context_dict, add_edges_change_mmd_given_order, pick_source_mmd_single, discrepancy_mmd, \
-    residual_dependence_all, add_edges_rel_reduction, prune_incoming_rel, prune_incoming_combo, hsic_parent_reduction, \
-    add_outgoing_from_source_combo, add_edges_combo_given_order, gain_min_from_sample_size, edge_improvement_combo, \
-    hsic_resit_dependence, hsic_gamma_pvalue, resit_dep_pvalue_per_context, resit_dep_score_joint_pairwise, \
-    edge_dep_resit_per_context, resit_dep_score_joint, hsic_unbiased, edge_gain_combo_mmd_resit
+from src.causalchange.search.partition_search import flat_from_context_dict, add_edges_combo_given_order, \
+    hsic_gamma_pvalue, resit_dep_score_joint_pairwise, discrepancy_mmd
 from src.causalchange.util.upq import UPQ
 from src.causalchange.util.utils import is_insignificant
 from src.causalchange.util.utils_idl import exp_mutual_info_score, pi_xor_pessimistic, \
@@ -35,6 +31,7 @@ class CausalChange:
     graph_search: GraphSearch
     score_type: ScoreType | GPType
     mixing_type: MixingType
+
     #hyperparams and kwargs
     lam_mmd_hsic: int
     gain_edge_min: int
@@ -59,12 +56,13 @@ class CausalChange:
     _add_greedily: bool
     _info: Callable[[str, int], None]
     is_true_edge: Callable[[int], Callable[[int], str]]
-    # graph state
+    #state
+    #-graph state
     graph_state: nx.DiGraph
     edges_state: EdgeMemoized
     candidates: list[int]
     topological_order: list[int]
-    # mix state
+    #-mix state
     e_Z_n: dict[int, list[int]]
     e_Zp_n: dict[int, XArray]
     e_Z: list[XArray]
@@ -78,7 +76,7 @@ class CausalChange:
     fitted_mixing: bool
 
     def __init__(self, **kwargs):
-        r""" CausalChange: Causal Discovery Algorithms under Distribution Change (continuous data, multi-context continuous data, continuous-valued time series, mixtures of causal mechanisms)
+        r""" CausalChange: Causal Discovery Algorithms under Distribution Change (continuous data, multi-context continuous data, multi-context data with latent confounding, continuous-valued time series, or mixtures of causal mechanisms).
         :param optargs: optional arguments
 
         :Keyword Arguments:
@@ -293,7 +291,7 @@ class CausalChange:
         self.graph_state.add_nodes_from(range(self.N))
         self.candidates = list(range(self.N))
         self._graph_search_chain_order()
-        self._graph_search_chain_prune()
+        self._graph_search_chain_prune(eps_keep=0.05)
         self.fitted_graph = True
         return self.graph_state
 
@@ -315,7 +313,7 @@ class CausalChange:
             self,
             K_max: int = 3,
             eps_add: float = 0.0,
-            allow_prev_as_parents: bool = False,
+            allow_prev_as_parents: bool = True,
     ) -> int:
         """
         Pick next source using CAM-IA style score:
@@ -342,6 +340,10 @@ class CausalChange:
             d_curr = self._discrepancy(xj, P)
             d_base = d_curr
 
+            d_min_order = 0.05
+            #if d_base < d_min_order:
+            #    continue
+
             for _ in range(K_max):
                 best_drop = 0.0
                 best_cand = None
@@ -365,7 +367,8 @@ class CausalChange:
                 P.append(best_cand)
                 d_curr = float(best_d_new)
 
-            S_j = d_base - d_curr
+            eps = 1e-9
+            S_j = (d_base - d_curr) / (d_base + eps)
             if S_j < best_score:
                 best_score = S_j
                 best_node = xj
@@ -405,14 +408,19 @@ class CausalChange:
 
             for xi in anc:
                 anc_minus = [xa for xa in anc if xa != xi]
-                if not anc_minus:
-                    continue
+                #if not anc_minus:
+                #    continue
 
                 d_minus = self._discrepancy(xj, anc_minus)
-                delta_ji = float(d_minus - d_full)
+                eps = 1e-9
+                delta_abs = float(d_minus - d_full)
+                delta_rel = delta_abs / (float(d_full) + eps)
 
-                if not self.is_discrepancy_insignificant(delta_ji, eps=eps_keep):
-                    self.graph_state.add_edge(xi, xj, weight=delta_ji)
+                tau_rel = eps_keep
+                tau_abs = 0.01 #testing
+
+                if (delta_abs > tau_abs) or (delta_rel > tau_rel):
+                    self.graph_state.add_edge(xi, xj, weight=delta_rel)
 
     def _discrepancy(self, child, parents, ret_full_result=False, vb=-3) -> float | (float, dict):
         discrep, res = self.edges_state.discrepancy(child, parents)
@@ -459,9 +467,22 @@ class CausalChange:
             self.topological_order.append(source)
             self._info(f"\t{it}. Source: {self.node_nms[source]}\t current {self.topological_order}, true {self.true_top_order}", -1)
 
-
-        self._graph_search_combo_add_edges_after_order( )
-        self._graph_search_combo_prune_edges_resit(lam_edge=gain_edge_min)
+        self._graph_search_combo_add_edges_after_order(
+            lam_edge=lam_mmd_hsic,
+            gain_min=self.gain_edge_min,
+            krr_lam=krr_lam,
+            krr_sigma=krr_sigma,
+            mmd_sigma=mmd_sigma,
+            eps=eps,
+        )
+        self._graph_search_combo_prune_edges_resit(
+            lam_edge=lam_mmd_hsic,
+            prune_min=0.5 * self.gain_edge_min,
+            krr_lam=krr_lam,
+            krr_sigma=krr_sigma,
+            mmd_sigma=mmd_sigma,
+            eps=eps,
+        )
 
     def _graph_search_combo_next(
             self,

@@ -29,7 +29,7 @@ def make_cc_chain(N=4):
     cc.init_and_check_X(X)
     cc.graph_state = nx.DiGraph()
     cc.graph_state.add_nodes_from(range(N))
-    cc.is_discrepancy_insignificant = lambda delta: delta <= 0.0
+    cc.is_discrepancy_insignificant = lambda delta, eps=0.0: delta <= eps
     return cc
 
 

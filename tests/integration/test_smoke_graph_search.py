@@ -90,6 +90,7 @@ def _run_graph_search_contexts(graph_search: GraphSearch, N: int = 3):
 from src.causalchange.scoring.fit_cond_mixture import MixingType
 
 def _run_graph_search_mixed(graph_search: GraphSearch, N: int = 3):
+    pytest.importorskip("rpy2", reason="MIXED mode requires rpy2")
     D = 60
     X = np.random.randn(D, N)
 
@@ -169,6 +170,7 @@ def test_graph_search(data_mode, graph_search):
     elif data_mode == DataMode.CONTEXTS:
         _run_graph_search_contexts(graph_search, N=3)
     elif data_mode == DataMode.MIXED:
+        pytest.importorskip("rpy2", reason="MIXED mode requires rpy2")
         _run_graph_search_mixed(graph_search, N=3)
     elif data_mode == DataMode.TIME:
         _run_graph_search_time(graph_search, N=3)

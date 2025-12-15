@@ -32,7 +32,6 @@ def make_cc_globe(N: int):
 
 
 def patch_fake_scorer(cc: CausalChange, table: dict):
-    # base/penalty provide a fallback for parent sets we don't explicitly table
     cc.edges_state = FakeEdgeMemoizedTable(
         cc.X, cc.data_mode, cc.score_type, cc.mixing_type,
         table=table,
@@ -43,14 +42,8 @@ def patch_fake_scorer(cc: CausalChange, table: dict):
 
 @st.composite
 def globe_score_tables(draw, N_min=3, N_max=5):
-    """
-    Build a random table that at least defines:
-      score([]->j) and score([i]->j) for all i!=j
-    Everything else can fall back to FakeEdgeMemoizedTable(base, penalty).
-    """
     N = draw(st.integers(min_value=N_min, max_value=N_max))
 
-    # Baseline empty-parent scores
     base_scores = draw(
         st.lists(
             st.floats(min_value=0.0, max_value=5000.0, allow_nan=False, allow_infinity=False),
@@ -63,8 +56,6 @@ def globe_score_tables(draw, N_min=3, N_max=5):
     for j in range(N):
         table[(j, frozenset())] = float(base_scores[j])
 
-    # Singleton parent scores
-    # allow them to be above/below base so gains can be +/-.
     for j in range(N):
         for i in range(N):
             if i == j:
@@ -95,7 +86,6 @@ def test_globe_initial_edges_pops_max_gain_first(data):
 
     top = q.pop_task()
 
-    # compute true argmax gain among all i->j
     best_edge = None
     best_gain = -float("inf")
     for j in range(N):
@@ -136,8 +126,5 @@ def test_globe_forward_keeps_graph_acyclic_and_synced(data, n_steps):
             break
         steps += 1
 
-        # must remain acyclic
         assert nx.is_directed_acyclic_graph(cc.graph_state)
-
-        # must remain synced
         cc._assert_sync(dag)

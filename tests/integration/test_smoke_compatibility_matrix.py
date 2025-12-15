@@ -30,8 +30,10 @@ def test_fit_smoke_across_compatible_modes(data_mode, graph_search):
 
     N = 4
     rng = np.random.default_rng(123)
+    if data_mode==DataMode.MIXED:
+        pytest.importorskip("rpy2", reason="MIXED mode requires rpy2")
 
-    # Provide minimal data for each mode
+    #minimal data for each mode
     if data_mode == DataMode.IID or data_mode == DataMode.MIXED:
         X = rng.standard_normal((80, N))
     elif data_mode == DataMode.CONTEXTS or data_mode == DataMode.TIME_CONTEXTS:
@@ -40,7 +42,6 @@ def test_fit_smoke_across_compatible_modes(data_mode, graph_search):
         X = rng.standard_normal((80, N))
     else:
         pytest.skip("Unhandled DataMode")
-
     cc = CausalChange(
         data_mode=data_mode,
         graph_search=graph_search,
@@ -56,7 +57,6 @@ def test_fit_smoke_across_compatible_modes(data_mode, graph_search):
 
     _assert_sane_graph(G, N)
 
-    # Optional: only assert topo order exists for modes that define it
     if hasattr(cc, "topological_order") and cc.topological_order is not None:
         topo = list(cc.topological_order)
         assert sorted(topo) == sorted(G.nodes)

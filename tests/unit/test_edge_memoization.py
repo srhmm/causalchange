@@ -7,10 +7,6 @@ from src.causalchange.scoring.fit_cond_mixture import MixingType
 from tests.utils.sample import sample_linear_sem, sample_linear_sem_mixed
 
 
-# -------------------------------------------------------------------
-# Helpers to construct EdgeMemoized in different regimes
-# -------------------------------------------------------------------
-
 
 def _make_edge_iid(X, score_type):
     return EdgeMemoized(
@@ -49,11 +45,6 @@ def _make_edge_mixed(X, mixing_type, score_type):
     )
 
 
-# -------------------------------------------------------------------
-# Score type groups
-# -------------------------------------------------------------------
-
-# Score-based types usable with IID / CONTEXTS
 SCOREBASED_TYPES = [
     ScoreType.LIN,
     ScoreType.GAM,
@@ -63,25 +54,15 @@ SCOREBASED_TYPES = [
     GPType.FOURIER,
 ]
 
-# Constraint-based types (currently only CIType.KCI)
 CONSTRAINT_TYPES = [
     CIType.KCI,
 ]
 
 
-# -------------------------------------------------------------------
-# A. score_edge tests
-# -------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("score_type", SCOREBASED_TYPES)
 def test_score_edge_iid_true_parent_improves_or_equals_score(score_type):
-    """
-    For IID data, adding the true parent should not worsen the score.
-
-    We use a simple linear SEM: 0 -> 1 -> 2.
-    We check that score(j | pa=[0]) <= score(j | pa=[]).
-    """
     adj = np.array([
         [0, 1, 0],
         [0, 0, 1],
@@ -91,24 +72,19 @@ def test_score_edge_iid_true_parent_improves_or_equals_score(score_type):
 
     edge = _make_edge_iid(X, score_type)
 
-    j = 1  # child
+    j = 1
     score_empty, _ = edge.score_edge(j, pa=[])
     score_with_parent, _ = edge.score_edge(j, pa=[0])
 
     assert np.isfinite(score_empty)
     assert np.isfinite(score_with_parent)
 
-    # Lower score is better (e.g., negative log-likelihood / BIC)
+
     assert score_with_parent <= score_empty + 1e-6
 
 
 @pytest.mark.parametrize("score_type", SCOREBASED_TYPES)
 def test_score_edge_contexts_runs_and_finite(score_type):
-    """
-    For CONTEXTS data, score_edge should run and give finite scores.
-
-    We use two contexts drawn from the same SEM for simplicity.
-    """
     adj = np.array([
         [0, 1, 0],
         [0, 0, 1],
@@ -130,11 +106,7 @@ def test_score_edge_contexts_runs_and_finite(score_type):
 
 @pytest.mark.parametrize("score_type", CONSTRAINT_TYPES)
 def test_score_edge_contexts_constraint_based_runs(score_type):
-    """
-    For CONTEXTS data with a constraint-based type (e.g. KCI),
-    score_edge should call fit_citest_CONTEXTS and return a finite score.
-    """
-    # simple 2-node system where X0 -> X1
+
     rng = np.random.default_rng(0)
     D = 200
     X0_0 = rng.normal(size=D)
@@ -157,11 +129,6 @@ def test_score_edge_contexts_constraint_based_runs(score_type):
 
 
 def test_score_edge_caching_iid():
-    """
-    Calling score_edge with the same (j, pa) twice should hit the cache:
-      - only one entry in score_cache
-      - returned score/res are identical and same objects
-    """
     D, N = 100, 3
     X = np.random.randn(D, N)
     score_type = GPType.EXACT
@@ -178,12 +145,6 @@ def test_score_edge_caching_iid():
 
 
 def test_score_edge_mixed_runs_and_finite():
-    """
-    For MIXED data, score_edge should run and return finite values.
-
-    We don't assert monotonicity because mixture inference is complex; we just
-    ensure basic sanity and routing to fit_fun_MIXED.
-    """
     adj = np.array([
         [0, 1, 0],
         [0, 0, 1],
@@ -207,31 +168,18 @@ def test_score_edge_mixed_runs_and_finite():
     assert isinstance(res_parent, dict)
 
 
-# -------------------------------------------------------------------
-# B. discrepancy tests
-# -------------------------------------------------------------------
 
 
 def test_discrepancy_contexts_basic():
-    """
-    For CONTEXTS, discrepancy() should be >= 0 and reflect changes in
-    conditional distributions across contexts.
-
-    We construct two contexts with different linear mechanisms:
-      ctx0: X1 = X0 + noise
-      ctx1: X1 = 2 * X0 + noise
-    """
     rng = np.random.default_rng(0)
     D = 300
     N = 2
 
-    # Context 0
     X0_0 = rng.normal(size=D)
     noise0 = rng.normal(scale=0.2, size=D)
     X1_0 = X0_0 + noise0
     X_ctx0 = np.column_stack([X0_0, X1_0])
 
-    # Context 1 (different slope)
     X0_1 = rng.normal(size=D)
     noise1 = rng.normal(scale=0.2, size=D)
     X1_1 = 2.0 * X0_1 + noise1
@@ -239,7 +187,7 @@ def test_discrepancy_contexts_basic():
 
     X_contexts = {0: X_ctx0, 1: X_ctx1}
 
-    score_type = GPType.EXACT  # score-based, needed for residuals
+    score_type = GPType.EXACT
     edge = EdgeMemoized(
         X=X_contexts,
         data_mode=DataMode.CONTEXTS,
@@ -251,13 +199,12 @@ def test_discrepancy_contexts_basic():
     pa = [0]
 
     discrep1, res1 = edge.discrepancy(j, pa)
-    discrep2, res2 = edge.discrepancy(j, pa)  # cache hit
+    discrep2, res2 = edge.discrepancy(j, pa)
 
-    # Allow small negative values from unbiased MMD estimator
+
     assert discrep1 >= -1e-1
     assert np.isfinite(discrep1)
 
-    # Cache correctness
     assert np.isclose(discrep1, discrep2, atol=1e-12)
     assert res1 is res2
     assert len(edge.discrep_cache) == 1

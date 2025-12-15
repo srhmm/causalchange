@@ -93,7 +93,21 @@ class DataGenContext(object):
         return labels
 
     def _choose_fun_lib(self, fun_type):
-        key = getattr(fun_type, "value", str(fun_type)).lower()
+        if hasattr(fun_type, "value"):
+            key = fun_type.value
+        elif isinstance(fun_type, str):
+            key = fun_type.split(".")[-1]
+        else:
+            key = str(fun_type)
+
+        key = key.lower()
+
+        if key not in _FUN_LIB_ALL:
+            raise KeyError(
+                f"Unknown fun_type '{fun_type}' (normalized to '{key}'). "
+                f"Available: {list(_FUN_LIB_ALL.keys())}"
+            )
+
         return list(_FUN_LIB_ALL[key])
 
     def _draw_noise_vec(self, kind_vec, scale_vec):

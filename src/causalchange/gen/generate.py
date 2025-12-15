@@ -33,7 +33,7 @@ def gen_example_continuous(n_nodes=5, seed=42):
     return X, truths
 
 def gen_example_context(n_nodes=5, n_c=10, seed=42):
-    n_s_c = 1000
+    n_s_c = 500
     params = {
         'N': n_nodes,
         'S': n_s_c * n_c,
@@ -43,7 +43,7 @@ def gen_example_context(n_nodes=5, n_c=10, seed=42):
         'Kmn': 1,
         'Kmx': 3,
         'IVM': GenDataType.MULTI_CONTEXT,
-        'IVT': IvType.MIX,
+        'IVT': IvType.SHIFT,
         'GS': GSType.GRAPH,
         'DG': DagType.ERDOS,
         'F': FunType.MIX,

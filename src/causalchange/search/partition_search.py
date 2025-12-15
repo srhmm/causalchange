@@ -550,8 +550,9 @@ def edge_improvement_combo(source, target, G, X_all, C_idx,
         delta_h = max(0.0, hs0 - hs1)
         r_hsic = delta_h / (hs0 + eps)
 
-    gain = lam_edge * r_mmd + (1.0 - lam_edge) * (1-r_hsic)
+    gain = lam_edge * r_mmd + (1.0 - lam_edge) * r_hsic
     return float(gain), float(r_mmd), float(r_hsic), float(D_base), float(D_with)
+
 
 def gain_min_from_sample_size(C_idx, c_edge=1.0, mode="min_ctx"):
     """
@@ -661,11 +662,11 @@ def add_edges_combo_given_order(order, X_all, C_idx,
             best_stats = None
 
             for u in cand:
-                r_mmd, r_hsic, D_base, D_with = edge_improvement_combo(
+                gain, r_mmd, r_hsic, D_base, D_with = edge_improvement_combo(
                     u, t, G, X_all, C_idx,
+                    lam_edge=lam_edge,
                     krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma, eps=eps
                 )
-                gain = lam_edge * r_mmd + (1.0 - lam_edge) * r_hsic
                 if gain > best_gain:
                     best_gain = gain
                     best_u = u
@@ -709,11 +710,11 @@ def add_outgoing_from_source_combo(source, order, G, X_all, C_idx,
         if max_parents is not None and len(parents) >= max_parents:
             continue
 
-        r_mmd, r_hsic, D_base, D_with = edge_improvement_combo(
+        gain, r_mmd, r_hsic, D_base, D_with = edge_improvement_combo(
             source, target, G, X_all, C_idx,
+            lam_edge=lam_edge,
             krr_lam=krr_lam, krr_sigma=krr_sigma, mmd_sigma=mmd_sigma, eps=eps
         )
-        gain = lam_edge * r_mmd + (1.0 - lam_edge) * r_hsic
 
         if gain >= gain_min:
             G.add_edge(source, target)

@@ -25,7 +25,6 @@ def make_cc_topic(N: int):
     cc.graph_state = nx.DiGraph()
     cc.graph_state.add_nodes_from(range(N))
 
-    # Deterministic significance: only strictly positive gains count
     cc.is_score_insignificant = lambda gain: gain <= 0.0
     return cc
 
@@ -126,11 +125,9 @@ def test_topic_add_outgoing_adds_exactly_positive_gain_edges(data):
     cc = make_cc_topic(N)
     patch_fake_scorer(cc, table)
 
-    # Pick the TOPIC source for this table/candidates
     candidates = list(range(N))
     source, _ = cc._graph_search_topological_next(candidates)
 
-    # Simulate TOPIC iteration state
     cc.candidates = [n for n in candidates if n != source]
     cc.topological_order = [source]
 
@@ -145,7 +142,6 @@ def test_topic_add_outgoing_adds_exactly_positive_gain_edges(data):
     got_edges = set((e["from"], e["to"]) for e in added_edges)
     assert got_edges == expected_edges
 
-    # sanity: graph_state contains those edges
     assert set(cc.graph_state.edges()) == expected_edges
 
 
@@ -163,7 +159,6 @@ def test_topic_history_shape_invariants(data):
     cc = make_cc_topic(N)
     patch_fake_scorer(cc, table)
 
-    # Run the full TOPIC graph search
     cc._graph_search_topological()
 
     assert len(cc.topic_history) == N

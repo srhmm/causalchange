@@ -44,39 +44,78 @@ class EdgeMemoized:
             else None
         return score_fun
 
+    def discrepancy(self, j, pa):
+        pa = pa or []
+        pa_key = tuple(sorted(pa))
+        hash_key = (int(j), pa_key)
 
-    def discrepancy(self, j, pa) -> (float,dict):
-        """
-        Evaluates discrepancy of conditional distributions P(Xj | pa(Xj), C=c) across different values of c (usually c are context labels, but they can also be temporal regimes separated by changepoints, or unknown labels).
-
-        :param j: Xj
-        :param pa: pa(Xj)
-        :return: discrepancy, usually sth like \sum_{pairs c1, c2} d(residuals of the regression Xpa->Xj in c1; same residuals in c2)
-        """
-        hash_key = f'j_{str(j)}_pa_{str(pa)}'
-
-        if self.discrep_cache.__contains__(hash_key):
-            assert hash_key in self.res_discrep_cache
+        if hash_key in self.discrep_cache:
             return self.discrep_cache[hash_key], self.res_discrep_cache[hash_key]
 
         score_fun = self.get_score_fun()
-        assert score_fun is not None, f"no scoring function for {self.score_type}"
-        discrep_fun = mmd_rbf # could change based on a discrep_type if we want
+        assert score_fun is not None
 
-        if self.data_mode == DataMode.CONTEXTS:
-            resid_sets = fit_resid_CONTEXTS(self.X, j, pa, score_fun)
+        if self.data_mode != DataMode.CONTEXTS:
+            raise NotImplementedError("baseline-fit discrepancy only implemented for CONTEXTS here")
 
-        elif self.data_mode == DataMode.TIME:
-            resid_sets = fit_resid_TIME(self.X, j, pa, score_fun, self.scoring_params.get("changepoints"))
-        elif self.data_mode == DataMode.TIME_CONTEXTS:
-            resid_sets = fit_resid_TIME_CONTEXTS(self.X, j, pa, score_fun,
-                                                 self.scoring_params.get("changepoints_per_context"))
-        elif self.data_mode == DataMode.MIXED:
-            raise NotImplementedError
-           # resid_sets = fit_resid_MIXED(self.X, j, pa, score_fun)
-        else: raise ValueError(self.data_mode)
+        X_dict = self.X
+        ctx_ids = sorted(X_dict.keys())
+        baseline_ctx = int(self.scoring_params.get("baseline_ctx", ctx_ids[0]))
+        rotate = bool(self.scoring_params.get("rotate_baseline", False))
+        agg = self.scoring_params.get("discrep_agg", "max")  # "max" or "mean"
+        eps = float(self.scoring_params.get("mmd_eps", 0.0))
 
-        discrep, res = discrepancy_from_resid(resid_sets, mmd_fn=discrep_fun, aggregate="sum")
+        def _make_Xpa(Xc):
+            if len(pa_key):
+                return Xc[:, pa_key]
+            return np.ones((Xc.shape[0], 1), dtype=float)
+
+        def _one_baseline(bctx):
+            Xb = X_dict[bctx]
+            yb = Xb[:, j]
+            Xpb = _make_Xpa(Xb)
+
+            model, _, _ = score_fun(Xpb, yb, return_residuals=True, **self.scoring_params)
+            predict = model["predict"] if isinstance(model, dict) and "predict" in model else model.predict
+
+            resid_by_ctx = {}
+            for c in ctx_ids:
+                Xc = X_dict[c]
+                yc = Xc[:, j]
+                Xpc = _make_Xpa(Xc)
+                yhat = predict(Xpc)
+                resid_by_ctx[c] = (yc - yhat).reshape(-1)
+
+            rb = resid_by_ctx[bctx]
+            vals = {}
+            for c in ctx_ids:
+                if c == bctx:
+                    continue
+                m = max(0.0, mmd_rbf(rb, resid_by_ctx[c]))  # clamp if you want
+                vals[(bctx, c)] = m
+
+            if not vals:
+                return 0.0, {"pairwise": vals, "baseline": bctx}
+
+            arr = np.array(list(vals.values()), dtype=float)
+            d = float(arr.max() if agg == "max" else arr.mean())
+            return d, {"pairwise": vals, "baseline": bctx}
+
+        if rotate:
+            ds = []
+            details = []
+            for bctx in ctx_ids:
+                d, det = _one_baseline(bctx)
+                ds.append(d)
+                details.append(det)
+            discrep = float(np.mean(ds)) if ds else 0.0
+            res = {"rotated": True, "agg": agg, "details": details}
+        else:
+            discrep, res = _one_baseline(baseline_ctx)
+            res.update({"rotated": False, "agg": agg})
+
+        if discrep < eps:
+            discrep = 0.0
 
         self.discrep_cache[hash_key] = discrep
         self.res_discrep_cache[hash_key] = res
@@ -90,7 +129,10 @@ class EdgeMemoized:
         :param pa: pa(Xj)
         :return: score(Xpa->Xj)
         """
-        hash_key = f'j_{str(j)}_pa_{str(pa)}'
+        pa_key = tuple(sorted(pa))
+        hash_key = (int(j), pa_key)
+
+        #hash_key = f'j_{str(j)}_pa_{str(pa)}'
 
         if self.score_cache.__contains__(hash_key):
             assert hash_key in self.res_cache
@@ -209,7 +251,9 @@ def discrepancy_from_resid(
     values = []
 
     for (i, j) in combinations(range(n_sets), 2):
-        mmd_ij = mmd_fn(residual_sets[i], residual_sets[j])
+        #clamped version:
+        mmd_ij = max(0.0, mmd_fn(residual_sets[i], residual_sets[j]))
+        #mmd_ij = mmd_fn(residual_sets[i], residual_sets[j])
         pairwise[(i, j)] = mmd_ij
         values.append(mmd_ij)
 

@@ -4,7 +4,7 @@ import networkx as nx
 from causalchange.scoring.fit_cond_mixture import MixingType
 from src.causalchange.cc_types import DataMode, GraphSearch, GPType
 from src.causalchange.causal_change import CausalChange
-import src.causalchange.search.partition_search as ps
+
 
 
 def make_cc_combo(N=4):
@@ -22,6 +22,8 @@ def make_cc_combo(N=4):
     return cc
 
 
+import src.causalchange.causal_change as cc_mod
+
 def test_combo_next_picks_min_combined_score(monkeypatch):
     cc = make_cc_combo(N=4)
     cc.candidates = [0, 1, 2, 3]
@@ -36,27 +38,20 @@ def test_combo_next_picks_min_combined_score(monkeypatch):
     }
     dep = {0: 1.0, 1: 0.1, 2: 1.0, 3: 1.0}
 
-    def fake_discrepancy_mmd(X_all, C_idx, i, parents):
+    def fake_discrepancy_mmd(i, parents, X_all, C_idx, krr_lam, krr_sigma, mmd_sigma):
+        i = int(i)
         if len(parents) == 0:
-            return d0[i]
-        return d1.get((i, parents[0]), d0[i])
+            return float(d0[i])
+        return float(d1.get((i, int(parents[0])), d0[i]))
 
-    def fake_resit_dep_score_joint_pairwise(X_all, C_idx, i, parents, reg):
-        return dep[i], {}
+    def fake_resit_dep_score_joint_pairwise(effect, candidates, X_all, C_idx, **kwargs):
+        return float(dep[int(effect)])
 
-    monkeypatch.setattr(ps, "discrepancy_mmd", fake_discrepancy_mmd)
-    monkeypatch.setattr(ps, "resit_dep_score_joint_pairwise", fake_resit_dep_score_joint_pairwise)
+    monkeypatch.setattr(cc_mod, "discrepancy_mmd", fake_discrepancy_mmd)
+    monkeypatch.setattr(cc_mod, "resit_dep_score_joint_pairwise", fake_resit_dep_score_joint_pairwise)
 
-    src = cc._graph_search_combo_next(
-        lam_mix=0.5,
-        X_all=None,
-        C_idx=None,
-        dep_reg=lambda X: X,
-        indep_test_fun=lambda R, X: 1.0,
-        K_max=1,
-    )
+    src = cc._graph_search_combo_next(cc.candidates, lam_mix=0.5, krr_lam=1e-2)
     assert src == 1
-
 
 def test_combo_add_edges_after_order_calls_builder(monkeypatch):
     cc = make_cc_combo(N=3)
@@ -65,14 +60,18 @@ def test_combo_add_edges_after_order_calls_builder(monkeypatch):
 
     called = {"ok": False}
 
-    def fake_add_edges_combo_given_order(**kwargs):
+    def fake_add_edges_combo_given_order(order, X_all, C_idx, **kwargs):
         called["ok"] = True
-        return [(0, 1), (1, 2)]
+        G = nx.DiGraph()
+        G.add_nodes_from(order)
+        G.add_edge(0, 1)
+        G.add_edge(1, 2)
+        added = [(0, 1, 1.0, 0.0, 0.0, 1.0, 0.5), (1, 2, 1.0, 0.0, 0.0, 1.0, 0.5)]
+        return G, added
 
-    monkeypatch.setattr(ps, "add_edges_combo_given_order", fake_add_edges_combo_given_order)
+    monkeypatch.setattr(cc_mod, "add_edges_combo_given_order", fake_add_edges_combo_given_order)
 
     cc._graph_search_combo_add_edges_after_order(lam_edge=0.5, gain_min=0.0)
 
     assert called["ok"]
-    assert cc.graph_state.has_edge(0, 1)
-    assert cc.graph_state.has_edge(1, 2)
+    assert set(cc.graph_state.edges()) == {(0, 1), (1, 2)}

@@ -85,6 +85,7 @@ def _run_e2e_contexts(graph_search: GraphSearch):
 
 
 def _run_e2e_mixed(graph_search: GraphSearch):
+    pytest.importorskip("rpy2", reason="MIXED mode requires rpy2")
     adj = np.array([
         [0, 1, 0],
         [0, 0, 1],
@@ -218,6 +219,7 @@ def test_end_to_end(data_mode, graph_search):
     elif data_mode == DataMode.CONTEXTS:
         _run_e2e_contexts(graph_search)
     elif data_mode == DataMode.MIXED:
+        pytest.importorskip("rpy2", reason="MIXED mode requires rpy2")
         _run_e2e_mixed(graph_search)
     elif data_mode == DataMode.TIME:
         _run_e2e_time(graph_search)
