@@ -37,6 +37,7 @@ class CausalChange:
     #-graph state
     graph_state: nx.DiGraph
     edges_state: EdgeScore
+    _estimator:  TOPIC | GLOBE | None
     # flags
     fitted_graph: bool
     fitted_mixing: bool
@@ -176,4 +177,7 @@ class CausalChange:
         else: raise ValueError(self.data_mode)
         if estimator is None: raise ValueError(self.graph_search)
 
-        return estimator.fit(X)
+        self.graph_state = estimator.fit(X)
+        self.edges_state = estimator.edges_state
+        self._estimator = estimator
+        return self.graph_state

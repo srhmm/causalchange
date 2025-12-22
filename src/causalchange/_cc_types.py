@@ -16,8 +16,6 @@ class DataMode(Enum):
 class GraphSearch(Enum):
     TOPIC = 'topological'
     GLOBE = 'edge-greedy'
-    #CHAIN = 'chain'
-    #COMBO = 'combo'
 
     def __eq__(self, other):
         return self.value == other.value
@@ -92,15 +90,6 @@ class MixingType(Enum):
     MIX_CUB = 'mixCub'
     MIX_NS = 'mixNS'
     MIX_BS = 'mixBS'
-    # simple baselines
-    _BASE_BEST = 'clusBest'  # this selects per node the best MM which is not really fair; select for the whole graph the best one
-    BASE_GMM = 'clusGMM'
-    BASE_KMEANS = 'clusKmeans'
-    BASE_SPECTRAL = 'clusSpectral'
-    BASE_DBSCAN = 'clusDBSCAN'
-    BASE_HDBSCAN = 'clusHDBSCAN'
-    BASE_GMM_GLOB = 'clusGMMglobal'
-    BASE_RANDOM_SPLIT = 'clusRandSplit'
 
     SKIP = ''
 

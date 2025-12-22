@@ -8,10 +8,8 @@ BENCHMARK_GRID = {
         "linearity": ["linear", "nonlinear"],
         "n_nodes": [5],
         "edge_prob": [0.4],
-
         "n_samples": [500],
-
-        "n_contexts": [10],
+        "n_contexts": [5],
         "n_samples_per_context": [200],
         "n_intervened_per_context": [2],
         "context_col": ["context"],
