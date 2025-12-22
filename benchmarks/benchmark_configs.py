@@ -100,39 +100,22 @@ class LincAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Literal["linc"] = "linc"
     context_col: str = "context"
-    score_type: Literal["aic-g", "bic-g"] = "bic-g"
+    score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
 
 
 class TopicAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Literal["topic"] = "topic"
-    score_type: Literal["aic-g", "bic-g"] = "bic-g"
+    score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
 
 from typing import Literal, Optional, Union, Annotated
 from pydantic import BaseModel, Field, ConfigDict
 
-PCVariant = Literal["orig", "stable", "parallel"]
-PCReturnType = Literal["pdag", "cpdag", "dag"]
-
-class PcAlgoConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: Literal["pc"] = "pc"
-
-    variant: PCVariant = "parallel"
-    ci_test: Optional[Union[str, object]] = None
-    return_type: PCReturnType = "dag"
-    significance_level: float = 0.01
-    max_cond_vars: int = 5
-    n_jobs: int = -1
-    show_progress: bool = False
-
 
 AlgoConfig = Annotated[
-    Union[LincAlgoConfig, TopicAlgoConfig, PcAlgoConfig],
+    Union[LincAlgoConfig, TopicAlgoConfig],
     Field(discriminator="name"),
 ]
-
 
 class ScoringConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")

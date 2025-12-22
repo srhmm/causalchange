@@ -49,9 +49,6 @@ class SummaryRow:
     config: dict[str, Any]
 
 
-
-
-
 def bench_name_from_cfg(cfg) -> str:
     d = cfg.model_dump()
     data = d["data"]

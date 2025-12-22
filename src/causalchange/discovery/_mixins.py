@@ -422,7 +422,7 @@ class LINCMixin(ContextScoreMixin):
         ctx_scores: dict[Hashable, float] = {}
         for c in ctx_ids:
             host._init_score(host._X_context[c])
-            ctx_scores[c] = float(host._score(effect, parents_t))
+            ctx_scores[c] = float(super()._score(effect, parents_t))
 
         if n == 1:
             return ctx_scores[ctx_ids[0]]
@@ -436,7 +436,7 @@ class LINCMixin(ContextScoreMixin):
 
                 pooled = pd.concat([host._X_context[ci], host._X_context[cj]], axis=0, ignore_index=True)
                 host._init_score(pooled)
-                pooled_score = float(host._score(effect, parents_t))
+                pooled_score = float(super()._score(effect, parents_t))
 
                 g = self._transition_gain(ctx_scores[ci] + ctx_scores[cj], pooled_score)
                 gain[i, j] = gain[j, i] = g
@@ -453,7 +453,7 @@ class LINCMixin(ContextScoreMixin):
         for comp in components:
             pooled = pd.concat([host._X_context[c] for c in comp], axis=0, ignore_index=True)
             host._init_score(pooled)
-            total += float(host._score(effect, parents_t))
+            total += float(super()._score(effect, parents_t))
 
         return total
 
@@ -470,7 +470,7 @@ class LINCMixin(ContextScoreMixin):
         def group_score(g):
             pooled = pd.concat([host._X_context[c] for c in g], axis=0, ignore_index=True)
             host._init_score(pooled)
-            return float(host._score(effect, parents_t))
+            return float(super()._score(effect, parents_t))
 
         scores = {g: group_score(g) for g in groups}
 

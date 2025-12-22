@@ -2,7 +2,9 @@
 BENCHMARK_GRID = {
     "data": {
         "setting": [
-            "multi"],
+            #"single",
+            "multi"
+                     ],
         "linearity": ["linear", "nonlinear"],
         "n_nodes": [5],
         "edge_prob": [0.4],

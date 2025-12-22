@@ -18,7 +18,7 @@ from benchmarks.synthetic.generators import (
 from  benchmarks.synthetic.metrics import compute_metrics
 
 from benchmarks.benchmark_configs import BenchmarkConfig, DataConfig, ScoringConfig, AlgoConfig, \
-    LincAlgoConfig, TopicAlgoConfig, PcAlgoConfig, MultiNonlinearDataConfig, MultiLinearDataConfig, \
+    LincAlgoConfig, TopicAlgoConfig, MultiNonlinearDataConfig, MultiLinearDataConfig, \
     SingleNonlinearDataConfig, SingleLinearDataConfig
 
 from causalchange._cc_types import MixingType
@@ -126,7 +126,7 @@ def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> An
     else:
         raise ValueError(f"Unknown data setting: {data_cfg.setting!r}")
 
-    # Graph search: currently topic/globe only
+    # Graph search: currently topic only
     graph_search = GraphSearch.TOPIC if algo_cfg.name in ("topic", "linc", "spacetime", "spacetime_c") else GraphSearch.TOPIC
 
     # score_type from algo config
@@ -216,8 +216,6 @@ def iter_valid_configs(grid: dict[str, Any]):
                 algo_opt = _filter_to_model_fields(LincAlgoConfig, algo_opt0)
             elif name == "topic":
                 algo_opt = _filter_to_model_fields(TopicAlgoConfig, algo_opt0)
-            elif name == "pc":
-                algo_opt = _filter_to_model_fields(PcAlgoConfig, algo_opt0)
             else:
                 continue
 

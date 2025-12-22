@@ -24,7 +24,10 @@ class EstimatorBaseMixin:
         vb: int = 0,
         **kwargs,
     ):
-        super().__init__()
+        try:
+            super().__init__(**kwargs)
+        except TypeError:
+            super().__init__()
         self.data_mode = data_mode
         self.score_type = score_type
         self.mixing_type = mixing_type

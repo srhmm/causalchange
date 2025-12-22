@@ -16,8 +16,8 @@ class DataMode(Enum):
 class GraphSearch(Enum):
     TOPIC = 'topological'
     GLOBE = 'edge-greedy'
-    CHAIN = 'chain'
-    COMBO = 'combo'
+    #CHAIN = 'chain'
+    #COMBO = 'combo'
 
     def __eq__(self, other):
         return self.value == other.value
@@ -27,10 +27,10 @@ class GraphSearch(Enum):
             return [DataMode.IID, DataMode.CONTEXTS, DataMode.MIXED, DataMode.TIME, DataMode.TIME_CONTEXTS]
         elif self is GraphSearch.GLOBE:
             return [DataMode.IID, DataMode.CONTEXTS]
-        elif self is GraphSearch.CHAIN:
-            return [DataMode.CONTEXTS]
-        elif self is GraphSearch.COMBO:
-            return [DataMode.CONTEXTS]
+        #elif self is GraphSearch.CHAIN:
+        #    return [DataMode.CONTEXTS]
+        #elif self is GraphSearch.COMBO:
+        #    return [DataMode.CONTEXTS]
         else:
             return []
 
