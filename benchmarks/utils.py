@@ -1,7 +1,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, List
 
 def mean_std(xs: list[float]) -> tuple[float, float]:
     n = len(xs)
@@ -59,13 +59,11 @@ def bench_name_from_cfg(cfg) -> str:
 
     parts = [
         algo["name"],
-        str(data["setting"]),
+        data["setting"],
         data["linearity"],
     ]
-    if str(data["setting"]) in ("contexts", "time-contexts"):
-        iv = data.get("intervention_type")
-        if iv is not None:
-            parts.append(f"iv-{iv}")
+    if data["setting"] == "multi":
+        parts.append(f"iv-{data.get('intervention_type')}")
     return "_".join(parts)
 
 

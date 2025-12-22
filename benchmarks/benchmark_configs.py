@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-
-from causalchange._cc_types import DataMode
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 
 MetricName = Literal["shd", "edge_f1", "skel_f1", "time_s"]
 
@@ -25,24 +23,23 @@ class DataConfigBase(BaseModel):
 
 
 class SingleLinearDataConfig(DataConfigBase):
-    setting: Literal[DataMode.IID] = DataMode.IID
+    setting: Literal["single"] = "single"
     linearity: Literal["linear"] = "linear"
 
     n_samples: int = Field(..., ge=1)
 
 
+
 class SingleNonlinearDataConfig(DataConfigBase):
-    setting: Literal[DataMode.IID] = DataMode.IID
+    setting: Literal["single"] = "single"
     linearity: Literal["nonlinear"] = "nonlinear"
 
     n_samples: int = Field(..., ge=1)
     nonlinearity: Nonlinearity
 
 
-
-
 class MultiLinearDataConfig(DataConfigBase):
-    setting: Literal[DataMode.CONTEXTS] = DataMode.CONTEXTS
+    setting: Literal["multi"] = "multi"
     linearity: Literal["linear"] = "linear"
 
     context_col: str = "context"
@@ -57,8 +54,9 @@ class MultiLinearDataConfig(DataConfigBase):
     noise_scale_intervened: Optional[float] = None
 
 
+
 class MultiNonlinearDataConfig(DataConfigBase):
-    setting: Literal[DataMode.CONTEXTS] = DataMode.CONTEXTS
+    setting: Literal["multi"] = "multi"
     linearity: Literal["nonlinear"] = "nonlinear"
 
     context_col: str = "context"
@@ -82,103 +80,56 @@ class MultiNonlinearDataConfig(DataConfigBase):
         return self
 
 
-
-
-class SingleTemporalLinearDataConfig(DataConfigBase):
-    setting: Literal[DataMode.TIME] = DataMode.TIME
-    linearity: Literal["linear"] = "linear"
-
-    n_samples: int = Field(..., ge=1)
-    tau_max: int = Field(1, ge=1)
-
-
-class SingleTemporalNonlinearDataConfig(DataConfigBase):
-    setting: Literal[DataMode.TIME] = DataMode.TIME
-    linearity: Literal["nonlinear"] = "nonlinear"
-
-    n_samples: int = Field(..., ge=1)
-    tau_max: int = Field(1, ge=1)
-    nonlinearity: Nonlinearity
-
-
-class MultiTemporalLinearDataConfig(DataConfigBase):
-    setting: Literal[DataMode.TIME_CONTEXTS] = DataMode.TIME_CONTEXTS
-    linearity: Literal["linear"] = "linear"
-
-    context_col: str = "context"
-    n_contexts: int = Field(..., ge=1)
-    n_samples_per_context: int = Field(..., ge=1)
-    tau_max: int = Field(1, ge=1)
-
-
-class MultiTemporalNonlinearDataConfig(DataConfigBase):
-    setting: Literal[DataMode.TIME_CONTEXTS] = DataMode.TIME_CONTEXTS
-    linearity: Literal["nonlinear"] = "nonlinear"
-
-    context_col: str = "context"
-    n_contexts: int = Field(..., ge=1)
-    n_samples_per_context: int = Field(..., ge=1)
-    tau_max: int = Field(1, ge=1)
-    nonlinearity: Nonlinearity
-
-
-
-IIDDataConfig = Annotated[
+SingleDataConfig = Annotated[
     Union[SingleLinearDataConfig, SingleNonlinearDataConfig],
     Field(discriminator="linearity"),
 ]
 
-ContextsDataConfig = Annotated[
+MultiDataConfig = Annotated[
     Union[MultiLinearDataConfig, MultiNonlinearDataConfig],
     Field(discriminator="linearity"),
 ]
 
-TimeDataConfig = Annotated[
-    Union[SingleTemporalLinearDataConfig, SingleTemporalNonlinearDataConfig],
-    Field(discriminator="linearity"),
-]
-
-TimeContextsDataConfig = Annotated[
-    Union[MultiTemporalLinearDataConfig, MultiTemporalNonlinearDataConfig],
-    Field(discriminator="linearity"),
-]
-
 DataConfig = Annotated[
-    Union[IIDDataConfig, ContextsDataConfig, TimeDataConfig, TimeContextsDataConfig],
+    Union[SingleDataConfig, MultiDataConfig],
     Field(discriminator="setting"),
 ]
-
-
 
 
 class LincAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Literal["linc"] = "linc"
     context_col: str = "context"
-    scoring_method: Literal["aic-g", "bic-g"] = "bic-g"
+    score_type: Literal["aic-g", "bic-g"] = "bic-g"
 
 
 class TopicAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Literal["topic"] = "topic"
-    scoring_method: Literal["aic-g", "bic-g"] = "bic-g"
+    score_type: Literal["aic-g", "bic-g"] = "bic-g"
 
+from typing import Literal, Optional, Union, Annotated
+from pydantic import BaseModel, Field, ConfigDict
 
-class SpaceTimeAlgoConfig(BaseModel):
+PCVariant = Literal["orig", "stable", "parallel"]
+PCReturnType = Literal["pdag", "cpdag", "dag"]
+
+class PcAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    name: Literal["spacetime"] = "spacetime"
-    scoring_method: Optional[Literal["aic-g", "bic-g"]] = None
 
+    name: Literal["pc"] = "pc"
 
-class SpaceTimeCAlgoConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    name: Literal["spacetime_c"] = "spacetime_c"
-    context_col: str = "context"
-    scoring_method: Optional[Literal["aic-g", "bic-g"]] = None
+    variant: PCVariant = "parallel"
+    ci_test: Optional[Union[str, object]] = None
+    return_type: PCReturnType = "dag"
+    significance_level: float = 0.01
+    max_cond_vars: int = 5
+    n_jobs: int = -1
+    show_progress: bool = False
 
 
 AlgoConfig = Annotated[
-    Union[LincAlgoConfig, TopicAlgoConfig, SpaceTimeAlgoConfig, SpaceTimeCAlgoConfig],
+    Union[LincAlgoConfig, TopicAlgoConfig, PcAlgoConfig],
     Field(discriminator="name"),
 ]
 
@@ -195,7 +146,6 @@ class ScoringConfig(BaseModel):
             raise ValueError("metrics must not be empty.")
         return v
 
-
 class BenchmarkConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -205,12 +155,11 @@ class BenchmarkConfig(BaseModel):
 
     @model_validator(mode="after")
     def _couple_algo_and_data(self):
-        if self.algo.name == "topic" and self.data.setting != DataMode.IID:
-            raise ValueError("algo=topic is only valid with data.setting=DataMode.IID")
-        if self.algo.name == "linc" and self.data.setting != DataMode.CONTEXTS:
-            raise ValueError("algo=linc is only valid with data.setting=DataMode.CONTEXTS")
-        if self.algo.name == "spacetime" and self.data.setting != DataMode.TIME:
-            raise ValueError("algo=spacetime is only valid with data.setting=DataMode.TIME")
-        if self.algo.name == "spacetime_c" and self.data.setting != DataMode.TIME_CONTEXTS:
-            raise ValueError("algo=spacetime_c is only valid with data.setting=DataMode.TIME_CONTEXTS")
+        if self.algo.name == "linc" and self.data.setting != "multi":
+            raise ValueError("algo=linc is only valid with data.setting='multi'.")
+        if self.algo.name == "topic" and self.data.setting != "single":
+            raise ValueError("algo=topic is only valid with data.setting='single'.")
+        if self.algo.name == "pc" and self.data.setting != "single":
+            raise ValueError(
+                "algo=pc is only valid with data.setting='single' (otherwise it will treat context as a variable).")
         return self
