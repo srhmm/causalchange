@@ -1,0 +1,91 @@
+
+import math
+from dataclasses import dataclass
+from typing import Any
+
+def mean_std(xs: list[float]) -> tuple[float, float]:
+    n = len(xs)
+    if n == 0:
+        return (float("nan"), float("nan"))
+    m = sum(xs) / n
+    if n == 1:
+        return (m, 0.0)
+    var = sum((x - m) ** 2 for x in xs) / (n - 1)
+    return (m, math.sqrt(var))
+
+def flatten_dict(d: dict[str, Any], parent: str = "", sep: str = ".") -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in d.items():
+        key = f"{parent}{sep}{k}" if parent else k
+        if isinstance(v, dict):
+            out.update(flatten_dict(v, key, sep=sep))
+        else:
+            out[key] = v
+    return out
+
+def _freeze(v: Any) -> Any:
+    if isinstance(v, dict):
+        return tuple(sorted((k, _freeze(val)) for k, val in v.items()))
+    if isinstance(v, set):
+        return tuple(sorted(_freeze(x) for x in v))
+    if isinstance(v, list) or isinstance(v, tuple):
+        return tuple(_freeze(x) for x in v)
+    return v
+
+
+def config_group_key(cfg) -> tuple[tuple[str, Any], ...]:
+    d = cfg.model_dump()
+    d.get("data", {}).pop("seed", None)
+    frozen = _freeze(d)
+    return frozen
+
+@dataclass(frozen=True)
+class SummaryRow:
+    bench: str
+    metric: str
+    mean: float
+    std: float
+    n: int
+    config: dict[str, Any]
+
+
+
+
+
+def bench_name_from_cfg(cfg) -> str:
+    d = cfg.model_dump()
+    data = d["data"]
+    algo = d["algo"]
+
+    parts = [
+        algo["name"],
+        str(data["setting"]),
+        data["linearity"],
+    ]
+    if str(data["setting"]) in ("contexts", "time-contexts"):
+        iv = data.get("intervention_type")
+        if iv is not None:
+            parts.append(f"iv-{iv}")
+    return "_".join(parts)
+
+
+def summarize_groups(groups: dict[tuple[tuple[str, Any], ...], dict[str, Any]]) -> list[SummaryRow]:
+    rows: list[SummaryRow] = []
+    for key, payload in groups.items():
+        config_example = payload["config_example"]
+        bench = payload["bench"]
+        metrics_map: dict[str, list[float]] = payload["metrics"]
+
+        for metric, values in metrics_map.items():
+            m, s = mean_std(values)
+            rows.append(SummaryRow(
+                bench=bench,
+                metric=metric,
+                mean=m,
+                std=s,
+                n=len(values),
+                config=config_example,
+            ))
+
+    rows.sort(key=lambda r: (r.bench, r.metric))
+    return rows

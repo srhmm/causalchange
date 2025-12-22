@@ -1,0 +1,31 @@
+[
+  {
+    "bench": "linc_multi_linear_iv-soft_weight",
+    "metric": "edge_f1",
+    "mean": 0.44523809523809527,
+    "std": 0.44643121692337845,
+    "n": 10,
+    "config": {
+      "data": {
+        "n_nodes": 5,
+        "edge_prob": 0.4,
+        "weight_scale": 2.0,
+        "noise_scale": 0.7,
+        "setting": "multi",
+        "linearity": "linear",
+        "context_col": "context",
+        "n_contexts": 5,
+        "n_samples_per_context": 200,
+        "n_intervened_per_context": 1,
+        "intervention_type": "soft_weight",
+        "weight_scale_intervened": 2.0,
+        "shift_scale": 2.0,
+        "noise_scale_intervened": null
+      },
+      "algo": {
+        "name": "linc",
+        "context_col": "context",
+        "scoring_method": "aic-g"
+      },
+      "scoring": {
+        "metrics": 
