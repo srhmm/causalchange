@@ -29,7 +29,8 @@ class _ScoreHost(Protocol):
 
 @runtime_checkable
 class _SearchHost(_DomainHost, _ScoreHost, Protocol):
-    expert_knowledge: Optional[ExpertKnowledge]
+    pass
+    #expert_knowledge: Optional[ExpertKnowledge]
 
 
 

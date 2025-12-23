@@ -59,9 +59,9 @@ if __name__ == "__main__":
         algo_name = cfg0.algo.name
         scoring_method = getattr(cfg0.algo, "scoring_method", "")
         data_setting = cfg0.data.setting
-        data_linearity = cfg0.data.linearity
+        data_nonlinearity = cfg0.data.nonlinearity
 
-        header = f"[{bench}] algo={algo_name} scoring={scoring_method} data={data_setting}/{data_linearity} n_n={cfg0.data.n_nodes}"
+        header = f"[{bench}] algo={algo_name} scoring={scoring_method} data={data_setting}/{data_nonlinearity} n_n={cfg0.data.n_nodes}"
         print("\n" + header + str(cfg0))
 
         for metric_name in sorted(local.keys()):

@@ -8,5 +8,4 @@ conda activate causalchange
 
 pip install ipykernel
 python -m ipykernel install --user --name causalchange --display-name "Python (cc)"
-
 ```

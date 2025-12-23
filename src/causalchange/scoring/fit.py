@@ -409,18 +409,7 @@ def _null_gaussian_mdl_bits(y):
     k = 2
     return _mdl_bits_from_nll(nll, k, n)
 
-def fit_score_gam_alt(Xtr, ytr):
-    gam = GAM()
-    gam.fit(Xtr, ytr)
-    n_splines, order = 20, 3
-    mse = np.mean((gam.predict(Xtr) - ytr) ** 2)
-    n = Xtr.shape[0]
-    p = Xtr.shape[1] * n_splines * order
-    gam.mdl_lik_train = n * np.log(mse)
-    gam.mdl_model_train = 2 * p
-    gam.mdl_pen_train = 0
-    gam.mdl_train = gam.mdl_lik_train + gam.mdl_model_train + gam.mdl_pen_train
-    return gam, gam.mdl_train
+
 def fit_score_ln(Xtr, ytr, return_residuals=False, **params):
     model_type = params.get("model_type", "ols").lower()
     alpha = float(params.get("alpha", 1.0))

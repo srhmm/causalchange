@@ -3,6 +3,14 @@ import math
 from dataclasses import dataclass
 from typing import Any, List
 
+import networkx as nx
+
+
+def _pgmpy_graph_to_nx(dag: Any) -> nx.DiGraph:
+    g = nx.DiGraph()
+    g.add_nodes_from([str(n) for n in dag.nodes()])
+    g.add_edges_from([(str(u), str(v)) for (u, v) in dag.edges()])
+    return g
 def mean_std(xs: list[float]) -> tuple[float, float]:
     n = len(xs)
     if n == 0:
@@ -57,7 +65,7 @@ def bench_name_from_cfg(cfg) -> str:
     parts = [
         algo["name"],
         data["setting"],
-        data["linearity"],
+        data["nonlinearity"],
     ]
     if data["setting"] == "multi":
         parts.append(f"iv-{data.get('intervention_type')}")

@@ -270,10 +270,8 @@ class SpaceTimeMixin:
             raise ValueError("SpaceTime expects lag-0 sources.")
         return [(var, l) for l in range(1, int(host.tau_max) + 1)]
 
-    def _add_outgoing_edges(self, source, remaining, dag_current):
+    def _add_outgoing_edges(self, source, remaining, dag_current, X0):
         host = self._host()
-
-        # Optional guard
         assert host.data_mode in (DataMode.TIME, DataMode.TIME_CONTEXTS), host.data_mode
 
         added_edges = []
@@ -289,26 +287,32 @@ class SpaceTimeMixin:
             if target0 == source:
                 continue
 
+            # instantaneous: (Xi,0)->(Xj,0)
             if host._domain_allowed_edge(source, target0):
-                gain = host._addition_gain(source, target0, dag_current)
+                gain = host._addition_gain(source, target0, dag_current, X0)
                 sig = host._score_significant(gain)
-                meta.append({"from": source, "to": target0, "gain": float(gain), "kind": "inst", "significant": bool(sig)})
+                meta.append(
+                    {"from": source, "to": target0, "gain": float(gain), "kind": "inst", "significant": bool(sig)}
+                )
                 if sig:
                     dag_current.add_edge(source, target0)
                     added_edges.append({"from": source, "to": target0, "gain": float(gain), "kind": "inst"})
 
+            # lagged: (Xi,lag)->(Xj,0) for lag=1..tau_max, same Xi
             for ls in lagged_sources:
                 if host._domain_allowed_edge(ls, target0):
-                    gain_l = host._addition_gain(ls, target0, dag_current)
+                    gain_l = host._addition_gain(ls, target0, dag_current, X0)
                     sig_l = host._score_significant(gain_l)
-                    meta.append({"from": ls, "to": target0, "gain": float(gain_l), "kind": "lag", "significant": bool(sig_l)})
+                    meta.append(
+                        {"from": ls, "to": target0, "gain": float(gain_l), "kind": "lag", "significant": bool(sig_l)}
+                    )
                     if sig_l:
                         dag_current.add_edge(ls, target0)
                         added_edges.append({"from": ls, "to": target0, "gain": float(gain_l), "kind": "lag"})
 
         return added_edges, meta
 
-    def _find_removable_edge(self, parents, child, dag_current):
+    def _find_removable_edge(self, parents, child, dag_current, X0):
         host = self._host()
 
         old_score = host._score(child, parents)

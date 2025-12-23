@@ -9,131 +9,42 @@ import pandas as pd
 from pydantic import BaseModel, ValidationError
 
 from benchmarks.synthetic.generators import (
-    sample_linear_gaussian,
-    sample_nonlinear_additive,
-    sample_multicontext_linear_gaussian_interventional,
-    sample_multicontext_nonlinear_additive_interventional,
+    sample_single_continuous,
+    sample_multi_continuous, sample_single_temporal, sample_multi_temporal,
 )
 
 from  benchmarks.synthetic.metrics import compute_metrics
 
 from benchmarks.benchmark_configs import BenchmarkConfig, DataConfig, ScoringConfig, AlgoConfig, \
-    LincAlgoConfig, TopicAlgoConfig, MultiNonlinearDataConfig, MultiLinearDataConfig, \
-    SingleNonlinearDataConfig, SingleLinearDataConfig
+    LincAlgoConfig, TopicAlgoConfig, \
+    SingleDataConfig, MultiDataConfig, MultiTemporalDataConfig, SingleTemporalDataConfig, SpaceTimeAlgoConfig, \
+    SpaceTimeCAlgoConfig, MixedDataConfig
+from benchmarks.utils import _pgmpy_graph_to_nx
 
-from causalchange._cc_types import MixingType
+from causalchange._cc_types import MixingType, ScoreType
 from causalchange.causal_change import CausalChange
 
 
 def run_sampling(config: DataConfig):
-    if isinstance(config, SingleLinearDataConfig):
-        return sample_linear_gaussian(
-            n_samples=config.n_samples,
-            n_nodes=config.n_nodes,
-            edge_prob=config.edge_prob,
-            seed=config.seed,
-            weight_scale=config.weight_scale,
-            noise_scale=config.noise_scale,
-        )
+    sampling_fun = sample_single_continuous if isinstance(config, SingleDataConfig) \
+        else sample_multi_continuous if isinstance(config, MultiDataConfig) \
+        else sample_single_temporal if isinstance(config, SingleTemporalDataConfig) \
+        else sample_multi_temporal if isinstance(config, MultiTemporalDataConfig)  else None
+    if sampling_fun is None:  raise RuntimeError(f"Unknown data config: {config!r}")
 
-    if isinstance(config, SingleNonlinearDataConfig):
-        return sample_nonlinear_additive(
-            n_samples=config.n_samples,
-            n_nodes=config.n_nodes,
-            edge_prob=config.edge_prob,
-            seed=config.seed,
-            weight_scale=config.weight_scale,
-            noise_scale=config.noise_scale,
-            nonlinearity=config.nonlinearity,
-        )
-
-    if isinstance(config, MultiLinearDataConfig):
-        df, _, true_target, _, _ = sample_multicontext_linear_gaussian_interventional(
-            n_samples_per_context=config.n_samples_per_context,
-            n_nodes=config.n_nodes,
-            edge_prob=config.edge_prob,
-            n_contexts=config.n_contexts,
-            seed=config.seed,
-            context_col=config.context_col,
-            n_intervened_per_context=config.n_intervened_per_context,
-            weight_scale=config.weight_scale,
-            noise_scale=config.noise_scale,
-            intervention_type=config.intervention_type,
-            weight_scale_intervened=config.weight_scale_intervened,
-            shift_scale=config.shift_scale,
-            noise_scale_intervened=config.noise_scale_intervened,
-        )
-        return df, true_target
-
-    if isinstance(config, MultiNonlinearDataConfig):
-        assert config.alt_nonlinearity is not None
-        df, _, true_target, _, _ = sample_multicontext_nonlinear_additive_interventional(
-            n_samples_per_context=config.n_samples_per_context,
-            n_nodes=config.n_nodes,
-            edge_prob=config.edge_prob,
-            n_contexts=config.n_contexts,
-            seed=config.seed,
-            context_col=config.context_col,
-            n_intervened_per_context=config.n_intervened_per_context,
-            weight_scale=config.weight_scale,
-            noise_scale=config.noise_scale,
-            nonlinearity=config.nonlinearity,
-            intervention_type=config.intervention_type,
-            weight_scale_intervened=config.weight_scale_intervened,
-            alt_nonlinearity=config.alt_nonlinearity,
-            shift_scale=config.shift_scale,
-            noise_scale_intervened=config.noise_scale_intervened,
-        )
-        return df, true_target
-
-    raise RuntimeError(f"Unknown data config: {config!r}")
-
-
-
-def _map_score_type(name: str):
-    """
-    Maps benchmark grid score_type strings to causalchange ScoreType/GPType values.
-    """
-    from causalchange._cc_types import ScoreType, GPType
-    s = str(name).lower()
-    if s == "lin":
-        return ScoreType.LIN
-    if s == "gam":
-        return ScoreType.GAM
-    if s == "spline":
-        return ScoreType.SPLINE
-    if s == "krr":
-        return ScoreType.KRR
-    if s == "gp":
-        return GPType.EXACT
-    if s in ("ff", "rff"):
-        return GPType.FOURIER
-    raise ValueError(f"Unknown score_type: {name!r}")
+    df, true_g = sampling_fun(config)
+    return df, true_g
 
 
 def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> Any:
-    # Determine DataMode from setting string.
     from causalchange._cc_types import DataMode, GraphSearch
 
-    if data_cfg.setting == "single":
-        data_mode = DataMode.IID
-    elif data_cfg.setting == "multi":
-        data_mode = DataMode.CONTEXTS
-    elif data_cfg.setting == "time":
-        data_mode = DataMode.TIME
-    elif data_cfg.setting == "time_contexts":
-        data_mode = DataMode.TIME_CONTEXTS
-    else:
-        raise ValueError(f"Unknown data setting: {data_cfg.setting!r}")
+    data_mode = DataMode(data_cfg.setting)
+    graph_search = GraphSearch.TOPIC if algo_cfg.name in ("topic", "linc", "spacetime", "spacetime-c") else GraphSearch.TOPIC
 
-    # Graph search: currently topic only
-    graph_search = GraphSearch.TOPIC if algo_cfg.name in ("topic", "linc", "spacetime", "spacetime_c") else GraphSearch.TOPIC
-
-    # score_type from algo config
-    score_type = _map_score_type(getattr(algo_cfg, "score_type", "gam"))
-
+    score_type = ScoreType (getattr(algo_cfg, "score_type", "gam"))
+    tau_max = getattr(algo_cfg, "tau_max", 2)
     context_col = getattr(data_cfg, "context_col", "context")
-    tau_max = getattr(data_cfg, "tau_max", 1)
 
     est = CausalChange(
         data_mode=data_mode,
@@ -146,38 +57,33 @@ def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> An
     )
     return est.fit(df)
 
-def _pgmpy_graph_to_nx(dag: Any) -> nx.DiGraph:
-    g = nx.DiGraph()
-    g.add_nodes_from([str(n) for n in dag.nodes()])
-    g.add_edges_from([(str(u), str(v)) for (u, v) in dag.edges()])
-    return g
 
-def run_scoring(true_g, est_dag, scoring_cfg: ScoringConfig) -> dict[str, float]:
+
+def run_scoring(true_g, est_dag, scoring_cfg: ScoringConfig, return_nx=False) -> dict[str, float] | [dict[str, float], nx.DiGraph]:
     est_nx = _pgmpy_graph_to_nx(est_dag)
-    m = compute_metrics(true_g, est_nx)
+    graph_metrics = compute_metrics(true_g, est_nx)
 
-    out: dict[str, float] = {}
-    if "shd" in scoring_cfg.metrics:
-        out["shd"] = float(m.shd)
-    if "edge_f1" in scoring_cfg.metrics:
-        out["edge_f1"] = float(m.edge_f1)
-    if "skel_f1" in scoring_cfg.metrics:
-        out["skel_f1"] = float(m.skel_f1)
+    metrics: dict[str, float] = {}
+    if "shd" in scoring_cfg.metrics: metrics["shd"] = float(graph_metrics.shd)
+    if "edge_f1" in scoring_cfg.metrics: metrics["edge_f1"] = float(graph_metrics.edge_f1)
+    if "skel_f1" in scoring_cfg.metrics: metrics["skel_f1"] = float(graph_metrics.skel_f1)
 
-    return out
+    if return_nx : return metrics, est_nx
+    return metrics
 
 
-def run_on_config(cfg: BenchmarkConfig) -> dict[str, float]:
+def run_on_config(cfg: BenchmarkConfig, return_nx=False) -> dict[str, float]| [dict[str, float], nx.DiGraph]:
     df, true_g = run_sampling(cfg.data)
 
     t0 = time.perf_counter()
     est_dag = run_algo(df, cfg.data, cfg.algo)
     t1 = time.perf_counter()
 
-    metrics = run_scoring(true_g, est_dag, cfg.scoring)
+    metrics, est_nx = run_scoring(true_g, est_dag, cfg.scoring, True)
     if "time_s" in cfg.scoring.metrics:
         metrics["time_s"] = float(t1 - t0)
 
+    if return_nx : return metrics, est_nx
     return metrics
 
 
@@ -203,44 +109,34 @@ def iter_valid_configs(grid: dict[str, Any]):
 
     for data_opt0 in _product_dict(data_grid):
         data_opt0 = dict(data_opt0)
-        m = _data_model_for(data_opt0)
-        if m is None:
-            continue
-        data_opt = _filter_to_model_fields(m, data_opt0)
+        setting = data_opt0.get("setting")
+        model = (
+            SingleDataConfig if setting == "single"
+            else MultiDataConfig if setting == "multi"
+            else SingleTemporalDataConfig if setting == "time"
+            else MultiTemporalDataConfig if setting == "time-contexts"
+            else MixedDataConfig if setting == "mixed"
+            else None
+        )
+        if model is None: raise ValueError(setting)
 
-        for algo_opt0 in _product_dict(algo_grid):
-            algo_opt0 = dict(algo_opt0)  # safety copy
-            name = algo_opt0.get("name")
+        data_opt = _filter_to_model_fields(model, data_opt0)
 
-            if name == "linc":
-                algo_opt = _filter_to_model_fields(LincAlgoConfig, algo_opt0)
-            elif name == "topic":
-                algo_opt = _filter_to_model_fields(TopicAlgoConfig, algo_opt0)
-            else:
-                continue
+        for algo in _product_dict(algo_grid):
+            algo = dict(algo)  #?
+            name = algo.get("name")
+
+            algo_parent = _filter_to_model_fields(LincAlgoConfig, algo)if name == "linc" else \
+                _filter_to_model_fields(TopicAlgoConfig, algo) if name == "topic" else \
+                    _filter_to_model_fields(SpaceTimeAlgoConfig, algo)if name == "spacetime" else \
+                        _filter_to_model_fields(SpaceTimeCAlgoConfig, algo) if name == "spacetime-c"  else None
+            if algo_parent is None: raise ValueError(algo)
 
             for scoring_opt0 in scoring_options:
                 scoring_opt = dict(scoring_opt0)
-                candidate = {"data": data_opt, "algo": algo_opt, "scoring": scoring_opt}
+                candidate = {"data": data_opt, "algo": algo_parent, "scoring": scoring_opt}
 
                 try:
                     yield BenchmarkConfig.model_validate(candidate)
                 except ValidationError:
                     continue
-
-
-
-def _data_model_for(data_opt: dict[str, Any]) -> type[BaseModel] | None:
-    setting = data_opt.get("setting")
-    linearity = data_opt.get("linearity")
-
-    if setting == "single" and linearity == "linear":
-        return SingleLinearDataConfig
-    if setting == "single" and linearity == "nonlinear":
-        return SingleNonlinearDataConfig
-    if setting == "multi" and linearity == "linear":
-        return MultiLinearDataConfig
-    if setting == "multi" and linearity == "nonlinear":
-        return MultiNonlinearDataConfig
-
-    return None

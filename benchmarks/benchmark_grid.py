@@ -2,31 +2,36 @@
 BENCHMARK_GRID = {
     "data": {
         "setting": [
-            #"single",
-            "multi"
+            #"time",
+           # "time-contexts",
+             "single",
+             "multi"
                      ],
-        "linearity": ["linear", "nonlinear"],
-        "n_nodes": [5],
+        "n_nodes": [5, 10],
         "edge_prob": [0.4],
-        "n_samples": [500],
+        "n_samples": [1000],
         "n_contexts": [5],
         "n_samples_per_context": [200],
-        "n_intervened_per_context": [2],
+        "n_intervened_per_context": [2, 4],
         "context_col": ["context"],
         "intervention_type": ["hard", "soft_weight", "shift", "noise", "soft_mechanism"],
 
-        "nonlinearity": ["tanh"], #, "sin"],
+        "nonlinearity": ["tanh", "sin", "lin", "relu"],
         "alt_nonlinearity": ["sin"],
     },
     "algo": {
-        "name": ["linc", "topic" ],
-        "score_type": ["gam"], # "aic-g",
+        "name": ["linc", "topic" ,
+             # "spacetime"  ,
+            # "spacetime-c"
+        ],
+        "score_type": ["gam"],
         "context_col": ["context"],
+        "tau_max": [2],
     },
 
     "scoring": {
         "metrics": [
-            ["edge_f1", "skel_f1"],  # ["shd", "edge_f1", "skel_f1", "time_s"],
+            ["edge_f1", "skel_f1"],
         ]
     }
 }

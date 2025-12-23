@@ -1,8 +1,8 @@
 from enum import Enum, EnumMeta
 
 class DataMode(Enum):
-    IID = 'iid'
-    CONTEXTS = 'contexts'
+    IID = 'single'
+    CONTEXTS = 'multi'
     TIME = 'time'
     TIME_CONTEXTS = 'time-contexts'
     CONFOUNDED = 'confounded'

@@ -4,9 +4,9 @@ from typing import Annotated, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 
-MetricName = Literal["shd", "edge_f1", "skel_f1", "time_s"]
 
-Nonlinearity = Literal["tanh", "sin", "relu"]
+MetricName = Literal["shd", "edge_f1", "skel_f1", "time_s"]
+Nonlinearity = Literal["lin", "tanh", "sin", "relu"]
 InterventionLinear = Literal["hard", "soft_weight", "shift", "noise"]
 InterventionNonlinear = Literal["hard", "soft_weight", "soft_mechanism", "shift", "noise"]
 
@@ -22,42 +22,15 @@ class DataConfigBase(BaseModel):
     noise_scale: float = 0.7
 
 
-class SingleLinearDataConfig(DataConfigBase):
+class SingleDataConfig(DataConfigBase):
     setting: Literal["single"] = "single"
-    linearity: Literal["linear"] = "linear"
-
-    n_samples: int = Field(..., ge=1)
-
-
-
-class SingleNonlinearDataConfig(DataConfigBase):
-    setting: Literal["single"] = "single"
-    linearity: Literal["nonlinear"] = "nonlinear"
 
     n_samples: int = Field(..., ge=1)
     nonlinearity: Nonlinearity
 
 
-class MultiLinearDataConfig(DataConfigBase):
+class MultiDataConfig(DataConfigBase):
     setting: Literal["multi"] = "multi"
-    linearity: Literal["linear"] = "linear"
-
-    context_col: str = "context"
-    n_contexts: int = Field(..., ge=1)
-    n_samples_per_context: int = Field(..., ge=1)
-    n_intervened_per_context: int = Field(1, ge=0)
-
-    intervention_type: InterventionLinear = "soft_weight"
-
-    weight_scale_intervened: float = 2.0
-    shift_scale: float = 2.0
-    noise_scale_intervened: Optional[float] = None
-
-
-
-class MultiNonlinearDataConfig(DataConfigBase):
-    setting: Literal["multi"] = "multi"
-    linearity: Literal["nonlinear"] = "nonlinear"
 
     context_col: str = "context"
     n_contexts: int = Field(..., ge=1)
@@ -80,18 +53,68 @@ class MultiNonlinearDataConfig(DataConfigBase):
         return self
 
 
-SingleDataConfig = Annotated[
-    Union[SingleLinearDataConfig, SingleNonlinearDataConfig],
-    Field(discriminator="linearity"),
-]
 
-MultiDataConfig = Annotated[
-    Union[MultiLinearDataConfig, MultiNonlinearDataConfig],
-    Field(discriminator="linearity"),
-]
+class MixedDataConfig(DataConfigBase):
+    setting: Literal["mixed"] = "mixed"
+
+    context_col: str = "context"
+    n_contexts: int = Field(..., ge=1)
+    n_samples_per_context: int = Field(..., ge=1)
+    n_intervened_per_context: int = Field(1, ge=0)
+
+    intervention_type: InterventionNonlinear = "soft_weight"
+
+    weight_scale_intervened: float = 2.0
+    shift_scale: float = 2.0
+    noise_scale_intervened: Optional[float] = None
+
+    nonlinearity: Nonlinearity
+    alt_nonlinearity: Optional[Nonlinearity] = None
+
+    @model_validator(mode="after")
+    def _alt_required_for_soft_mechanism(self):
+        if self.intervention_type == "soft_mechanism" and self.alt_nonlinearity is None:
+            raise ValueError("alt_nonlinearity is required when intervention_type='soft_mechanism'.")
+        return self
+
+
+
+class SingleTemporalDataConfig(DataConfigBase):
+    setting: Literal["time"] = "time"
+
+    n_nodes: int = Field(..., ge=1)
+    edge_prob: float = Field(..., ge=0.0, le=1.0)
+    seed: int = 42
+
+    n_samples: int = Field(..., ge=1)
+    tau_max: int = Field(1, ge=1)
+    weight_scale: float = 2.0
+    noise_scale: float = 0.7
+
+    nonlinearity: Nonlinearity = "tanh"
+
+class MultiTemporalDataConfig(DataConfigBase):
+    setting: Literal["time-contexts"] = "time-contexts"
+
+    n_nodes: int = Field(..., ge=1)
+    edge_prob: float = Field(..., ge=0.0, le=1.0)
+    seed: int = 42
+
+    context_col: str = "context"
+    n_contexts: int = Field(..., ge=1)
+    n_samples_per_context: int = Field(..., ge=1)
+    tau_max: int = Field(1, ge=1)
+
+    n_intervened_per_context: int = Field(1, ge=0)
+    intervention_type: Literal["hard", "soft_weight", "shift", "noise", "soft_mechanism"] = "hard"
+
+    weight_scale: float = 2.0
+    noise_scale: float = 0.7
+    nonlinearity: Nonlinearity = "tanh"
+
 
 DataConfig = Annotated[
-    Union[SingleDataConfig, MultiDataConfig],
+    Union[SingleDataConfig, MultiDataConfig, SingleTemporalDataConfig, MultiTemporalDataConfig, MixedDataConfig],
     Field(discriminator="setting"),
 ]
 
@@ -108,12 +131,26 @@ class TopicAlgoConfig(BaseModel):
     name: Literal["topic"] = "topic"
     score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
 
-from typing import Literal, Optional, Union, Annotated
-from pydantic import BaseModel, Field, ConfigDict
+
+
+class SpaceTimeCAlgoConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Literal["spacetime-c"] = "spacetime-c"
+    context_col: str = "context"
+    #todo tau_max
+    score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
+
+
+class SpaceTimeAlgoConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Literal["spacetime"] = "spacetime"
+    score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
+
+
 
 
 AlgoConfig = Annotated[
-    Union[LincAlgoConfig, TopicAlgoConfig],
+    Union[LincAlgoConfig, TopicAlgoConfig, SpaceTimeAlgoConfig, SpaceTimeCAlgoConfig],
     Field(discriminator="name"),
 ]
 
@@ -142,7 +179,8 @@ class BenchmarkConfig(BaseModel):
             raise ValueError("algo=linc is only valid with data.setting='multi'.")
         if self.algo.name == "topic" and self.data.setting != "single":
             raise ValueError("algo=topic is only valid with data.setting='single'.")
-        if self.algo.name == "pc" and self.data.setting != "single":
-            raise ValueError(
-                "algo=pc is only valid with data.setting='single' (otherwise it will treat context as a variable).")
+        if self.algo.name == "spacetime" and self.data.setting != "time":
+            raise ValueError("algo=time is only valid with data.setting='time'.")
+        if self.algo.name == "spacetime-c" and self.data.setting != "time-contexts":
+            raise ValueError("algo=spacetime-c is only valid with data.setting='time-contexts'.")
         return self
