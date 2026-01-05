@@ -9,11 +9,13 @@ class DataMode(Enum):
     MIXED = 'mixed'
     def is_dict_like(self):
         return self.value in [DataMode.CONTEXTS.value, DataMode.TIME_CONTEXTS.value]
-
+    def is_temporal(self):
+        return self.value in [DataMode.TIME.value, DataMode.TIME_CONTEXTS.value]
     def __eq__(self, other):
         return self.value == other.value
 
 class GraphSearch(Enum):
+    CHAIN = 'chain'
     TOPIC = 'topological'
     GLOBE = 'edge-greedy'
 
@@ -25,10 +27,8 @@ class GraphSearch(Enum):
             return [DataMode.IID, DataMode.CONTEXTS, DataMode.MIXED, DataMode.TIME, DataMode.TIME_CONTEXTS]
         elif self is GraphSearch.GLOBE:
             return [DataMode.IID, DataMode.CONTEXTS]
-        #elif self is GraphSearch.CHAIN:
-        #    return [DataMode.CONTEXTS]
-        #elif self is GraphSearch.COMBO:
-        #    return [DataMode.CONTEXTS]
+        elif self is GraphSearch.CHAIN:
+            return [DataMode.CONTEXTS]
         else:
             return []
 

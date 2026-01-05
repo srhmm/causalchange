@@ -31,7 +31,6 @@ class SingleDataConfig(DataConfigBase):
 
 
 
-
 class MultiDataConfig(DataConfigBase):
     setting: Literal["multi"] = "multi"
     nonlinearity: Nonlinearity
@@ -52,32 +51,6 @@ class MultiDataConfig(DataConfigBase):
         if self.intervention_type == "soft_mechanism" and self.alt_nonlinearity is None:
             raise ValueError("alt_nonlinearity is required when intervention_type='soft_mechanism'.")
         return self
-
-"""
-class MultiLinearDataConfig(MultiDataConfigBase):
-    setting: Literal["multilin"] = "multilin"
-    nonlinearity: Literal["lin"] = "lin"
-    intervention_type: InterventionLinear = "soft_weight"
-    alt_nonlinearity: None = None  # cannot exist
-
-
-class MultiNonlinearDataConfig(MultiDataConfigBase):
-    setting: Literal["multinlin"] = "multinlin"
-    nonlinearity: NonlinearOnly
-    intervention_type: InterventionNonlinear = "soft_weight"
-    alt_nonlinearity: Optional[Nonlinearity] = None
-
-    @model_validator(mode="after")
-    def _alt_required_for_soft_mechanism(self):
-        if self.intervention_type == "soft_mechanism" and self.alt_nonlinearity is None:
-            raise ValueError("alt_nonlinearity is required when intervention_type='soft_mechanism'.")
-        return self
-
-MultiDataConfig = Annotated[
-    Union[MultiLinearDataConfig, MultiNonlinearDataConfig],
-    Field(discriminator="nonlinearity"),
-]
-"""
 
 
 class MixedDataConfig(DataConfigBase):
@@ -152,6 +125,14 @@ class LincAlgoConfig(BaseModel):
     score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
 
 
+class ChainAlgoConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Literal["chain"] = "chain"
+    context_col: str = "context"
+    score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
+
+
+
 class TopicAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Literal["topic"] = "topic"
@@ -176,7 +157,7 @@ class SpaceTimeAlgoConfig(BaseModel):
 
 
 AlgoConfig = Annotated[
-    Union[LincAlgoConfig, TopicAlgoConfig, SpaceTimeAlgoConfig, SpaceTimeCAlgoConfig],
+    Union[LincAlgoConfig, ChainAlgoConfig, TopicAlgoConfig, SpaceTimeAlgoConfig, SpaceTimeCAlgoConfig],
     Field(discriminator="name"),
 ]
 

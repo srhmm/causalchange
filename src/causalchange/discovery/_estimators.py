@@ -20,7 +20,7 @@ class EstimatorBaseMixin:
         score_type: ScoreType = ScoreType.GAM,
         mixing_type: MixingType = MixingType.SKIP,
         score_params: dict[str, Any] | None = None,
-        lg=None,
+        lg = None,
         vb: int = 0,
         **kwargs,
     ):

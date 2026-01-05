@@ -410,8 +410,6 @@ class LINCMixin(ContextScoreMixin):
 
     def _score_components(self, effect, parents) -> float:
         host = self._host()
-
-        # Optional guard
         assert host.data_mode in (DataMode.CONTEXTS, DataMode.TIME_CONTEXTS), host.data_mode
 
         parents_t = self._parents_to_tuple(parents)
@@ -563,6 +561,8 @@ class CHAINMixin(ContextScoreMixin):
         self._mmd_cache = {}
         self._edges_by_ctx = {}
 
+        self._info("[chain] Initializing")
+
     def _init_chain_score(self, X: pd.DataFrame) -> pd.DataFrame:
         assert self.data_mode in (DataMode.CONTEXTS, DataMode.TIME_CONTEXTS), self.data_mode
 
@@ -596,7 +596,6 @@ class CHAINMixin(ContextScoreMixin):
         return X0
 
     def _score(self, effect: str, parents: Sequence[str]) -> float:
-        # fit term: sum of context scores
         j = self._col_index[effect]
         pa = [self._col_index[p] for p in parents]
 
@@ -609,8 +608,6 @@ class CHAINMixin(ContextScoreMixin):
 
         pen = float(self._invariance_penalty(effect, parents))
 
-        # IMPORTANT: sign depends on score_higher_better.
-        # In causalchange you default score_higher_better=False (lower is better).
         assert self.score_higher_better is not None
         if self.score_higher_better:
             return float(fit - self.lambda_inv * pen)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from itertools import product
 from typing import Any, Iterable
@@ -16,7 +17,7 @@ from benchmarks.synthetic.generators import (
 from  benchmarks.synthetic.metrics import compute_metrics
 
 from benchmarks.benchmark_configs import BenchmarkConfig, DataConfig, ScoringConfig, AlgoConfig, \
-    LincAlgoConfig, TopicAlgoConfig, \
+    LincAlgoConfig, TopicAlgoConfig, ChainAlgoConfig, \
     SingleDataConfig, MultiDataConfig, MultiTemporalDataConfig, SingleTemporalDataConfig, SpaceTimeAlgoConfig, \
     SpaceTimeCAlgoConfig, MixedDataConfig
 from benchmarks.utils import _pgmpy_graph_to_nx
@@ -40,12 +41,16 @@ def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> An
     from causalchange._cc_types import DataMode, GraphSearch
 
     data_mode = DataMode(data_cfg.setting)
-    graph_search = GraphSearch.TOPIC if algo_cfg.name in ("topic", "linc", "spacetime", "spacetime-c") else GraphSearch.TOPIC
+    graph_search = GraphSearch.TOPIC if algo_cfg.name in ("topic", "linc", "spacetime", "spacetime-c")\
+        else GraphSearch.CHAIN if algo_cfg.name in ("chain") else None
+    if graph_search is None: raise NotImplementedError(f"Not implemented: {algo_cfg.name}") # for globe
 
     score_type = ScoreType (getattr(algo_cfg, "score_type", "gam"))
     tau_max = getattr(algo_cfg, "tau_max", 2)
     context_col = getattr(data_cfg, "context_col", "context")
 
+    lg = logging.basicConfig(level=logging.DEBUG)
+    vb = 1
     est = CausalChange(
         data_mode=data_mode,
         graph_search=graph_search,
@@ -54,6 +59,7 @@ def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> An
         context_col=context_col,
         tau_max=tau_max,
         vb=0,
+        lg=lg
     )
     return est.fit(df)
 
@@ -128,6 +134,7 @@ def iter_valid_configs(grid: dict[str, Any]):
             name = algo.get("name")
 
             algo_parent = _filter_to_model_fields(LincAlgoConfig, algo)if name == "linc" else \
+                _filter_to_model_fields(ChainAlgoConfig, algo) if name == "chain" else \
                 _filter_to_model_fields(TopicAlgoConfig, algo) if name == "topic" else \
                     _filter_to_model_fields(SpaceTimeAlgoConfig, algo)if name == "spacetime" else \
                         _filter_to_model_fields(SpaceTimeCAlgoConfig, algo) if name == "spacetime-c"  else None

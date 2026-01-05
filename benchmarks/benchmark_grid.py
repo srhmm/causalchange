@@ -11,8 +11,8 @@ BENCHMARK_GRID = {
         "edge_prob": [0.4],
         "n_samples": [500],
         "n_contexts": [5],
-        "n_samples_per_context": [200],
-        "n_intervened_per_context": [2],
+        "n_samples_per_context": [500],
+        "n_intervened_per_context": [3],
         "context_col": ["context"],
         "intervention_type": ["hard", "soft_weight", "shift", "noise"] , #, "soft_mechanism"],
 
@@ -20,7 +20,9 @@ BENCHMARK_GRID = {
         "alt_nonlinearity": ["sin"],
     },
     "algo": {
-        "name": ["linc", # "topic" ,
+        "name": [ "linc",
+            #"chain",
+                 # "topic" ,
              # "spacetime"  ,
             # "spacetime-c"
         ],

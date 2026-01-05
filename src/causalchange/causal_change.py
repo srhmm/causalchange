@@ -40,7 +40,6 @@ class CausalChange:
     _estimator:  TOPIC | GLOBE | None
     # flags
     fitted_graph: bool
-    fitted_mixing: bool
     context_col: str
 
     def __init__(self, **kwargs):
@@ -49,6 +48,7 @@ class CausalChange:
 
         :Keyword Arguments:
         * *data_mode* (``DataMode``) -- input data type, one iid dataset, multi-context data, mixed data, or TS data
+        * *graph_search* (``GraphSearch``) -- search algo for DAGs
         * *score_type* (``MixingType``) -- regressor
         * *mixing_type* (``MixingType``) -- for mixed data, type of mixture model inference (EM algo), ow skip
         * *context_col* (``str``) -- for multi-context data, the column name of an indicator column for the contexts
@@ -72,7 +72,7 @@ class CausalChange:
         self.__dict__.update((k, v) for k, v in self.defaultargs.items() if k not in kwargs.keys())
         self.__dict__.update((k, v) for k, v in kwargs.items() if k in self.defaultargs.keys())
 
-        assert self.mixing_type != MixingType.SKIP if self.data_mode == DataMode.MIXED else self.mixing_type == MixingType.SKIP
+        assert self.mixing_type != MixingType.SKIP if self.data_mode == DataMode.MIXED else self.mixing_type == MixingType.SKIP, "provide MixingType as input arg"
         assert self.graph_search.is_compatible_with(self.data_mode), (
             f"Graph search {self.graph_search} is not compatible with data_mode {self.data_mode}"
         )
@@ -88,7 +88,7 @@ class CausalChange:
 
         self.graph_state = nx.DiGraph()
         self.topological_order = []
-        self.fitted_graph, self.fitted_mixing = False, False
+        self.fitted_graph = False
         self.search_history: list[dict] = []
 
     def _check_X(self, X: pd.DataFrame) -> pd.DataFrame:
@@ -157,9 +157,9 @@ class CausalChange:
                 if self.graph_search == GraphSearch.GLOBE else None
 
         elif self.data_mode == DataMode.CONTEXTS:
-            #estimator = LINC(**estimator_args) if self.graph_search == GraphSearch.TOPIC \
-            #    else LINC_GLOBE(**estimator_args) if self.graph_search == GraphSearch.GLOBE else None
-            estimator = CHAIN(**estimator_args)
+            estimator = LINC(**estimator_args) if self.graph_search == GraphSearch.TOPIC \
+                else LINC_GLOBE(**estimator_args) if self.graph_search == GraphSearch.GLOBE \
+                else CHAIN(**estimator_args) if self.graph_search == GraphSearch.CHAIN else None
         elif self.data_mode == DataMode.TIME:
             estimator = SpaceTime(**estimator_args) if self.graph_search == GraphSearch.TOPIC \
                 else SpaceTime_GLOBE(**estimator_args) if self.graph_search == GraphSearch.GLOBE else None
@@ -178,6 +178,6 @@ class CausalChange:
         if estimator is None: raise ValueError(self.graph_search)
 
         self.graph_state = estimator.fit(X)
-        self.edges_state = estimator.edges_state
         self._estimator = estimator
+        self.fitted_graph = True
         return self.graph_state

@@ -14,7 +14,7 @@ from causalchange._cc_types import DataMode, GraphSearch, ScoreType
 )
 @pytest.mark.parametrize(
     "graph_search",
-    [GraphSearch.TOPIC] #, GraphSearch.GLOBE],
+    [GraphSearch.TOPIC, GraphSearch.CHAIN]
 )
 @pytest.mark.parametrize(
     "score_type",
@@ -93,9 +93,11 @@ def _get_config_for_data_and_algo(data_mode: DataMode, graph_search: GraphSearch
         algo_name = "spacetime" if graph_search == GraphSearch.TOPIC else "spacetime-globe"
         if data_mode == DataMode.TIME_CONTEXTS:
             algo_name = "spacetime-c" if graph_search == GraphSearch.TOPIC else "spacetime-globe-c"
+    elif data_mode == DataMode.CONTEXTS:
+        algo_name = "linc" if graph_search == GraphSearch.TOPIC else "chain" if graph_search == GraphSearch.CHAIN else "linc-globe"
     else:
-        algo_name = "topic" if graph_search == GraphSearch.TOPIC else "globe"
-        if data_mode == DataMode.CONTEXTS: algo_name = "linc" if graph_search == GraphSearch.TOPIC else "linc-globe"
+        algo_name = "topic" if graph_search == GraphSearch.TOPIC else "chain" if graph_search == GraphSearch.CHAIN else "globe"
+
 
     data_payload: dict = {
         "setting": setting,
