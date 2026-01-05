@@ -7,7 +7,7 @@ from causalchange.discovery._mixins import (
     LINCMixin,
     TemporalDomainMixin,
     AutoRegressiveScoreMixin,
-    SpaceTimeMixin,
+    SpaceTimeMixin, CHAINMixin,
 )
 from causalchange.discovery._search import TOPICSearch, GLOBESearch
 
@@ -53,6 +53,13 @@ class LINC_GLOBE(LINCMixin, GLOBE):
     pass
 
 
+class CHAIN(CHAINMixin, TOPIC):
+    pass
+
+class CHAIN_GLOBE(CHAINMixin, GLOBE):
+    pass
+
+
 class SpaceTime(EstimatorBaseMixin, TemporalDomainMixin, AutoRegressiveScoreMixin, SpaceTimeMixin, TOPICSearch):
     pass
 
@@ -67,3 +74,5 @@ class SpaceTime_C(LINCMixin, SpaceTime):
 
 class SpaceTime_GLOBE_C(LINCMixin, SpaceTime_GLOBE):
     pass
+
+

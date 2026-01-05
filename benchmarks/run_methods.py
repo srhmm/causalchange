@@ -110,6 +110,7 @@ def iter_valid_configs(grid: dict[str, Any]):
     for data_opt0 in _product_dict(data_grid):
         data_opt0 = dict(data_opt0)
         setting = data_opt0.get("setting")
+        funform = data_opt0.get("nonlinearity")
         model = (
             SingleDataConfig if setting == "single"
             else MultiDataConfig if setting == "multi"

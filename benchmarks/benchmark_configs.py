@@ -7,8 +7,9 @@ from pydantic import BaseModel, Field, ConfigDict, model_validator, field_valida
 
 MetricName = Literal["shd", "edge_f1", "skel_f1", "time_s"]
 Nonlinearity = Literal["lin", "tanh", "sin", "relu"]
+NonlinearOnly = Literal["tanh", "sin", "relu"]
 InterventionLinear = Literal["hard", "soft_weight", "shift", "noise"]
-InterventionNonlinear = Literal["hard", "soft_weight", "soft_mechanism", "shift", "noise"]
+InterventionNonlinear = Literal["hard", "soft_weight",  "shift", "noise"] #"soft_mechanism",
 
 
 class DataConfigBase(BaseModel):
@@ -29,21 +30,41 @@ class SingleDataConfig(DataConfigBase):
     nonlinearity: Nonlinearity
 
 
+
+
 class MultiDataConfig(DataConfigBase):
     setting: Literal["multi"] = "multi"
+    nonlinearity: Nonlinearity
 
     context_col: str = "context"
     n_contexts: int = Field(..., ge=1)
     n_samples_per_context: int = Field(..., ge=1)
     n_intervened_per_context: int = Field(1, ge=0)
 
-    intervention_type: InterventionNonlinear = "soft_weight"
-
     weight_scale_intervened: float = 2.0
     shift_scale: float = 2.0
     noise_scale_intervened: Optional[float] = None
 
-    nonlinearity: Nonlinearity
+    intervention_type: InterventionNonlinear = "soft_weight"
+    alt_nonlinearity: Optional[Nonlinearity] = None
+    @model_validator(mode="after")
+    def _alt_required_for_soft_mechanism(self):
+        if self.intervention_type == "soft_mechanism" and self.alt_nonlinearity is None:
+            raise ValueError("alt_nonlinearity is required when intervention_type='soft_mechanism'.")
+        return self
+
+"""
+class MultiLinearDataConfig(MultiDataConfigBase):
+    setting: Literal["multilin"] = "multilin"
+    nonlinearity: Literal["lin"] = "lin"
+    intervention_type: InterventionLinear = "soft_weight"
+    alt_nonlinearity: None = None  # cannot exist
+
+
+class MultiNonlinearDataConfig(MultiDataConfigBase):
+    setting: Literal["multinlin"] = "multinlin"
+    nonlinearity: NonlinearOnly
+    intervention_type: InterventionNonlinear = "soft_weight"
     alt_nonlinearity: Optional[Nonlinearity] = None
 
     @model_validator(mode="after")
@@ -52,6 +73,11 @@ class MultiDataConfig(DataConfigBase):
             raise ValueError("alt_nonlinearity is required when intervention_type='soft_mechanism'.")
         return self
 
+MultiDataConfig = Annotated[
+    Union[MultiLinearDataConfig, MultiNonlinearDataConfig],
+    Field(discriminator="nonlinearity"),
+]
+"""
 
 
 class MixedDataConfig(DataConfigBase):
@@ -106,7 +132,7 @@ class MultiTemporalDataConfig(DataConfigBase):
     tau_max: int = Field(1, ge=1)
 
     n_intervened_per_context: int = Field(1, ge=0)
-    intervention_type: Literal["hard", "soft_weight", "shift", "noise", "soft_mechanism"] = "hard"
+    intervention_type: Literal["hard", "soft_weight", "shift", "noise"] = "hard" #, "soft_mechanism"] = "hard"
 
     weight_scale: float = 2.0
     noise_scale: float = 0.7

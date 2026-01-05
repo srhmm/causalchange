@@ -8,7 +8,7 @@ import warnings
 import pandas as pd
 
 from causalchange.discovery._estimators import TOPIC, LINC, SpaceTime, SpaceTime_C, LINC_GLOBE, GLOBE, SpaceTime_GLOBE, \
-    SpaceTime_GLOBE_C
+    SpaceTime_GLOBE_C, CHAIN
 from causalchange.scoring.edge_score import EdgeScore
 from causalchange._cc_types import ScoreType, GPType, DataMode, GraphSearch, MixingType
 
@@ -157,9 +157,9 @@ class CausalChange:
                 if self.graph_search == GraphSearch.GLOBE else None
 
         elif self.data_mode == DataMode.CONTEXTS:
-            estimator = LINC(**estimator_args) if self.graph_search == GraphSearch.TOPIC \
-                else LINC_GLOBE(**estimator_args) if self.graph_search == GraphSearch.GLOBE else None
-
+            #estimator = LINC(**estimator_args) if self.graph_search == GraphSearch.TOPIC \
+            #    else LINC_GLOBE(**estimator_args) if self.graph_search == GraphSearch.GLOBE else None
+            estimator = CHAIN(**estimator_args)
         elif self.data_mode == DataMode.TIME:
             estimator = SpaceTime(**estimator_args) if self.graph_search == GraphSearch.TOPIC \
                 else SpaceTime_GLOBE(**estimator_args) if self.graph_search == GraphSearch.GLOBE else None
