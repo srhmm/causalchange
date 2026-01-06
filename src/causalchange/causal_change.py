@@ -7,10 +7,11 @@ import warnings
 
 import pandas as pd
 
-from causalchange.discovery._estimators import TOPIC, LINC, SpaceTime, SpaceTime_C, LINC_GLOBE, GLOBE, SpaceTime_GLOBE, \
-    SpaceTime_GLOBE_C, CHAIN
-from causalchange.scoring.edge_score import EdgeScore
-from causalchange._cc_types import ScoreType, GPType, DataMode, GraphSearch, MixingType
+from causalchange.config.cc_config import CausalChangeConfig
+from causalchange.discovery.factory import PipelineFactory
+from causalchange.discovery.pipeline import DiscoveryEngine, AggregationResult
+from causalchange.discovery.scoring.edge_score import EdgeScore
+from causalchange.config._cc_types import ScoreType, GPType, DataMode, GraphSearch, MixingType, ContextAggregation
 
 
 class CausalChange:
@@ -19,34 +20,44 @@ class CausalChange:
     N: int
     data_mode: DataMode
     graph_search: GraphSearch
-    score_type: ScoreType | GPType
-    mixing_type: MixingType
+    score_type: ScoreType | GPType | MixingType
+    aggregation: ContextAggregation
     tau_max: int
     score_params: dict[str, Any]
+    context_col: str
 
     # debug info
     lg: Optional[Any]
     vb: int
     truths: dict[str, Any]
     true_graph: nx.DiGraph | None
-    true_top_order: list[int] | None
     node_nms: list[str] | None
     is_true_edge: Callable[[int], Callable[[int], str]]
 
     # state
     #-graph state
-    graph_state: nx.DiGraph
+    graph_: nx.DiGraph
     edges_state: EdgeScore
-    _estimator:  TOPIC | GLOBE | None
     # flags
     fitted_graph: bool
-    context_col: str
 
-    def __init__(self, **kwargs):
+    def __init__(
+            self,
+            cfg: CausalChangeConfig | None = None, *,
+            data_mode: DataMode | None = None,
+            graph_search: GraphSearch | None = None,
+            score_type: ScoreType | None = None,
+            aggregation: ContextAggregation | None = ContextAggregation.LINC,
+            truths: dict[str, Any] = dict(),
+            node_nms: list[str] | None = None,
+            lg = None,
+            vb = 0,
+            **kwargs):
         r""" CausalChange: Causal Discovery Algorithms under Distribution Change (continuous data, multi-context continuous data, multi-context data with latent confounding, continuous-valued time series, or mixtures of causal mechanisms).
         :param optargs: optional arguments
 
-        :Keyword Arguments:
+        :Arguments:
+        * *cfg* (``CausalChangeConfig``) -- config
         * *data_mode* (``DataMode``) -- input data type, one iid dataset, multi-context data, mixed data, or TS data
         * *graph_search* (``GraphSearch``) -- search algo for DAGs
         * *score_type* (``MixingType``) -- regressor
@@ -56,23 +67,34 @@ class CausalChange:
         * *lg* (``logging``) -- logger if verbosity>0
         * *vb* (``int``) -- verbosity level
         """
-        self.defaultargs = {
-            "data_mode": DataMode.IID,
-            "graph_search": GraphSearch.TOPIC,
-            "score_type": ScoreType.GAM,
-            "mixing_type": MixingType.SKIP,
-            "context_col": "context",
-            "score_params": dict(),
-            "tau_max": 2,
-            "truths": dict(),
-            "lg": None,
-            "node_nms": None,
-            "vb": 0,
-        }
-        self.__dict__.update((k, v) for k, v in self.defaultargs.items() if k not in kwargs.keys())
-        self.__dict__.update((k, v) for k, v in kwargs.items() if k in self.defaultargs.keys())
+        self.aggregation = aggregation
+        self.node_nms = node_nms
+        self.truths = truths
+        self.lg = lg
+        self.vb = vb
+        if cfg is not None:
+            if any(x is not None for x in (data_mode, graph_search, score_type)) or kwargs:
+                raise ValueError(
+                    "Pass either cfg=... OR (data_mode, graph_search, score_type), not both.")
+        else:
+            if None in (data_mode, graph_search, score_type):
+                raise ValueError("When cfg is None you must pass data_mode, graph_search, score_type")
+            cfg = CausalChangeConfig(
+                data_mode=data_mode,
+                graph_search=graph_search,
+                score_type=score_type,
+                aggregation=self.aggregation,
+                **kwargs,
+            )
 
-        assert self.mixing_type != MixingType.SKIP if self.data_mode == DataMode.MIXED else self.mixing_type == MixingType.SKIP, "provide MixingType as input arg"
+        self.cfg = cfg
+        self.data_mode = cfg.data_mode
+        self.graph_search = cfg.graph_search
+        self.score_type = cfg.score_type
+        self.aggregation = cfg.aggregation
+        self.context_col = cfg.context_col
+        self.tau_max = cfg.tau_max
+
         assert self.graph_search.is_compatible_with(self.data_mode), (
             f"Graph search {self.graph_search} is not compatible with data_mode {self.data_mode}"
         )
@@ -83,13 +105,11 @@ class CausalChange:
         self.is_true_edge = (lambda i: lambda j: "") if 'true_g' not in self.truths else \
             (lambda node: lambda other: 'causal' if self.truths['true_g'].has_edge(node, other) else (
                 'rev' if self.truths['true_g'].has_edge(other, node) else 'spurious'))
-        self.true_top_order = [] if ('true_order' not in self.truths  and 'true_g' not in self.truths) else list(self.truths['true_order']) if  'true_order'  in self.truths else list(
-            nx.topological_sort(self.truths['true_g']))
-
-        self.graph_state = nx.DiGraph()
-        self.topological_order = []
+        self.graph_state_ = nx.DiGraph()
         self.fitted_graph = False
         self.search_history: list[dict] = []
+        self.engine: Optional[DiscoveryEngine] = None
+
 
     def _check_X(self, X: pd.DataFrame) -> pd.DataFrame:
         """ Check input data is compat with DataMode
@@ -138,46 +158,20 @@ class CausalChange:
        :return: ``nx.DiGraph``: causal DAG over nodes in X
         """
         X = self._check_X(X)
-
-        estimator_args = dict(
-            data_mode=self.data_mode,
-            score_type=self.score_type,
-            mixing_type=self.mixing_type,
-            score_params=self.score_params,
-            vb=self.vb,
-            lg=self.lg,
-        )
-        if self.data_mode in [DataMode.CONTEXTS, DataMode.TIME_CONTEXTS]:
-            estimator_args['context_col'] = self.context_col
-        elif self.data_mode in [DataMode.TIME, DataMode.TIME_CONTEXTS]:
-            estimator_args['tau_max'] = self.tau_max
-
-        if self.data_mode == DataMode.IID:
-            estimator = TOPIC(**estimator_args) if self.graph_search == GraphSearch.TOPIC else GLOBE(**estimator_args) \
-                if self.graph_search == GraphSearch.GLOBE else None
-
-        elif self.data_mode == DataMode.CONTEXTS:
-            estimator = LINC(**estimator_args) if self.graph_search == GraphSearch.TOPIC \
-                else LINC_GLOBE(**estimator_args) if self.graph_search == GraphSearch.GLOBE \
-                else CHAIN(**estimator_args) if self.graph_search == GraphSearch.CHAIN else None
-        elif self.data_mode == DataMode.TIME:
-            estimator = SpaceTime(**estimator_args) if self.graph_search == GraphSearch.TOPIC \
-                else SpaceTime_GLOBE(**estimator_args) if self.graph_search == GraphSearch.GLOBE else None
-
-        elif self.data_mode == DataMode.TIME_CONTEXTS:
-            estimator = SpaceTime_C(**estimator_args) if self.graph_search == GraphSearch.TOPIC\
-                else SpaceTime_GLOBE_C(**estimator_args) if self.graph_search == GraphSearch.GLOBE else None
-
-        elif self.data_mode == DataMode.CONFOUNDED:
-            raise NotImplementedError
-
-        elif self.data_mode == DataMode.MIXED:
-            raise NotImplementedError
-
-        else: raise ValueError(self.data_mode)
-        if estimator is None: raise ValueError(self.graph_search)
-
-        self.graph_state = estimator.fit(X)
-        self._estimator = estimator
+        self.engine = PipelineFactory.from_config(self.cfg)
+        self.engine.fit(X)
+        self.graph_ = self.engine.discover()
         self.fitted_graph = True
-        return self.graph_state
+        return self.graph_
+
+
+    @property
+    def last_aggregation_(self) -> AggregationResult | None:
+        if self.engine is None:
+            return None
+        return self.engine.last_aggregation_
+
+    def score(self, effect, parents) -> float:
+        if self.engine is None:
+            raise RuntimeError("Call fit(X) before score().")
+        return float(self.engine.score(effect, parents))

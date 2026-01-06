@@ -15,7 +15,6 @@ class DataMode(Enum):
         return self.value == other.value
 
 class GraphSearch(Enum):
-    CHAIN = 'chain'
     TOPIC = 'topological'
     GLOBE = 'edge-greedy'
 
@@ -27,13 +26,19 @@ class GraphSearch(Enum):
             return [DataMode.IID, DataMode.CONTEXTS, DataMode.MIXED, DataMode.TIME, DataMode.TIME_CONTEXTS]
         elif self is GraphSearch.GLOBE:
             return [DataMode.IID, DataMode.CONTEXTS]
-        elif self is GraphSearch.CHAIN:
-            return [DataMode.CONTEXTS]
         else:
             return []
 
     def is_compatible_with(self, data_mode: DataMode) -> bool:
         return data_mode in self.compatible_modes()
+
+
+class ContextAggregation(Enum):
+    CHAIN = 'chain'
+    LINC = 'linc'
+
+    def __eq__(self, other):
+        return self.value == other.value
 
 
 class GPType(Enum):
@@ -55,31 +60,6 @@ class CIType(Enum):
     def is_scorebased(self): return False
     def is_constraintbased(self): return True
 
-class ScoreType(Enum):
-    LIN = 'lin'
-    GAM = 'gam'
-    SPLINE = 'spline'
-    KRR = 'krr'
-    GP = GPType
-    CI = CIType
-
-    def is_scorebased(self):
-        return not self.value is CIType
-
-    def is_constraintbased(self):
-        return self.value is CIType
-
-    def __eq__(self, other):
-        return self.value == other.value
-
-def score_type_get_all():
-    variants = []
-    for st in ScoreType:
-        if isinstance(st.value, EnumMeta):
-            for sub in st.value:
-                variants.append(sub)
-        else: variants.append(st)
-    return variants
 
 
 
@@ -98,4 +78,33 @@ class MixingType(Enum):
     def search_each_node(self): return not self.value.endswith('global')
 
     def is_unconditional_mixture(self): return self.value.startswith('clus')
+
+
+
+class ScoreType(Enum):
+    LIN = 'lin'
+    GAM = 'gam'
+    SPLINE = 'spline'
+    KRR = 'krr'
+    GP = GPType
+    CI = CIType
+    MIX = MixingType
+
+    def is_scorebased(self):
+        return not self.value is CIType
+
+    def is_constraintbased(self):
+        return self.value is CIType
+
+    def __eq__(self, other):
+        return self.value == other.value
+
+def score_type_get_all():
+    variants = []
+    for st in ScoreType:
+        if isinstance(st.value, EnumMeta):
+            for sub in st.value:
+                variants.append(sub)
+        else: variants.append(st)
+    return variants
 

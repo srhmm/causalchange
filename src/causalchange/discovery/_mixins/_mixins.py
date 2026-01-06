@@ -6,9 +6,9 @@ import numpy as np
 from typing import Any, Callable, Hashable, Iterable, Literal ,Protocol, runtime_checkable, Optional, Sequence, cast
 from dataclasses import dataclass
 
-from causalchange._cc_types import ScoreType, MixingType
-from causalchange._cc_types import DataMode
-from causalchange.scoring.edge_score import EdgeScore
+from causalchange.config._cc_types import ScoreType, MixingType
+from causalchange.config._cc_types import DataMode
+from causalchange.discovery.scoring.edge_score import EdgeScore
 
 
 Node = tuple[str, int]

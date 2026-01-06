@@ -3,24 +3,25 @@ from __future__ import annotations
 from typing import Any, Sequence
 import numpy as np
 
-from causalchange._cc_types import DataMode, ScoreType, GPType, MixingType
-from causalchange.scoring.fit import fit_score_functional_model, fit_score_krr, fit_score_gp, fit_score_rff, \
+from causalchange.config.config_types import DataMode, ScoreType, GPType, MixingType
+from causalchange.discovery.scoring.fit import fit_score_functional_model, fit_score_krr, fit_score_gp, fit_score_rff, \
     fit_score_gam, fit_score_spln, fit_score_ln
 
 
 class EdgeScore:
+    higher_is_better = True
+
     def __init__(
         self,
-        X: np.ndarray,
+        #X: np.ndarray,
         data_mode: DataMode,
         score_type: ScoreType,
-        mixing_type: MixingType,
+        #mixing_type: MixingType,
         **scoring_params: Any,
     ):
-        self.X = np.asarray(X)
         self.data_mode = data_mode
         self.score_type = score_type
-        self.mixing_type = mixing_type
+        #self.mixing_type = mixing_type
         self.scoring_params = scoring_params
 
         self.lg = scoring_params.get("lg", None)
@@ -34,6 +35,12 @@ class EdgeScore:
         # Memoization
         self.score_cache: dict[tuple[int, tuple[int, ...]], float] = {}
         self.res_cache: dict[tuple[int, tuple[int, ...]], dict] = {}
+
+    def fit(self, X: np.ndarray):
+        self.X = np.asarray(X)
+        self.score_cache.clear()
+
+        self.res_cache.clear()
 
     def get_score_fun(self):
         score_fun = (

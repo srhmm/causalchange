@@ -5,7 +5,7 @@ from benchmarks.run_methods import run_on_config
 
 
 from benchmarks.benchmark_configs import BenchmarkConfig
-from causalchange._cc_types import DataMode, GraphSearch, ScoreType
+from causalchange.config._cc_types import DataMode, GraphSearch, ScoreType
 
 
 @pytest.mark.parametrize(

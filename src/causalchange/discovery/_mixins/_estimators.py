@@ -1,7 +1,7 @@
 from typing import Any
 
-from causalchange._cc_types import DataMode, ScoreType, MixingType
-from causalchange.discovery._mixins import (
+from causalchange.config._cc_types import DataMode, ScoreType, MixingType
+from causalchange.discovery.old._mixins import (
     TabularDomainMixin,
     TabularScoreMixin,
     LINCMixin,
@@ -9,7 +9,7 @@ from causalchange.discovery._mixins import (
     AutoRegressiveScoreMixin,
     SpaceTimeMixin, CHAINMixin,
 )
-from causalchange.discovery._search import TOPICSearch, GLOBESearch
+from causalchange.discovery.old._search import TOPICSearch, GLOBESearch
 
 
 class EstimatorBaseMixin:

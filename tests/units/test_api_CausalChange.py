@@ -1,10 +1,9 @@
 import logging
 
-import numpy as np
 import pytest
 
 from benchmarks.run_methods import run_sampling
-from causalchange._cc_types import DataMode, GraphSearch, ScoreType, MixingType
+from causalchange.config._cc_types import DataMode, GraphSearch, ScoreType, MixingType
 from causalchange.causal_change import CausalChange
 from endtoend.test_endtoend import _get_config_for_data_and_algo
 
@@ -52,9 +51,9 @@ def test_api_causalchange(data_mode: DataMode, graph_search: GraphSearch):
     assert cc.graph_search == graph_search
     assert cc.score_type == score_type
     cc._info("test")
-    assert len(cc.graph_state.nodes)==0
-    assert len(cc.graph_state.edges)==0
-    assert cc.graph_state.is_directed()
+    assert len(cc.graph_.nodes) == 0
+    assert len(cc.graph_.edges) == 0
+    assert cc.graph_.is_directed()
     assert not cc.fitted_graph
 
 
@@ -64,10 +63,10 @@ def test_api_causalchange(data_mode: DataMode, graph_search: GraphSearch):
     cc.fit(df)
 
     if data_mode.is_temporal():
-        assert len(cc.graph_state.nodes)==cfg.data.n_nodes * (cfg.data.tau_max+1)
+        assert len(cc.graph_.nodes) == cfg.data.n_nodes * (cfg.data.tau_max + 1)
     else:
-        assert len(cc.graph_state.nodes)==cfg.data.n_nodes
-    assert cc.graph_state.is_directed()
+        assert len(cc.graph_.nodes) == cfg.data.n_nodes
+    assert cc.graph_.is_directed()
     assert cc.fitted_graph
 
 def test_api_causalchange_default():
@@ -82,9 +81,9 @@ def test_api_causalchange_default():
     assert cc.score_type == default_score_type
 
     cc._info("test")
-    assert len(cc.graph_state.nodes) == 0
-    assert len(cc.graph_state.edges) == 0
-    assert cc.graph_state.is_directed()
+    assert len(cc.graph_.nodes) == 0
+    assert len(cc.graph_.edges) == 0
+    assert cc.graph_.is_directed()
     assert not cc.fitted_graph
 
 
@@ -93,6 +92,6 @@ def test_api_causalchange_default():
 
     cc.fit(df)
 
-    assert len(cc.graph_state.nodes)==cfg.data.n_nodes
-    assert cc.graph_state.is_directed()
+    assert len(cc.graph_.nodes) == cfg.data.n_nodes
+    assert cc.graph_.is_directed()
     assert cc.fitted_graph

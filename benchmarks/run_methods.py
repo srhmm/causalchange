@@ -16,13 +16,13 @@ from benchmarks.synthetic.generators import (
 
 from  benchmarks.synthetic.metrics import compute_metrics
 
-from benchmarks.benchmark_configs import BenchmarkConfig, DataConfig, ScoringConfig, AlgoConfig, \
+from causalchange.config.configs import BenchmarkConfig, DataConfig, ScoringConfig, AlgoConfig, \
     LincAlgoConfig, TopicAlgoConfig, ChainAlgoConfig, \
     SingleDataConfig, MultiDataConfig, MultiTemporalDataConfig, SingleTemporalDataConfig, SpaceTimeAlgoConfig, \
     SpaceTimeCAlgoConfig, MixedDataConfig
 from benchmarks.utils import _pgmpy_graph_to_nx
 
-from causalchange._cc_types import MixingType, ScoreType
+from causalchange.config._cc_types import MixingType, ScoreType
 from causalchange.causal_change import CausalChange
 
 
@@ -38,7 +38,7 @@ def run_sampling(config: DataConfig):
 
 
 def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> Any:
-    from causalchange._cc_types import DataMode, GraphSearch
+    from causalchange.config._cc_types import DataMode, GraphSearch
 
     data_mode = DataMode(data_cfg.setting)
     graph_search = GraphSearch.TOPIC if algo_cfg.name in ("topic", "linc", "spacetime", "spacetime-c")\
