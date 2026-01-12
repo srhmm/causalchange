@@ -11,20 +11,17 @@ from causalchange.config.cc_config import CausalChangeConfig
 from causalchange.discovery.factory import PipelineFactory
 from causalchange.discovery.pipeline import DiscoveryEngine, AggregationResult
 from causalchange.discovery.scoring.edge_score import EdgeScore
-from causalchange.config._cc_types import ScoreType, GPType, DataMode, GraphSearch, MixingType, ContextAggregation
+from causalchange.config.cc_types import ScoreType, GPType, DataMode, GraphSearch, MixingType, ContextAggregation
 from causalchange.discovery.search.topic import DAGSearchResult
 
 
 class CausalChange:
     X: pd.DataFrame
-    D: int
-    N: int
+    cfg: CausalChangeConfig
     data_mode: DataMode
     graph_search: GraphSearch
     score_type: ScoreType | GPType | MixingType
     aggregation: ContextAggregation
-    tau_max: int
-    score_params: dict[str, Any]
     context_col: str
 
     # debug info
@@ -48,10 +45,11 @@ class CausalChange:
             data_mode: DataMode = DataMode.SKIP,
             graph_search: GraphSearch = GraphSearch.SKIP,
             score_type: ScoreType = ScoreType.SKIP,
-            aggregation: ContextAggregation = ContextAggregation.LINC,
+            aggregation: ContextAggregation = ContextAggregation.SKIP,
             truths: dict[str, Any] | None = None,
             node_nms: list[str] | None = None,
-            context_col: str = "context",
+            context_col: str | None = None,
+            tau_max: int| None = None,
             lg = None,
             vb = 0,
             **kwargs):
@@ -69,8 +67,8 @@ class CausalChange:
         * *lg* (``logging``) -- logger if verbosity>0
         * *vb* (``int``) -- verbosity level
         """
-        self.aggregation = aggregation
-        self.node_nms = node_nms # Don't like that this is none
+
+        self.node_nms = node_nms
         self.truths = truths if truths is not None else {}
         self.lg = lg
         self.vb = vb
@@ -79,14 +77,18 @@ class CausalChange:
                 raise ValueError(
                     "Pass either cfg=... OR (data_mode, graph_search, score_type), not both.")
         else:
+
+            if data_mode.is_temporal(): assert tau_max is not None
+            if data_mode.is_context(): assert context_col is not None
             if any([ty.value == 'skip' for ty in [data_mode, graph_search, score_type]]):
                 raise ValueError("When cfg is None you must pass data_mode, graph_search, score_type")
             cfg = CausalChangeConfig(
                 data_mode=data_mode,
                 graph_search=graph_search,
                 score_type=score_type,
-                aggregation=self.aggregation,
-                context_col=context_col,
+                aggregation=aggregation,
+                context_col=context_col if context_col is not None else "", #todo uglies
+                tau_max=tau_max if tau_max is not None else 0,
                 **kwargs,
             )
 
@@ -98,9 +100,9 @@ class CausalChange:
         self.context_col = cfg.context_col
         self.tau_max = cfg.tau_max
 
-        assert self.graph_search.is_compatible_with(self.data_mode), (
-            f"Graph search {self.graph_search} is not compatible with data_mode {self.data_mode}"
-        )
+        assert self.graph_search.is_compatible_with(self.data_mode) and  self.aggregation.is_compatible_with(self.data_mode), \
+            f"Graph search {self.graph_search} & {self.aggregation} not compatible with data type {self.data_mode}"
+
 
         def _info(st, strength=0):
             (self.lg.info(st) if self.lg is not None else print(st)) if self.vb + strength > 0 else None
@@ -115,12 +117,12 @@ class CausalChange:
 
 
     def _check_X(self, X: pd.DataFrame) -> pd.DataFrame:
-        """ Check input data is compat with DataMode
+        """ Check input data shape is compat with DataMode
        :param X: ``pd.DataFrame``: input data
         """
         if not isinstance(X, pd.DataFrame): X = pd.DataFrame(X)
 
-        if self.data_mode in (DataMode.CONTEXTS, DataMode.TIME_CONTEXTS):
+        if self.data_mode.is_context():
             if self.context_col not in X.columns:
                 raise ValueError(
                     f"data_mode={self.data_mode.value} requires a context column "
@@ -156,9 +158,9 @@ class CausalChange:
 
     #%% Graph search
     def fit(self, X: pd.DataFrame) -> nx.DiGraph:
-        """ Discover a causal DAG
+        """ Discover a causal DAG over the columns in X
        :param X: ``pd.DataFrame``: input data
-       :return: ``nx.DiGraph``: causal DAG over nodes in X
+       :return: ``nx.DiGraph``: causal DAG over nodes in X. Also sets ``self.result_: DAGSearchResult``
         """
         X = self._check_X(X)
         self.engine = PipelineFactory.from_config(self.cfg)
@@ -170,13 +172,16 @@ class CausalChange:
         return self.graph_
 
 
+    #%% other wrappers
     @property
     def last_aggregation_(self) -> AggregationResult | None:
-        if self.engine is None:
-            return None
+        if self.engine is None: return None
         return self.engine.last_aggregation_
 
     def score(self, effect, parents) -> float:
-        if self.engine is None:
-            raise RuntimeError("Call fit(X) before score().")
+        if self.engine is None: raise RuntimeError("Call fit(X) before score().")
         return float(self.engine.score_edge(effect, parents))
+
+    def get_result(self) -> DAGSearchResult:
+        if self.engine is None: raise RuntimeError("Call fit(X) before get_result().")
+        return self.result_ 

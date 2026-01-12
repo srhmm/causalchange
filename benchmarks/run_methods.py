@@ -23,7 +23,7 @@ from causalchange.config.benchmark_config import BenchmarkConfig, DataConfig, Sc
     SpaceTimeCAlgoConfig, MixedDataConfig
 from benchmarks.utils import _pgmpy_graph_to_nx
 
-from causalchange.config._cc_types import MixingType, ScoreType
+from causalchange.config.cc_types import MixingType, ScoreType, ContextAggregation
 from causalchange.causal_change import CausalChange
 
 
@@ -42,17 +42,17 @@ def run_sampling(config: DataConfig):
 
 
 def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> Any:
-    from causalchange.config._cc_types import DataMode, GraphSearch
+    from causalchange.config.cc_types import DataMode, GraphSearch
 
     data_mode = DataMode(data_cfg.setting)
     graph_search = GraphSearch.TOPIC if algo_cfg.name in ("topic", "linc", "spacetime", "spacetime-c", "chain") else GraphSearch.SKIP
     if graph_search in [GraphSearch.SKIP, GraphSearch.GLOBE]:
         raise NotImplementedError(f"Not implemented/invalid: {algo_cfg.name}")
-
+    aggregation = ContextAggregation.LINC if algo_cfg.name=="linc" else ContextAggregation.CHAIN if algo_cfg.name=="chain" else ContextAggregation.SKIP
     score_type = ScoreType(algo_cfg.score_type)
 
     tau_max = getattr(algo_cfg, "tau_max", None)
-    context_col = getattr(data_cfg, "context_col", "")
+    context_col = getattr(data_cfg, "context_col", None)
 
     lg = logging.basicConfig(level=logging.DEBUG)
     vb = 1
@@ -60,6 +60,7 @@ def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> An
         data_mode=data_mode,
         graph_search=graph_search,
         score_type=score_type,
+        aggregation=aggregation,
         context_col=context_col,
         tau_max=tau_max,
         vb=vb,

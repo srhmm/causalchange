@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Sequence
 import numpy as np
 
-from causalchange.config._cc_types import DataMode, ScoreType, GPType
+from causalchange.config.cc_types import DataMode, ScoreType, GPType
 from causalchange.discovery.scoring.fit import fit_score_functional_model, fit_score_krr, fit_score_gp, fit_score_rff, \
     fit_score_gam, fit_score_spln, fit_score_ln
 

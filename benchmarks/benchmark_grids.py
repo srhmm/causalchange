@@ -5,14 +5,14 @@ BENCHMARK_GRID_SINGLE = {
         "n_nodes": [5],
         "edge_prob": [0.4],
         "n_samples": [1000],
-        "nonlinearity": ["tanh", "sin", "lin", "relu"],
+        "nonlinearity": ["tanh", "sin", "lin", "relu"], #better name would be funform
     },
     "algo": {
         "name": ["topic"],
         "score_type": ["gam"],
     },
     "scoring": {
-        "metrics": [ ["edge_f1", "skel_f1"], ] # uncomment if all should be returned
+        "metrics": [ ["edge_f1", "skel_f1"], ] # uncomment returns all impltd metrics
     }
 }
 BENCHMARK_GRID_MULTI = {
@@ -20,10 +20,9 @@ BENCHMARK_GRID_MULTI = {
         "setting": [ "multi"],
         "n_nodes": [5],
         "edge_prob": [0.4],
-        "n_samples": [500],
         "n_contexts": [5],
         "n_samples_per_context": [500],
-        "n_intervened_per_context": [3],
+        "n_intervened_per_context": [2],
         "context_col": ["context"],
         "intervention_type": ["hard", "soft_weight", "shift", "noise"],
         "nonlinearity": ["tanh", "sin", "lin", "relu"],
@@ -32,8 +31,8 @@ BENCHMARK_GRID_MULTI = {
     "algo": {
         "name": [ "linc"],
         "score_type": ["gam"],
-        "context_col": ["context"],
-        "tau_max": [2],
+        #algo hypparams
+        "context_col": ["context"], #"tau_max": [2],
     },
-    "scoring": { 'metrics': ['edge_f1']}
+    "scoring": { }
 }

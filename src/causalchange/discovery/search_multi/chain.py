@@ -38,7 +38,7 @@ class ChainAggregator:
         self.mmd_max_samples = 200
         self.mmd_gamma = None
         self.mmd_compare_to = "pooled"#pairwise
-        self.higher_is_better = cfg.higher_is_better
+        self.higher_is_better = bool(cfg.score_type.higher_is_better())
 
         seed = 42
         self._rng = np.random.default_rng(seed)

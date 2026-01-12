@@ -57,6 +57,27 @@ class SummaryRow:
     config: dict[str, Any]
 
 
+def file_name_from_cfg(cfg) -> str:
+    d = cfg.model_dump()
+    data = d["data"]
+    algo = d["algo"]
+
+    parts = [
+        data["setting"],
+        algo["name"],
+        data["nonlinearity"],
+        f"nn-{data.get('n_nodes')}"
+        f"p-{data.get('edge_prob')}"
+    ]
+    if data["setting"] == "multi":
+        parts.append(f"nc-{data.get('n_contexts')}")
+        parts.append(f"iv-{data.get('intervention_type')}")
+        parts.append(f"niv-{data.get('n_intervened_per_context')}")
+        parts.append(f"nsc-{data.get('n_samples_per_context')}")
+    else:
+        parts.append(f"ns-{data.get('n_samples')}")
+    return "_".join(parts)
+
 def bench_name_from_cfg(cfg) -> str:
     d = cfg.model_dump()
     data = d["data"]

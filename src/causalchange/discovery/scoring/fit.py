@@ -14,6 +14,7 @@ from sklearn.metrics import silhouette_score, adjusted_mutual_info_score
 from sklearn.mixture import GaussianMixture
 from sklearn.linear_model import LinearRegression
 
+
 def fit_score_functional_model(
     X: np.ndarray,
     pa: Sequence[int],
@@ -339,8 +340,7 @@ def _standardize(X, y, eps=1e-12):
     Xn = (X - Xmu) / Xsd
     ymu = y.mean()
     ysd = y.std()
-    if ysd < eps:  # degenerate target: keep ysd=1 to avoid blowups
-        ysd = 1.0
+    if ysd < eps: ysd = 1.0
     yn = (y - ymu) / ysd
     return Xn, yn, (Xmu, Xsd, ymu, ysd)
 
@@ -555,10 +555,10 @@ def _ridge_df_hat(Phi, alpha):
     G = Phic.T @ Phic
     A = G + alpha * np.eye(G.shape[0])
     H = Phic @ inv(A) @ Phic.T
-    return float(np.trace(H)) + 1.0  # +1 intercept
+    return float(np.trace(H)) + 1.0
 
 def _ols_df(Phi):
-    return float(Phi.shape[1] + 1)   # params + intercept
+    return float(Phi.shape[1] + 1)
 
 
 class _SlopeBits:
@@ -742,7 +742,7 @@ def fit_score_spln(Xtr, ytr, return_residuals: bool = False, **params):
 
 
 def to_params(params_r):
-    params_np = np.array(params_r)  # (D+1, K)
+    params_np = np.array(params_r)
     D_plus1, K = params_np.shape
     param_list = []
     for k in range(K):

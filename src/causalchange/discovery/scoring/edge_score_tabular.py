@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Sequence, Mapping, Optional
+from typing import Sequence, Optional
 
 import pandas as pd
 
-from causalchange.config._cc_types import DataMode, ScoreType
+from causalchange.config.cc_types import DataMode
 from causalchange.config.cc_config import CausalChangeConfig
 from causalchange.discovery.scoring.edge_score import EdgeScore
 
@@ -70,7 +69,6 @@ class EdgeScoreTabular:
             self._bind(df)
 
     def fit(self, df: pd.DataFrame) -> None:
-        # This is the ONLY place we set the significance n.
         self._global_n_samples = int(df.shape[0])
         self._bind(df)
 

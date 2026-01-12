@@ -9,8 +9,8 @@ class DataMode(Enum):
     CONTEXTS = 'multi'
     TIME = 'time'
     TIME_CONTEXTS = 'time-contexts'
-    #CONFOUNDED = 'confounded'
     MIXED = 'mixed'
+
     def is_context(self):
         return self.value in [DataMode.CONTEXTS.value, DataMode.TIME_CONTEXTS.value]
     def is_temporal(self):
@@ -28,12 +28,8 @@ class GraphSearch(Enum):
         return self.value == other.value
 
     def compatible_modes(self) -> list[DataMode]:
-        if self.value==GraphSearch.TOPIC.value:
-            return [DataMode.IID, DataMode.CONTEXTS, DataMode.MIXED, DataMode.TIME, DataMode.TIME_CONTEXTS]
-        elif self.value==GraphSearch.GLOBE.value:
-            return [DataMode.IID, DataMode.CONTEXTS]
-        else:
-            return []
+        return [DataMode.IID, DataMode.CONTEXTS, DataMode.MIXED, DataMode.TIME, DataMode.TIME_CONTEXTS] if self.value == GraphSearch.TOPIC.value \
+        else [DataMode.IID, DataMode.CONTEXTS] if self.value==GraphSearch.GLOBE.value else []
 
     def is_compatible_with(self, data_mode: DataMode) -> bool:
         return data_mode in self.compatible_modes()
@@ -45,17 +41,14 @@ class ContextAggregation(Enum):
     LINC = 'linc'
 
     def compatible_modes(self) -> list[DataMode]:
-        if self.value==ContextAggregation.SKIP.value:
-            return [DataMode.IID, DataMode.MIXED, DataMode.TIME]
-        elif self.value==[ContextAggregation.CHAIN.value, ContextAggregation.LINC.value]:
-            return [DataMode.TIME_CONTEXTS, DataMode.CONTEXTS]
-        else: return []
+        return [DataMode.IID, DataMode.MIXED, DataMode.TIME] if self.value==ContextAggregation.SKIP.value else \
+        [DataMode.TIME_CONTEXTS, DataMode.CONTEXTS] if self.value in [ContextAggregation.CHAIN.value, ContextAggregation.LINC.value] else []
 
-    def __eq__(self, other):
-        return self.value == other.value
     def is_compatible_with(self, data_mode):
         return data_mode in self.compatible_modes()
 
+    def __eq__(self, other):
+        return self.value == other.value
 
 class GPType(Enum):
     EXACT = 'gp'
@@ -63,20 +56,6 @@ class GPType(Enum):
 
     def __eq__(self, other):
         return self.value == other.value
-
-    def is_scorebased(self): return True
-    def is_constraintbased(self): return False
-
-class CIType(Enum):
-    KCI = 'kci'
-
-    def __eq__(self, other):
-        return self.value == other.value
-
-    def is_scorebased(self): return False
-    def is_constraintbased(self): return True
-
-
 
 
 class MixingType(Enum):
@@ -91,10 +70,6 @@ class MixingType(Enum):
 
     def __eq__(self, other): return self.value == other.value
     def __str__(self): return str(self.value)
-    def search_each_node(self): return not self.value.endswith('global')
-
-    def is_unconditional_mixture(self): return self.value.startswith('clus')
-
 
 
 class ScoreType(Enum):
@@ -103,7 +78,7 @@ class ScoreType(Enum):
     SPLINE = 'spline'
     KRR = 'krr'
     GP = GPType
-    CI = CIType
+    #CI = CIType
     MIX = MixingType
     SKIP = 'skip'
 
@@ -115,7 +90,7 @@ class ScoreType(Enum):
     def __eq__(self, other):
         return self.value == other.value
 
-def score_type_get_all():
+def util_score_type_get_all():
     variants = []
     for st in ScoreType:
         if isinstance(st.value, EnumMeta):

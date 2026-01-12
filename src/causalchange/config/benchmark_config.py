@@ -4,9 +4,8 @@ from typing import Annotated, Literal, Optional, Union, Any
 
 from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 
-MetricName = Literal["shd", "edge_f1", "skel_f1", "time_s"]
+MetricName = Literal["shd", "edge_f1", "skel_f1", "edge_precision", "edge_recall", "skel_precision", "skel_recall", "time_s"]
 Nonlinearity = Literal["lin", "tanh", "sin", "relu"]
-NonlinearOnly = Literal["tanh", "sin", "relu"]
 InterventionLinear = Literal["hard", "soft_weight", "shift", "noise"]
 InterventionNonlinear = Literal["hard", "soft_weight",  "shift", "noise"]
 

@@ -4,7 +4,7 @@ from typing import Sequence, Optional
 
 import pandas as pd
 
-from causalchange.config._cc_types import DataMode, ScoreType
+from causalchange.config.cc_types import DataMode
 from causalchange.config.cc_config import CausalChangeConfig
 
 from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabular

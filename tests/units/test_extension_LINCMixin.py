@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 from benchmarks.run_methods import run_sampling
-from causalchange.config._cc_types import DataMode, GraphSearch, ScoreType
+from causalchange.config.cc_types import DataMode, GraphSearch, ScoreType
 from causalchange.discovery.old._mixins import LINCMixin, LINCGroupingParams, TabularScoreMixin
 from endtoend.test_endtoend import _get_config_for_data_and_algo
 

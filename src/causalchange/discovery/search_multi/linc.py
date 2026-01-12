@@ -6,7 +6,7 @@ from typing import Any, Callable, Hashable, Iterable, Literal, Optional
 import numpy as np
 import pandas as pd
 
-from causalchange.discovery.aggregation.utils.union_find import union_find_components
+from causalchange.discovery.search_multi.utils.union_find import union_find_components
 
 
 @dataclass(frozen=True)

@@ -41,11 +41,10 @@ class TemporalDomain:
 
         parents: list[Node] = []
 
-        # instantaneous parents: other lag-0 nodes
         if self.allow_instantaneous:
             parents.extend([p for p in remaining_lag0 if p != child])
 
-        # lagged parents: all variables at lags 1..tau_max
+        # lagged parents are all variables at lags 1..tau_max
         vars_ = [v for (v, _) in remaining_lag0]
         for lag in range(1, self.tau_max + 1):
             parents.extend([(v, lag) for v in vars_])
@@ -53,7 +52,6 @@ class TemporalDomain:
         return parents
 
     def allowed_edge(self, u: Any, v: Any) -> bool:
-        # Only allow edges into lag-0 nodes
         if not (isinstance(u, tuple) and isinstance(v, tuple) and len(u) == 2 and len(v) == 2):
             raise TypeError("TemporalDomain expects node tuples (var, lag).")
 
@@ -65,6 +63,4 @@ class TemporalDomain:
 
         if not self.allow_instantaneous and lag_u == 0:
             return False
-
-        # lagged or instantaneous cause is fine as long as target is lag-0
         return True

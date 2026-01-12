@@ -4,7 +4,7 @@ from typing import Callable, Hashable, Iterable, Optional, Protocol, Any
 
 import pandas as pd
 
-from causalchange.config._cc_types import DataMode
+from causalchange.config.cc_types import DataMode
 from causalchange.discovery.search.topic import DAGSearchResult
 
 

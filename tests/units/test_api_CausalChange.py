@@ -3,7 +3,7 @@ import logging
 import pytest
 
 from benchmarks.run_methods import run_sampling
-from causalchange.config._cc_types import DataMode, GraphSearch, ScoreType, MixingType, ContextAggregation
+from causalchange.config.cc_types import DataMode, GraphSearch, ScoreType, MixingType, ContextAggregation
 from causalchange.causal_change import CausalChange
 from endtoend.test_endtoend import _get_config_for_data_and_algo
 

@@ -5,12 +5,13 @@ from typing import Any
 from dataclasses import asdict
 
 import benchmarks.benchmark_grids
-from benchmarks.utils import config_group_key, bench_name_from_cfg, summarize_groups, mean_std, to_json_safe
+from benchmarks.utils import config_group_key, bench_name_from_cfg, summarize_groups, mean_std, to_json_safe, \
+    file_name_from_cfg
 from benchmarks.run_methods import iter_valid_configs, run_on_config
 
 BASE_SEED = 42
 N_REPEATS = 10
-BENCHMARK_GRID = benchmarks.benchmark_grids.BENCHMARK_GRID_SINGLE # or MULTI
+BENCHMARK_GRID = benchmarks.benchmark_grids.BENCHMARK_GRID_MULTI
 
 if __name__ == "__main__":
 
@@ -68,10 +69,12 @@ if __name__ == "__main__":
 
     out_dir = os.path.join("../benchmarks", "_results")
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, "latest.json")
+
+    filenm = file_name_from_cfg(cfg0)
+    out_path = os.path.join(out_dir, f"{filenm}.json")
 
     with open(out_path, "w", encoding="utf-8") as fl:
         json.dump([to_json_safe(asdict(rw)) for rw in rows], fl, indent=2)
 
-    print(f"Saved: {out_path}")
+    print(f"\nSaved: {out_path}")
     print(f"Valid configs run: {n_valid}, total runs: {n_runs}")

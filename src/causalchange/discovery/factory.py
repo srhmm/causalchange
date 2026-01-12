@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from causalchange.config._cc_types import DataMode, GraphSearch, ContextAggregation
+from causalchange.config.cc_types import GraphSearch, ContextAggregation
 from causalchange.config.cc_config import CausalChangeConfig
 
 from causalchange.discovery.pipeline import DiscoveryEngine
@@ -10,14 +10,14 @@ from causalchange.discovery.pipeline import DiscoveryEngine
 from causalchange.discovery.domain.tabular import TabularDomain
 from causalchange.discovery.domain.temporal import TemporalDomain
 
-from causalchange.discovery.contexts.single import SingleContextDomain
-from causalchange.discovery.contexts.multi import MultiContextDomain
+from causalchange.discovery.domain.single import SingleContextDomain
+from causalchange.discovery.domain.multi import MultiContextDomain
 
 from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabular
 
 
-from causalchange.discovery.aggregation.linc import LINCAggregator
-from causalchange.discovery.aggregation.chain import ChainAggregator
+from causalchange.discovery.search_multi.linc import LINCAggregator
+from causalchange.discovery.search_multi.chain import ChainAggregator
 from causalchange.discovery.scoring.edge_score_temporal import EdgeScoreTemporal
 
 from causalchange.discovery.search.topic import TopicSearch

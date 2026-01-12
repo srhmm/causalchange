@@ -3,7 +3,7 @@ import pytest
 
 from benchmarks.run_methods import run_on_config
 from causalchange.config.benchmark_config import BenchmarkConfig
-from causalchange.config._cc_types import DataMode, GraphSearch, ScoreType, ContextAggregation
+from causalchange.config.cc_types import DataMode, GraphSearch, ScoreType, ContextAggregation
 
 
 @pytest.mark.parametrize(
