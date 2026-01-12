@@ -6,6 +6,8 @@ from typing import Any, Callable, Hashable, Optional
 import numpy as np
 import pandas as pd
 
+from causalchange.config.cc_config import CausalChangeConfig
+
 
 @dataclass(frozen=True)
 class AggregationResult:
@@ -31,19 +33,15 @@ class ChainAggregator:
     def __init__(
         self,
         *,
-        lambda_inv: float = 1.0,
-        mmd_max_samples: int = 200,
-        mmd_gamma: float | None = None,
-        mmd_compare_to: str = "pooled",  # "pooled" or "pairwise"
-        higher_is_better: bool = False,
-        seed: int = 0,
+            cfg: CausalChangeConfig,
     ):
-        self.lambda_inv = float(lambda_inv)
-        self.mmd_max_samples = int(mmd_max_samples)
-        self.mmd_gamma = mmd_gamma
-        self.mmd_compare_to = str(mmd_compare_to)
-        self.higher_is_better = bool(higher_is_better)
+        self.lambda_inv = 1.0
+        self.mmd_max_samples = 200
+        self.mmd_gamma = None
+        self.mmd_compare_to = "pooled"#pairwise
+        self.higher_is_better = cfg.higher_is_better
 
+        seed = 42
         self._rng = np.random.default_rng(seed)
         self._pooled_cache: dict[tuple[str, tuple[str, ...]], tuple[dict[Hashable, np.ndarray], np.ndarray]] = {}
         self._mmd_cache: dict[tuple[Any, ...], float] = {}

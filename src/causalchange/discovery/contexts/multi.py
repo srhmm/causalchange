@@ -4,7 +4,7 @@ from typing import Hashable
 import pandas as pd
 
 
-class IIDContextProvider:
+class MultiContextDomain:
     """
     Splits X into contexts using a context column, and drops that column.
     Equivalent to  ContextScoreMixin._init_contexts.
@@ -22,7 +22,7 @@ class IIDContextProvider:
             out[ctx] = g.drop(columns=[self.context_col]).copy()
         return out
 
-    def drop_context_col(self, X: pd.DataFrame) -> pd.DataFrame:
+    def prepare_X(self, X: pd.DataFrame) -> pd.DataFrame:
         if self.context_col not in X.columns:
             raise ValueError(f"context_col '{self.context_col}' not found")
         return X.drop(columns=[self.context_col]).copy()

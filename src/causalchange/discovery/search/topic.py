@@ -6,16 +6,15 @@ from typing import Any, Callable, Sequence
 import numpy as np
 import networkx as nx
 
+from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabular
+from causalchange.discovery.scoring.edge_score_temporal import EdgeScoreTemporal
 
-ScoreOracle = Callable[[Any, tuple[Any, ...]], float]
+ScoreFunction = Callable[[Any, tuple[Any, ...]], float] # comes from EdgeScoreTabular|EdgeScoreTemporal.score_edge()
 AllowedEdge = Callable[[Any, Any], bool]
-TransitionGain = Callable[[float, float], float]
-ScoreSignificant = Callable[[float], bool]
-ScoreIsBetter = Callable[[float, float], bool]
 
 
 @dataclass
-class TopicSearchResult:
+class DAGSearchResult:
     graph: nx.DiGraph
     topological_order: list[Any]
     history: list[dict[str, Any]]
@@ -24,15 +23,10 @@ class TopicSearchResult:
 class TopicSearch:
 
     def __init__(
-        self,
-        *,
-        transition_gain: TransitionGain,
-        score_significant: ScoreSignificant,
-        score_is_better: ScoreIsBetter,
-    ):
-        self.transition_gain = transition_gain
-        self.score_significant = score_significant
-        self.score_is_better = score_is_better
+        self, *, scoring: EdgeScoreTabular | EdgeScoreTemporal):
+        self.transition_gain = scoring.transition_gain
+        self.score_significant = scoring.score_significant
+        self.score_is_better = scoring.score_is_better
 
     def run(
         self,
@@ -40,8 +34,8 @@ class TopicSearch:
         nodes: Sequence[Any],
         candidates: list[Any],
         allowed_edge: AllowedEdge,
-        score_oracle: ScoreOracle,
-    ) -> TopicSearchResult:
+        score_fun: ScoreFunction,
+    ) -> DAGSearchResult:
         g = nx.DiGraph()
         g.add_nodes_from(nodes)
 
@@ -56,7 +50,7 @@ class TopicSearch:
                 candidates=candidates,
                 graph=g,
                 allowed_edge=allowed_edge,
-                score_oracle=score_oracle,
+                score_fun=score_fun,
             )
 
             candidates.remove(source)
@@ -67,12 +61,12 @@ class TopicSearch:
                 remaining=candidates,
                 graph=g,
                 allowed_edge=allowed_edge,
-                score_oracle=score_oracle,
+                score_fun=score_fun,
             )
             pruned_edges, incoming_scores = self._remove_ingoing_edges(
                 source=source,
                 graph=g,
-                score_oracle=score_oracle,
+                score_fun=score_fun,
             )
 
             history.append(
@@ -90,9 +84,9 @@ class TopicSearch:
             )
             it += 1
 
-        return TopicSearchResult(graph=g, topological_order=topological_order, history=history)
+        return DAGSearchResult(graph=g, topological_order=topological_order, history=history)
 
-    def _addition_gain(self, cause, effect, graph: nx.DiGraph, score_oracle: ScoreOracle) -> float:
+    def _addition_gain(self, cause, effect, graph: nx.DiGraph, score_oracle: ScoreFunction) -> float:
         parents = tuple(graph.predecessors(effect))
         old_score = float(score_oracle(effect, parents))
         new_score = float(score_oracle(effect, parents + (cause,)))
@@ -104,7 +98,7 @@ class TopicSearch:
         candidates: Sequence[Any],
         graph: nx.DiGraph,
         allowed_edge: AllowedEdge,
-        score_oracle: ScoreOracle,
+        score_oracle: ScoreFunction,
     ) -> np.ndarray:
         n = len(candidates)
         imp = np.zeros((n, n), dtype=float)
@@ -127,13 +121,13 @@ class TopicSearch:
         candidates: Sequence[Any],
         graph: nx.DiGraph,
         allowed_edge: AllowedEdge,
-        score_oracle: ScoreOracle,
+        score_fun: ScoreFunction,
     ):
         improvement = self._improvement_matrix(
             candidates=candidates,
             graph=graph,
             allowed_edge=allowed_edge,
-            score_oracle=score_oracle,
+            score_oracle=score_fun,
         )
         delta = improvement - improvement.T
         np.fill_diagonal(delta, -np.inf)
@@ -158,7 +152,7 @@ class TopicSearch:
         remaining: Sequence[Any],
         graph: nx.DiGraph,
         allowed_edge: AllowedEdge,
-        score_oracle: ScoreOracle,
+        score_fun: ScoreFunction,
     ):
         added_edges = []
         meta = []
@@ -169,7 +163,7 @@ class TopicSearch:
             if not allowed_edge(source, node):
                 continue
 
-            gain = self._addition_gain(source, node, graph, score_oracle)
+            gain = self._addition_gain(source, node, graph, score_fun)
             significant = bool(self.score_significant(gain))
 
             meta.append({"from": source, "to": node, "gain": float(gain), "significant": significant})
@@ -180,7 +174,7 @@ class TopicSearch:
 
         return added_edges, meta
 
-    def _remove_ingoing_edges(self, *, source, graph: nx.DiGraph, score_oracle: ScoreOracle):
+    def _remove_ingoing_edges(self, *, source, graph: nx.DiGraph, score_fun: ScoreFunction):
         pruned_edges = []
         meta = []
 
@@ -190,7 +184,7 @@ class TopicSearch:
                 parents=parents,
                 child=source,
                 graph=graph,
-                score_oracle=score_oracle,
+                score_oracle=score_fun,
             )
             for parent, diff in cand:
                 meta.append({"from": parent, "to": source, "diff": float(diff)})
@@ -204,7 +198,7 @@ class TopicSearch:
 
         return pruned_edges, meta
 
-    def _find_removable_edge(self, *, parents, child, graph: nx.DiGraph, score_oracle: ScoreOracle):
+    def _find_removable_edge(self, *, parents, child, graph: nx.DiGraph, score_oracle: ScoreFunction):
         old_score = float(score_oracle(child, tuple(parents)))
 
         best_parent = None

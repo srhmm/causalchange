@@ -14,7 +14,7 @@ class TemporalDomain:
     Temporal domain:
       - nodes are (var, lag) for lag=0..tau_max
       - candidates are lag-0 nodes only
-      - allowed edges: only into lag-0 targets; optionally disallow instantaneous causes
+      - allowed edges: only into lag-0 targets
     """
     tau_max: int = 1
     allow_instantaneous: bool = True

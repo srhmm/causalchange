@@ -18,7 +18,7 @@ if __name__ == "__main__":
     n_runs = 0
     n_valid = 0
 
-    from benchmarks.benchmark_grid import BENCHMARK_GRID
+    from benchmarks.benchmark_grids import BENCHMARK_GRID
 
     for cfg0 in iter_valid_configs(BENCHMARK_GRID):
         n_valid += 1

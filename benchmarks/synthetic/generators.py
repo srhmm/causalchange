@@ -6,9 +6,7 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 
-
-
-from benchmarks.benchmark_configs import SingleDataConfig, MultiDataConfig
+from causalchange.config.benchmark_config import SingleDataConfig, MultiDataConfig
 
 
 def sample_single_continuous(config: SingleDataConfig):

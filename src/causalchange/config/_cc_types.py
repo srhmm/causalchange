@@ -1,30 +1,36 @@
 from enum import Enum, EnumMeta
 
+import numpy as np
+
+
 class DataMode(Enum):
+    SKIP = 'skip'
     IID = 'single'
     CONTEXTS = 'multi'
     TIME = 'time'
     TIME_CONTEXTS = 'time-contexts'
-    CONFOUNDED = 'confounded'
+    #CONFOUNDED = 'confounded'
     MIXED = 'mixed'
-    def is_dict_like(self):
+    def is_context(self):
         return self.value in [DataMode.CONTEXTS.value, DataMode.TIME_CONTEXTS.value]
     def is_temporal(self):
         return self.value in [DataMode.TIME.value, DataMode.TIME_CONTEXTS.value]
     def __eq__(self, other):
         return self.value == other.value
 
+
 class GraphSearch(Enum):
     TOPIC = 'topological'
     GLOBE = 'edge-greedy'
+    SKIP = 'skip'
 
     def __eq__(self, other):
         return self.value == other.value
 
     def compatible_modes(self) -> list[DataMode]:
-        if self is GraphSearch.TOPIC:
+        if self.value==GraphSearch.TOPIC.value:
             return [DataMode.IID, DataMode.CONTEXTS, DataMode.MIXED, DataMode.TIME, DataMode.TIME_CONTEXTS]
-        elif self is GraphSearch.GLOBE:
+        elif self.value==GraphSearch.GLOBE.value:
             return [DataMode.IID, DataMode.CONTEXTS]
         else:
             return []
@@ -34,11 +40,21 @@ class GraphSearch(Enum):
 
 
 class ContextAggregation(Enum):
+    SKIP = 'skip'
     CHAIN = 'chain'
     LINC = 'linc'
 
+    def compatible_modes(self) -> list[DataMode]:
+        if self.value==ContextAggregation.SKIP.value:
+            return [DataMode.IID, DataMode.MIXED, DataMode.TIME]
+        elif self.value==[ContextAggregation.CHAIN.value, ContextAggregation.LINC.value]:
+            return [DataMode.TIME_CONTEXTS, DataMode.CONTEXTS]
+        else: return []
+
     def __eq__(self, other):
         return self.value == other.value
+    def is_compatible_with(self, data_mode):
+        return data_mode in self.compatible_modes()
 
 
 class GPType(Enum):
@@ -89,12 +105,12 @@ class ScoreType(Enum):
     GP = GPType
     CI = CIType
     MIX = MixingType
+    SKIP = 'skip'
 
-    def is_scorebased(self):
-        return not self.value is CIType
+    def higher_is_better(self) -> bool: return False #all mdl scores rn
 
-    def is_constraintbased(self):
-        return self.value is CIType
+    def get_gain_threshold(self, n: int) -> float:
+        return 0.5 * np.log(n)
 
     def __eq__(self, other):
         return self.value == other.value

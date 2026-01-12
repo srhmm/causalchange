@@ -1,52 +1,34 @@
-# causalchange/scoring/edge_score_autoreg.py
-
 from __future__ import annotations
 
-from typing import Any, Sequence, Mapping, Optional
+from typing import Sequence, Optional
 
 import pandas as pd
 
-from causalchange.config.config_types import DataMode, ScoreType
+from causalchange.config._cc_types import DataMode, ScoreType
+from causalchange.config.cc_config import CausalChangeConfig
 
-from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabularScorer
+from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabular
 
 Node = tuple[str, int]  # (variable, lag)
 
 
-class EdgeScoreTemporalScorer:
-    """
-    Autoregressive scorer for temporal nodes.
-    Builds lagged design matrix Z, then delegates scoring to EdgeScoreTabularScorer on Z.
-    """
+class EdgeScoreTemporal:
+    """ scoring for temporal domain (both single and multi contexts)
+    w lagged design matrix Z, everything else delegated to EdgeScoreTabular on Z"""
+
 
     def __init__(
-        self,
-        *,
-        data_mode: DataMode,
-        score_type: ScoreType,
-        tau_max: int,
-        allow_instantaneous: bool = True,
-        score_params: Mapping[str, Any] | None = None,
-        higher_is_better: bool = False,
-        gain_threshold: float = 0.0,
+        self, *, cfg: CausalChangeConfig,
     ):
-        if data_mode not in {DataMode.TIME, DataMode.TIME_CONTEXTS}:
-            raise ValueError(f"EdgeScoreAutoRegressiveScorer expects temporal data_mode, got {data_mode=}")
-        if tau_max <= 0:
-            raise ValueError("tau_max must be positive.")
+        if cfg.data_mode not in {DataMode.TIME, DataMode.TIME_CONTEXTS}:
+            raise ValueError(f"EdgeScoreTemporal expects temporal, got {cfg.data_mode=}")
+        if cfg.tau_max is None or cfg.tau_max <= 0:
+            raise ValueError("provide (positive) tau_max (max time lag)")
 
-        self.data_mode = data_mode
-        self.score_type = score_type
-        self.tau_max = int(tau_max)
-        self.allow_instantaneous = bool(allow_instantaneous)
-
-        self._tab = EdgeScoreTabularScorer(
-            data_mode=data_mode,
-            score_type=score_type,
-            score_params=score_params,
-            higher_is_better=higher_is_better,
-            gain_threshold=gain_threshold,
-        )
+        self.data_mode = cfg.data_mode
+        self.score_type = cfg.score_type
+        self.tau_max = cfg.tau_max
+        self._tab = EdgeScoreTabular(cfg)
 
         self._node_to_col: dict[Node, str] = {}
         self._Z: Optional[pd.DataFrame] = None
@@ -54,8 +36,6 @@ class EdgeScoreTemporalScorer:
     @property
     def higher_is_better(self) -> bool:
         return self._tab.higher_is_better
-
-    # --- design matrix helpers ---
 
     def _ar_col(self, node: Node) -> str:
         v, lag = node
@@ -73,13 +53,7 @@ class EdgeScoreTemporalScorer:
         Z.reset_index(drop=True, inplace=True)
         return Z
 
-    # --- lifecycle ---
-    def fit(self, X0: pd.DataFrame) -> None:
-        self.fit_df(X0)
-    def fit_df(self, X: pd.DataFrame) -> None:
-        """
-        Bind scorer to a temporal dataframe X by creating AR design Z and binding the tabular scorer to Z.
-        """
+    def fit(self, X: pd.DataFrame) -> None:
         Z = self.build_design(X)
         self._node_to_col = {
             (v, lag): self._ar_col((v, lag))
@@ -87,23 +61,16 @@ class EdgeScoreTemporalScorer:
             for lag in range(0, self.tau_max + 1)
         }
         self._Z = Z
-        self._tab.fit_df(Z)
+        self._tab.fit(Z)
 
-    # --- scoring ---
-
-    def score_df(self, X: pd.DataFrame, effect: Node, parents: Sequence[Node]) -> float:
-        """
-        Score edge (parents -> effect) where effect/parents are temporal nodes (var, lag).
-        """
+    def score_edge(self, X: pd.DataFrame, effect: Node, parents: Sequence[Node]) -> float:
         if self._Z is None or not self._node_to_col:
-            self.fit_df(X)
+            self.fit(X)
 
         assert self._Z is not None
         eff = self._node_to_col[effect]
         par = [self._node_to_col[p] for p in parents]
-        return float(self._tab.score_df(self._Z, eff, par))
-
-    # --- policy passthrough ---
+        return float(self._tab.score_edge(self._Z, eff, par))
 
     def transition_gain(self, old_score: float, new_score: float) -> float:
         return self._tab.transition_gain(old_score, new_score)

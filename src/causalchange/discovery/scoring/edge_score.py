@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Sequence
 import numpy as np
 
-from causalchange.config.config_types import DataMode, ScoreType, GPType, MixingType
+from causalchange.config._cc_types import DataMode, ScoreType, GPType
 from causalchange.discovery.scoring.fit import fit_score_functional_model, fit_score_krr, fit_score_gp, fit_score_rff, \
     fit_score_gam, fit_score_spln, fit_score_ln
 
@@ -13,15 +13,12 @@ class EdgeScore:
 
     def __init__(
         self,
-        #X: np.ndarray,
         data_mode: DataMode,
         score_type: ScoreType,
-        #mixing_type: MixingType,
         **scoring_params: Any,
     ):
         self.data_mode = data_mode
         self.score_type = score_type
-        #self.mixing_type = mixing_type
         self.scoring_params = scoring_params
 
         self.lg = scoring_params.get("lg", None)
@@ -37,12 +34,12 @@ class EdgeScore:
         self.res_cache: dict[tuple[int, tuple[int, ...]], dict] = {}
 
     def fit(self, X: np.ndarray):
+        """sets data"""
         self.X = np.asarray(X)
         self.score_cache.clear()
-
         self.res_cache.clear()
 
-    def get_score_fun(self):
+    def get_score_fun(self): # within ScoreType?
         score_fun = (
             fit_score_krr if self.score_type == ScoreType.KRR
             else fit_score_gp if self.score_type.value == GPType.EXACT.value
@@ -63,7 +60,7 @@ class EdgeScore:
         ret_full_result: bool = True,
         ret_residuals: bool = False,
     ):
-        j = int(j)
+        """ scores causal relationship pa->j"""
         pa_key = tuple(sorted(int(p) for p in pa))
         key = (j, pa_key)
 

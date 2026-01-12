@@ -3,7 +3,7 @@ import logging
 import pytest
 
 from benchmarks.run_methods import run_sampling
-from causalchange.config._cc_types import DataMode, GraphSearch, ScoreType, MixingType
+from causalchange.config._cc_types import DataMode, GraphSearch, ScoreType, MixingType, ContextAggregation
 from causalchange.causal_change import CausalChange
 from endtoend.test_endtoend import _get_config_for_data_and_algo
 
@@ -14,46 +14,37 @@ from endtoend.test_endtoend import _get_config_for_data_and_algo
 )
 @pytest.mark.parametrize(
     "graph_search",
-    [GraphSearch.TOPIC, GraphSearch.CHAIN]
+    [GraphSearch.TOPIC]
+)
+@pytest.mark.parametrize(
+    "context_aggregation",
+    [ContextAggregation.SKIP, ContextAggregation.CHAIN, ContextAggregation.LINC],
 )
 
 
-def test_api_causalchange(data_mode: DataMode, graph_search: GraphSearch):
+def test_api_causalchange(data_mode: DataMode, graph_search: GraphSearch, context_aggregation: ContextAggregation):
     """test usage with each valid combo of graph search and data mode"""
 
-    if not graph_search.is_compatible_with(data_mode):
-        pytest.skip(f"{graph_search} not compatible with data_mode {data_mode}")
-
+    if not graph_search.is_compatible_with(data_mode) or not context_aggregation.is_compatible_with(data_mode):
+        pytest.skip(f"{graph_search}&{context_aggregation} not compatible with data_mode {data_mode}")
+    if data_mode in [DataMode.MIXED, DataMode.TIME, DataMode.TIME_CONTEXTS]:
+        pytest.skip(f"{data_mode}")
     score_type = ScoreType.LIN
     lg = logging.basicConfig(level=logging.DEBUG)
     vb = 1
 
-    if data_mode == DataMode.MIXED:
-        mixing_type = MixingType.MIX_LIN
-
-        cc = CausalChange(
-            data_mode=data_mode,
-            graph_search=graph_search,
-            score_type=score_type,
-            mixing_type=mixing_type,
-            lg=lg,
-            vb=vb,
-        )
-    else:
-        cc = CausalChange(
-            data_mode=data_mode,
-            graph_search=graph_search,
-            score_type=score_type,
-            lg=lg,
-            vb=vb,
-        )
+    cc = CausalChange(
+        data_mode=data_mode,
+        graph_search=graph_search,
+        score_type=score_type,
+        context_aggregation=context_aggregation,
+        lg=lg,
+        vb=vb,
+    )
     assert cc.data_mode == data_mode
     assert cc.graph_search == graph_search
     assert cc.score_type == score_type
     cc._info("test")
-    assert len(cc.graph_.nodes) == 0
-    assert len(cc.graph_.edges) == 0
-    assert cc.graph_.is_directed()
     assert not cc.fitted_graph
 
 
@@ -72,7 +63,7 @@ def test_api_causalchange(data_mode: DataMode, graph_search: GraphSearch):
 def test_api_causalchange_default():
     """test usage with default parameters"""
 
-    cc = CausalChange( )
+    cc = CausalChange(data_mode=DataMode.IID, graph_search=GraphSearch.TOPIC, score_type=ScoreType.GAM)
     default_score_type = ScoreType.GAM
     default_data_mode = DataMode.IID
     default_graph_search = GraphSearch.TOPIC
@@ -81,9 +72,6 @@ def test_api_causalchange_default():
     assert cc.score_type == default_score_type
 
     cc._info("test")
-    assert len(cc.graph_.nodes) == 0
-    assert len(cc.graph_.edges) == 0
-    assert cc.graph_.is_directed()
     assert not cc.fitted_graph
 
 

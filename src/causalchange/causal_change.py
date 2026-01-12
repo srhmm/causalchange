@@ -12,6 +12,7 @@ from causalchange.discovery.factory import PipelineFactory
 from causalchange.discovery.pipeline import DiscoveryEngine, AggregationResult
 from causalchange.discovery.scoring.edge_score import EdgeScore
 from causalchange.config._cc_types import ScoreType, GPType, DataMode, GraphSearch, MixingType, ContextAggregation
+from causalchange.discovery.search.topic import DAGSearchResult
 
 
 class CausalChange:
@@ -35,7 +36,7 @@ class CausalChange:
     is_true_edge: Callable[[int], Callable[[int], str]]
 
     # state
-    #-graph state
+    result_: DAGSearchResult
     graph_: nx.DiGraph
     edges_state: EdgeScore
     # flags
@@ -44,12 +45,13 @@ class CausalChange:
     def __init__(
             self,
             cfg: CausalChangeConfig | None = None, *,
-            data_mode: DataMode | None = None,
-            graph_search: GraphSearch | None = None,
-            score_type: ScoreType | None = None,
-            aggregation: ContextAggregation | None = ContextAggregation.LINC,
-            truths: dict[str, Any] = dict(),
+            data_mode: DataMode = DataMode.SKIP,
+            graph_search: GraphSearch = GraphSearch.SKIP,
+            score_type: ScoreType = ScoreType.SKIP,
+            aggregation: ContextAggregation = ContextAggregation.LINC,
+            truths: dict[str, Any] | None = None,
             node_nms: list[str] | None = None,
+            context_col: str = "context",
             lg = None,
             vb = 0,
             **kwargs):
@@ -68,22 +70,23 @@ class CausalChange:
         * *vb* (``int``) -- verbosity level
         """
         self.aggregation = aggregation
-        self.node_nms = node_nms
-        self.truths = truths
+        self.node_nms = node_nms # Don't like that this is none
+        self.truths = truths if truths is not None else {}
         self.lg = lg
         self.vb = vb
         if cfg is not None:
-            if any(x is not None for x in (data_mode, graph_search, score_type)) or kwargs:
+            if any([ty.value != 'skip' for ty in [data_mode, graph_search, score_type]]): # or kwargs:
                 raise ValueError(
                     "Pass either cfg=... OR (data_mode, graph_search, score_type), not both.")
         else:
-            if None in (data_mode, graph_search, score_type):
+            if any([ty.value == 'skip' for ty in [data_mode, graph_search, score_type]]):
                 raise ValueError("When cfg is None you must pass data_mode, graph_search, score_type")
             cfg = CausalChangeConfig(
                 data_mode=data_mode,
                 graph_search=graph_search,
                 score_type=score_type,
                 aggregation=self.aggregation,
+                context_col=context_col,
                 **kwargs,
             )
 
@@ -160,7 +163,9 @@ class CausalChange:
         X = self._check_X(X)
         self.engine = PipelineFactory.from_config(self.cfg)
         self.engine.fit(X)
-        self.graph_ = self.engine.discover()
+        self.result_ : DAGSearchResult = self.engine.discover()
+        self.graph_ = self.result_.graph
+
         self.fitted_graph = True
         return self.graph_
 
@@ -174,4 +179,4 @@ class CausalChange:
     def score(self, effect, parents) -> float:
         if self.engine is None:
             raise RuntimeError("Call fit(X) before score().")
-        return float(self.engine.score(effect, parents))
+        return float(self.engine.score_edge(effect, parents))

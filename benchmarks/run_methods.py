@@ -5,6 +5,7 @@ import time
 from itertools import product
 from typing import Any, Iterable
 
+import dataclasses
 import networkx as nx
 import pandas as pd
 from pydantic import BaseModel, ValidationError
@@ -16,7 +17,7 @@ from benchmarks.synthetic.generators import (
 
 from  benchmarks.synthetic.metrics import compute_metrics
 
-from causalchange.config.configs import BenchmarkConfig, DataConfig, ScoringConfig, AlgoConfig, \
+from causalchange.config.benchmark_config import BenchmarkConfig, DataConfig, ScoringConfig, AlgoConfig, \
     LincAlgoConfig, TopicAlgoConfig, ChainAlgoConfig, \
     SingleDataConfig, MultiDataConfig, MultiTemporalDataConfig, SingleTemporalDataConfig, SpaceTimeAlgoConfig, \
     SpaceTimeCAlgoConfig, MixedDataConfig
@@ -27,11 +28,14 @@ from causalchange.causal_change import CausalChange
 
 
 def run_sampling(config: DataConfig):
-    sampling_fun = sample_single_continuous if isinstance(config, SingleDataConfig) \
-        else sample_multi_continuous if isinstance(config, MultiDataConfig) \
-        else sample_single_temporal if isinstance(config, SingleTemporalDataConfig) \
-        else sample_multi_temporal if isinstance(config, MultiTemporalDataConfig)  else None
-    if sampling_fun is None:  raise RuntimeError(f"Unknown data config: {config!r}")
+    sampling_fun = (
+        sample_single_continuous if config.setting == "single"
+        else sample_multi_continuous if config.setting == "multi"
+        else sample_single_temporal if config.setting == "time"
+        else sample_multi_temporal if config.setting == "time-contexts"
+        else None
+    )
+    if sampling_fun is None:  raise NotImplementedError(f"Unknown sampling fun for {config.setting!r}")
 
     df, true_g = sampling_fun(config)
     return df, true_g
@@ -41,13 +45,14 @@ def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> An
     from causalchange.config._cc_types import DataMode, GraphSearch
 
     data_mode = DataMode(data_cfg.setting)
-    graph_search = GraphSearch.TOPIC if algo_cfg.name in ("topic", "linc", "spacetime", "spacetime-c")\
-        else GraphSearch.CHAIN if algo_cfg.name in ("chain") else None
-    if graph_search is None: raise NotImplementedError(f"Not implemented: {algo_cfg.name}") # for globe
+    graph_search = GraphSearch.TOPIC if algo_cfg.name in ("topic", "linc", "spacetime", "spacetime-c", "chain") else GraphSearch.SKIP
+    if graph_search in [GraphSearch.SKIP, GraphSearch.GLOBE]:
+        raise NotImplementedError(f"Not implemented/invalid: {algo_cfg.name}")
 
-    score_type = ScoreType (getattr(algo_cfg, "score_type", "gam"))
-    tau_max = getattr(algo_cfg, "tau_max", 2)
-    context_col = getattr(data_cfg, "context_col", "context")
+    score_type = ScoreType(algo_cfg.score_type)
+
+    tau_max = getattr(algo_cfg, "tau_max", None)
+    context_col = getattr(data_cfg, "context_col", "")
 
     lg = logging.basicConfig(level=logging.DEBUG)
     vb = 1
@@ -55,10 +60,9 @@ def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> An
         data_mode=data_mode,
         graph_search=graph_search,
         score_type=score_type,
-        mixing_type=MixingType.SKIP,
         context_col=context_col,
         tau_max=tau_max,
-        vb=0,
+        vb=vb,
         lg=lg
     )
     return est.fit(df)
@@ -69,10 +73,7 @@ def run_scoring(true_g, est_dag, scoring_cfg: ScoringConfig, return_nx=False) ->
     est_nx = _pgmpy_graph_to_nx(est_dag)
     graph_metrics = compute_metrics(true_g, est_nx)
 
-    metrics: dict[str, float] = {}
-    if "shd" in scoring_cfg.metrics: metrics["shd"] = float(graph_metrics.shd)
-    if "edge_f1" in scoring_cfg.metrics: metrics["edge_f1"] = float(graph_metrics.edge_f1)
-    if "skel_f1" in scoring_cfg.metrics: metrics["skel_f1"] = float(graph_metrics.skel_f1)
+    metrics: dict[str, float] = dataclasses.asdict(graph_metrics)
 
     if return_nx : return metrics, est_nx
     return metrics
