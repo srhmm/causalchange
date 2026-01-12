@@ -163,7 +163,7 @@ AlgoConfig = Annotated[
 class ScoringConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    metrics: set[MetricName] = Field(default_factory=lambda: {"edge_f1", "skel_f1", "time_s"})
+    metrics: set[MetricName] = Field(default_factory=lambda: {"edge_f1", "skel_f1"})
 
     @field_validator("metrics")
     @classmethod

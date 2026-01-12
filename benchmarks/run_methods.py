@@ -73,10 +73,11 @@ def run_scoring(true_g, est_dag, scoring_cfg: ScoringConfig, return_nx=False) ->
     est_nx = _pgmpy_graph_to_nx(est_dag)
     graph_metrics = compute_metrics(true_g, est_nx)
 
-    metrics: dict[str, float] = dataclasses.asdict(graph_metrics)
+    metrics = dataclasses.asdict(graph_metrics)
+    ret_metrics =  {ky: val for ky,val in metrics.items() if ky in scoring_cfg.metrics}
 
-    if return_nx : return metrics, est_nx
-    return metrics
+    if return_nx : return ret_metrics, est_nx
+    return ret_metrics
 
 
 def run_on_config(cfg: BenchmarkConfig, return_nx=False) -> dict[str, float]| [dict[str, float], nx.DiGraph]:

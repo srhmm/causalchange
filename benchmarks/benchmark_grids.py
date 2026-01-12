@@ -11,7 +11,9 @@ BENCHMARK_GRID_SINGLE = {
         "name": ["topic"],
         "score_type": ["gam"],
     },
-    "scoring": { }
+    "scoring": {
+        "metrics": [ ["edge_f1", "skel_f1"], ] # uncomment if all should be returned
+    }
 }
 BENCHMARK_GRID_MULTI = {
     "data": {
@@ -33,5 +35,5 @@ BENCHMARK_GRID_MULTI = {
         "context_col": ["context"],
         "tau_max": [2],
     },
-    "scoring": { }
+    "scoring": { 'metrics': ['edge_f1']}
 }

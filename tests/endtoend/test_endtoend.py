@@ -86,7 +86,7 @@ def _test_e2e_time_contexts(cfg: BenchmarkConfig):
 
 
 
-DEFAULT_SCORING = {"metrics": ["edge_f1", "skel_f1"]}
+#DEFAULT_SCORING = {} #"metrics": ["edge_f1", "skel_f1"]}
 
 
 def _get_config_for_data_and_algo(data_mode: DataMode, graph_search: GraphSearch, score_type: ScoreType, context_aggregation = ContextAggregation.SKIP) -> BenchmarkConfig:
@@ -142,7 +142,7 @@ def _get_config_for_data_and_algo(data_mode: DataMode, graph_search: GraphSearch
             "score_type": score_type.value.lower() if hasattr(score_type, "value") else str(score_type),
             **({"context_col": "context"} if setting in ("multi", "time_contexts") else {}),
         },
-        "scoring": DEFAULT_SCORING,
+        "scoring": {} #DEFAULT_SCORING,
     }
 
     return BenchmarkConfig.model_validate(cfg_dict)

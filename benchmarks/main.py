@@ -63,15 +63,15 @@ if __name__ == "__main__":
     rows = summarize_groups(groups)
 
     print("\n\n================ BENCHMARK SUMMARY ================")
-    for r in rows:
-        print(f"{r.bench:28s} | {r.metric:10s} = {r.mean:.4f} ± {r.std:.4f} (n={r.n})")
+    for rw in rows:
+        print(f"{rw.bench:28s} | {rw.metric:10s} = {rw.mean:.4f} ± {rw.std:.4f} (n={rw.n})")
 
     out_dir = os.path.join("../benchmarks", "_results")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "latest.json")
 
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump([to_json_safe(asdict(r) ) for r in rows], f, indent=2)
+    with open(out_path, "w", encoding="utf-8") as fl:
+        json.dump([to_json_safe(asdict(rw)) for rw in rows], fl, indent=2)
 
     print(f"Saved: {out_path}")
     print(f"Valid configs run: {n_valid}, total runs: {n_runs}")
