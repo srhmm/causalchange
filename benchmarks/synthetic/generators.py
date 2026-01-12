@@ -12,6 +12,7 @@ from causalchange.config.benchmark_config import SingleDataConfig, MultiDataConf
 def sample_single_continuous(config: SingleDataConfig):
     sampling_fun = sample_linear_gaussian if config.nonlinearity == "lin" else sample_nonlinear_additive
     return sampling_fun(
+        nonlinearity=config.nonlinearity,
         n_samples=config.n_samples,
         n_nodes=config.n_nodes,
         edge_prob=config.edge_prob,
@@ -24,6 +25,7 @@ def sample_multi_continuous(config: MultiDataConfig):
     sampling_fun = sample_multicontext_linear_gaussian_interventional if config.nonlinearity == "lin" else sample_multicontext_nonlinear_additive_interventional
 
     return sampling_fun(
+        nonlinearity=config.nonlinearity,
         n_samples_per_context=config.n_samples_per_context,
         n_nodes=config.n_nodes,
         edge_prob=config.edge_prob,
@@ -44,6 +46,7 @@ def sample_single_temporal(config: SingleDataConfig):
 
 
     return sampling_fun(
+        nonlinearity=config.nonlinearity,
         n_samples=config.n_samples,
         n_nodes=config.n_nodes,
         edge_prob=config.edge_prob,
@@ -59,9 +62,17 @@ def sample_multi_temporal(config: SingleDataConfig):
         edge_prob=config.edge_prob,
         n_contexts=config.n_contexts,
         seed=config.seed,
+        tau_max=config.tau_max,
         context_col=config.context_col,
-        intervention_type=config.intervention_type,
         n_intervened_per_context=config.n_intervened_per_context,
+        intervention_type=config.intervention_type,
+        weight_scale=config.weight_scale,
+        noise_scale=config.noise_scale,
+        weight_scale_intervened=config.weight_scale_intervened,
+        alt_nonlinearity=getattr(config, "alt_nonlinearity", "sin"),
+        shift_scale=config.shift_scale,
+        noise_scale_intervened=config.noise_scale_intervened,
+        nonlinearity=config.nonlinearity,
     )
 
 
@@ -134,6 +145,7 @@ def sample_linear_gaussian(
     seed: int,
     weight_scale: float = 2.0,
     noise_scale: float = 0.7,
+        nonlinearity: str = "",
 ) -> Tuple[pd.DataFrame, nx.DiGraph]:
     rng = np.random.default_rng(seed)
     g = _random_dag(n_nodes=n_nodes, edge_prob=edge_prob, rng=rng)
@@ -253,6 +265,7 @@ def sample_multicontext_linear_gaussian_interventional(
     weight_scale_intervened: float = 2.0,
     shift_scale: float = 2.0,
     noise_scale_intervened: float | None = None,
+        nonlinearity="",
 ) -> Tuple[pd.DataFrame, nx.DiGraph]:
     rng = np.random.default_rng(seed)
     g_base = _random_dag(n_nodes=n_nodes, edge_prob=edge_prob, rng=rng)
@@ -575,6 +588,7 @@ def sample_temporal_linear(
     weight_scale: float = 0.3,
     noise_scale: float = 0.7,
     burnin: int | None = None,
+        nonlinearity="",
 ) -> Tuple[pd.DataFrame, nx.DiGraph]:
     rng = np.random.default_rng(seed)
     burnin = int(10 * tau_max) if burnin is None else int(burnin)
@@ -698,6 +712,7 @@ def sample_multicontext_temporal_linear(
     shift_scale: float = 2.0,
     noise_scale_intervened: float | None = None,
     burnin: int | None = None,
+    nonlinearity = "",
 ) -> Tuple[pd.DataFrame, nx.DiGraph]:
     rng = np.random.default_rng(seed)
     burnin = int(10 * tau_max) if burnin is None else int(burnin)

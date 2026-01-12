@@ -22,18 +22,10 @@ class LINCGroupingParams:
 
 
 class LINCAggregator:
-    """
-    Port of LINCMixin, but as a pure aggregator:
-      - takes contexts dict
-      - takes score_ctx(df) callback
-      - returns total + diagnostics (gain matrix, groups, etc.)
-    """
 
     def __init__(self, *, grouping: LINCGroupingParams, higher_is_better: bool):
         self.grouping = grouping
         self.higher_is_better = bool(higher_is_better)
-
-        # last-run diagnostics (handy)
         self.last_gain_matrix: Optional[np.ndarray] = None
         self.last_gain_contexts: Optional[tuple[Hashable, ...]] = None
 
@@ -57,7 +49,7 @@ class LINCAggregator:
         if n == 0:
             return AggregationResult(total=0.0, diagnostics={})
 
-        # per-context scores
+        # per-context
         ctx_scores: dict[Hashable, float] = {c: float(score_ctx(contexts[c])) for c in ctx_ids}
 
         if n == 1:

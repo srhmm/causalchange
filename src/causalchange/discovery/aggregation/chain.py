@@ -25,8 +25,7 @@ def _colname(node: Any) -> str:
 
 class ChainAggregator:
     """
-    CHAIN aggregation:
-      score = sum_ctx score_ctx(df_ctx)  +/- lambda_inv * invariance_penalty
+    CHAIN aggregation score = sum_ctx score_ctx(df_ctx)  +/- lambda_inv * invariance_penalty
     where penalty is MMD on pooled OLS residual distributions across contexts.
     """
 

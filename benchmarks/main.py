@@ -4,30 +4,26 @@ import math
 from typing import Any
 from dataclasses import asdict
 
-from benchmarks.utils import config_group_key, bench_name_from_cfg, summarize_groups, mean_std
+import benchmarks.benchmark_grids
+from benchmarks.utils import config_group_key, bench_name_from_cfg, summarize_groups, mean_std, to_json_safe
 from benchmarks.run_methods import iter_valid_configs, run_on_config
 
-
+BASE_SEED = 42
+N_REPEATS = 10
+BENCHMARK_GRID = benchmarks.benchmark_grids.BENCHMARK_GRID_SINGLE # or MULTI
 
 if __name__ == "__main__":
-    BASE_SEED = 42
-    N_REPEATS = 10
 
-    groups: dict[tuple[tuple[str, object], ...], dict[str, Any]] = {}
-
+    groups = {}
     n_runs = 0
     n_valid = 0
 
-    from benchmarks.benchmark_grids import BENCHMARK_GRID
-
     for cfg0 in iter_valid_configs(BENCHMARK_GRID):
         n_valid += 1
-
-        local: dict[str, list[float]] = {}
+        local = {}
 
         for r in range(N_REPEATS):
             seed = BASE_SEED + r
-
             d = cfg0.model_dump()
             d["data"]["seed"] = seed
             cfg = cfg0.__class__.model_validate(d)
@@ -44,11 +40,7 @@ if __name__ == "__main__":
                 bench = bench_name_from_cfg(cfg)
                 bench = f"{bench} | {scoring_method}" if scoring_method else bench
 
-                groups[key] = {
-                    "config_example": example,
-                    "bench": bench,
-                    "metrics": {},
-                }
+                groups[key] = { "config_example": example, "bench": bench, "metrics": {} }
 
             for metric_name, value in metrics.items():
                 fv = float(value)
@@ -78,8 +70,8 @@ if __name__ == "__main__":
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "latest.json")
 
-    #with open(out_path, "w", encoding="utf-8") as f:
-    #    json.dump([asdict(r) for r in rows], f, indent=2)
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump([to_json_safe(asdict(r) ) for r in rows], f, indent=2)
 
-    #print(f"Saved: {out_path}")
+    print(f"Saved: {out_path}")
     print(f"Valid configs run: {n_valid}, total runs: {n_runs}")

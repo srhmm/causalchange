@@ -1,30 +1,17 @@
 
 BENCHMARK_GRID_SINGLE = {
     "data": {
-        "setting": [ "single"  ],
+        "setting": ["single"],
         "n_nodes": [5],
         "edge_prob": [0.4],
-        "n_samples": [500],
-        #"n_contexts": [5],
-        #"n_samples_per_context": [500],
-        #"n_intervened_per_context": [3],
-        #"context_col": ["context"],
-        #"intervention_type": ["hard", "soft_weight", "shift", "noise"] , #, "soft_mechanism"],
+        "n_samples": [1000],
         "nonlinearity": ["tanh", "sin", "lin", "relu"],
-        #"alt_nonlinearity": ["sin"],
     },
     "algo": {
-        "name": [  "topic"  ],
+        "name": ["topic"],
         "score_type": ["gam"],
-        "context_col": ["context"],
-        "tau_max": [2],
     },
-
-    "scoring": {
-        "metrics": [
-            ["edge_f1", "skel_f1"],
-        ]
-    }
+    "scoring": { }
 }
 BENCHMARK_GRID_MULTI = {
     "data": {
@@ -46,12 +33,5 @@ BENCHMARK_GRID_MULTI = {
         "context_col": ["context"],
         "tau_max": [2],
     },
-
-    "scoring": {
-        "metrics": [
-            ["edge_f1", "skel_f1"],
-        ]
-    }
+    "scoring": { }
 }
-
-BENCHMARK_GRID = BENCHMARK_GRID_MULTI

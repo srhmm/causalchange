@@ -92,3 +92,14 @@ def summarize_groups(groups: dict[tuple[tuple[str, Any], ...], dict[str, Any]]) 
 
     rows.sort(key=lambda r: (r.bench, r.metric))
     return rows
+
+def to_json_safe(x):
+    if isinstance(x, dict):
+        return {k: to_json_safe(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [to_json_safe(v) for v in x]
+    if isinstance(x, (set, frozenset)):
+        return sorted(to_json_safe(v) for v in x)
+    if hasattr(x, "__dict__"):
+        return to_json_safe(vars(x))
+    return x
