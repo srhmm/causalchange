@@ -1,12 +1,16 @@
 import json
 import os
-import math
-from typing import Any
 from dataclasses import asdict
 
 import benchmarks.benchmark_grids
-from benchmarks.utils import config_group_key, bench_name_from_cfg, summarize_groups, mean_std, to_json_safe, \
-    file_name_from_cfg
+from benchmarks.utils import (
+    config_group_key,
+    bench_name_from_cfg,
+    summarize_groups,
+    mean_std,
+    to_json_safe,
+    file_name_from_cfg,
+)
 from benchmarks.run_methods import iter_valid_configs, run_on_config
 
 BASE_SEED = 42
@@ -14,7 +18,6 @@ N_REPEATS = 10
 BENCHMARK_GRID = benchmarks.benchmark_grids.BENCHMARK_GRID_MULTI
 
 if __name__ == "__main__":
-
     groups = {}
     n_runs = 0
     n_valid = 0
@@ -41,7 +44,7 @@ if __name__ == "__main__":
                 bench = bench_name_from_cfg(cfg)
                 bench = f"{bench} | {scoring_method}" if scoring_method else bench
 
-                groups[key] = { "config_example": example, "bench": bench, "metrics": {} }
+                groups[key] = {"config_example": example, "bench": bench, "metrics": {}}
 
             for metric_name, value in metrics.items():
                 fv = float(value)
@@ -59,13 +62,17 @@ if __name__ == "__main__":
 
         for metric_name in sorted(local.keys()):
             m, s = mean_std(local[metric_name])
-            print(f"  {metric_name:10s} = {m:.4f} ± {s:.4f} (n={len(local[metric_name])})")
+            print(
+                f"  {metric_name:10s} = {m:.4f} ± {s:.4f} (n={len(local[metric_name])})"
+            )
 
     rows = summarize_groups(groups)
 
     print("\n\n================ BENCHMARK SUMMARY ================")
     for rw in rows:
-        print(f"{rw.bench:28s} | {rw.metric:10s} = {rw.mean:.4f} ± {rw.std:.4f} (n={rw.n})")
+        print(
+            f"{rw.bench:28s} | {rw.metric:10s} = {rw.mean:.4f} ± {rw.std:.4f} (n={rw.n})"
+        )
 
     out_dir = os.path.join("../benchmarks", "_results")
     os.makedirs(out_dir, exist_ok=True)

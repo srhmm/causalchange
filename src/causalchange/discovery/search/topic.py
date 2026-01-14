@@ -9,7 +9,9 @@ import networkx as nx
 from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabular
 from causalchange.discovery.scoring.edge_score_temporal import EdgeScoreTemporal
 
-ScoreFunction = Callable[[Any, tuple[Any, ...]], float] # comes from EdgeScoreTabular|EdgeScoreTemporal.score_edge()
+ScoreFunction = Callable[
+    [Any, tuple[Any, ...]], float
+]  # comes from EdgeScoreTabular|EdgeScoreTemporal.score_edge()
 AllowedEdge = Callable[[Any, Any], bool]
 
 
@@ -21,9 +23,7 @@ class DAGSearchResult:
 
 
 class TopicSearch:
-
-    def __init__(
-        self, *, scoring: EdgeScoreTabular | EdgeScoreTemporal):
+    def __init__(self, *, scoring: EdgeScoreTabular | EdgeScoreTemporal):
         self.transition_gain = scoring.transition_gain
         self.score_significant = scoring.score_significant
         self.score_is_better = scoring.score_is_better
@@ -84,9 +84,13 @@ class TopicSearch:
             )
             it += 1
 
-        return DAGSearchResult(graph=g, topological_order=topological_order, history=history)
+        return DAGSearchResult(
+            graph=g, topological_order=topological_order, history=history
+        )
 
-    def _addition_gain(self, cause, effect, graph: nx.DiGraph, score_oracle: ScoreFunction) -> float:
+    def _addition_gain(
+        self, cause, effect, graph: nx.DiGraph, score_oracle: ScoreFunction
+    ) -> float:
         parents = tuple(graph.predecessors(effect))
         old_score = float(score_oracle(effect, parents))
         new_score = float(score_oracle(effect, parents + (cause,)))
@@ -166,7 +170,14 @@ class TopicSearch:
             gain = self._addition_gain(source, node, graph, score_fun)
             significant = bool(self.score_significant(gain))
 
-            meta.append({"from": source, "to": node, "gain": float(gain), "significant": significant})
+            meta.append(
+                {
+                    "from": source,
+                    "to": node,
+                    "gain": float(gain),
+                    "significant": significant,
+                }
+            )
 
             if significant:
                 graph.add_edge(source, node)
@@ -174,7 +185,9 @@ class TopicSearch:
 
         return added_edges, meta
 
-    def _remove_ingoing_edges(self, *, source, graph: nx.DiGraph, score_fun: ScoreFunction):
+    def _remove_ingoing_edges(
+        self, *, source, graph: nx.DiGraph, score_fun: ScoreFunction
+    ):
         pruned_edges = []
         meta = []
 
@@ -194,11 +207,15 @@ class TopicSearch:
 
             graph.remove_edge(removed_parent, source)
             parents.remove(removed_parent)
-            pruned_edges.append({"from": removed_parent, "to": source, "diff": float(best_gain)})
+            pruned_edges.append(
+                {"from": removed_parent, "to": source, "diff": float(best_gain)}
+            )
 
         return pruned_edges, meta
 
-    def _find_removable_edge(self, *, parents, child, graph: nx.DiGraph, score_oracle: ScoreFunction):
+    def _find_removable_edge(
+        self, *, parents, child, graph: nx.DiGraph, score_oracle: ScoreFunction
+    ):
         old_score = float(score_oracle(child, tuple(parents)))
 
         best_parent = None

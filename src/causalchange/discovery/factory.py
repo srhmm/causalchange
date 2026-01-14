@@ -27,18 +27,38 @@ from causalchange.discovery.search.globe import GlobeSearch
 class PipelineFactory:
     @staticmethod
     def from_config(cfg: CausalChangeConfig) -> DiscoveryEngine:
-
         # decide data domain, continuous/tabular data or time series, multi-context or not
-        domain = TabularDomain() if not cfg.data_mode.is_temporal() else TemporalDomain(tau_max=cfg.tau_max)
-        scoring = EdgeScoreTabular(cfg=cfg) if not cfg.data_mode.is_temporal() else EdgeScoreTemporal(cfg=cfg)
+        domain = (
+            TabularDomain()
+            if not cfg.data_mode.is_temporal()
+            else TemporalDomain(tau_max=cfg.tau_max)
+        )
+        scoring = (
+            EdgeScoreTabular(cfg=cfg)
+            if not cfg.data_mode.is_temporal()
+            else EdgeScoreTemporal(cfg=cfg)
+        )
 
         # decide search algo
-        search = TopicSearch(scoring=scoring) if cfg.graph_search == GraphSearch.TOPIC else  GlobeSearch()
+        search = (
+            TopicSearch(scoring=scoring)
+            if cfg.graph_search == GraphSearch.TOPIC
+            else GlobeSearch()
+        )
 
         # stuff for multiple contexts
-        context_preproc = MultiContextDomain(context_col=cfg.context_col) if cfg.data_mode.is_context() \
+        context_preproc = (
+            MultiContextDomain(context_col=cfg.context_col)
+            if cfg.data_mode.is_context()
             else SingleContextDomain()
-        context_aggregation = LINCAggregator(grouping=cfg.grouping, higher_is_better=scoring.higher_is_better ) if cfg.aggregation == ContextAggregation.LINC else ChainAggregator(cfg=cfg)
+        )
+        context_aggregation = (
+            LINCAggregator(
+                grouping=cfg.grouping, higher_is_better=scoring.higher_is_better
+            )
+            if cfg.aggregation == ContextAggregation.LINC
+            else ChainAggregator(cfg=cfg)
+        )
 
         return DiscoveryEngine(
             data_mode=cfg.data_mode,

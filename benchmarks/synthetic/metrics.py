@@ -16,7 +16,7 @@ def directed_edges(G: nx.DiGraph) -> Set[Edge]:
 
 def skeleton_edges(G: nx.DiGraph) -> Set[Undir]:
     out: Set[Undir] = set()
-    for (u, v) in directed_edges(G):
+    for u, v in directed_edges(G):
         a, b = (u, v) if u < v else (v, u)
         out.add((a, b))
     return out
@@ -38,7 +38,6 @@ class GraphMetrics:
     skel_recall: float
     skel_f1: float
     shd: int
-
 
 
 def edge_f1(true_g: nx.DiGraph, est_g: nx.DiGraph) -> tuple[float, float, float]:
@@ -69,7 +68,7 @@ def shd(true_g: nx.DiGraph, est_g: nx.DiGraph) -> int:
     add_del = len(t_skel ^ e_skel)
 
     reversals = 0
-    for (a, b) in (t_skel & e_skel):
+    for a, b in t_skel & e_skel:
         t_forward = (a, b) in t_dir
         e_forward = (a, b) in e_dir
         if t_forward != e_forward:

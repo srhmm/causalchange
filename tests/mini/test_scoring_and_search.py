@@ -3,7 +3,12 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from causalchange.config.cc_types import ContextAggregation, DataMode, GraphSearch, ScoreType
+from causalchange.config.cc_types import (
+    ContextAggregation,
+    DataMode,
+    GraphSearch,
+    ScoreType,
+)
 from causalchange.config.cc_config import CausalChangeConfig
 from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabular
 from causalchange.discovery.scoring.edge_score import EdgeScore
@@ -75,7 +80,12 @@ def test_topic_search_produces_acyclic_graph_and_history_length_matches_candidat
     search = TopicSearch(scoring=DummyScoring())
 
     nodes = ["X0", "X1", "X2", "X3"]
-    res = search.run(nodes=nodes, candidates=list(nodes), allowed_edge=allowed_edge, score_fun=score_fun)
+    res = search.run(
+        nodes=nodes,
+        candidates=list(nodes),
+        allowed_edge=allowed_edge,
+        score_fun=score_fun,
+    )
     assert set(res.graph.nodes()) == set(nodes)
     assert res.graph.number_of_nodes() == 4
     assert set(res.topological_order) == set(nodes)

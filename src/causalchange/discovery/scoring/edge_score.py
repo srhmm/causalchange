@@ -4,8 +4,15 @@ from typing import Any, Sequence
 import numpy as np
 
 from causalchange.config.cc_types import DataMode, ScoreType, GPType
-from causalchange.discovery.scoring.fit import fit_score_functional_model, fit_score_krr, fit_score_gp, fit_score_rff, \
-    fit_score_gam, fit_score_spln, fit_score_ln
+from causalchange.discovery.scoring.fit import (
+    fit_score_functional_model,
+    fit_score_krr,
+    fit_score_gp,
+    fit_score_rff,
+    fit_score_gam,
+    fit_score_spln,
+    fit_score_ln,
+)
 
 
 class EdgeScore:
@@ -39,15 +46,31 @@ class EdgeScore:
         self.score_cache.clear()
         self.res_cache.clear()
 
-    def get_score_fun(self): # within ScoreType?
+    def get_score_fun(self):  # within ScoreType?
         score_fun = (
-            fit_score_krr if self.score_type == ScoreType.KRR
-            else fit_score_gp if self.score_type.value == GPType.EXACT.value
-            else fit_score_rff if self.score_type.value == GPType.FOURIER.value
-            else fit_score_gam if self.score_type == ScoreType.GAM
-            else fit_score_spln if self.score_type == ScoreType.SPLINE
-            else fit_score_ln if self.score_type == ScoreType.LIN
-            else None
+            fit_score_krr
+            if self.score_type == ScoreType.KRR
+            else (
+                fit_score_gp
+                if self.score_type.value == GPType.EXACT.value
+                else (
+                    fit_score_rff
+                    if self.score_type.value == GPType.FOURIER.value
+                    else (
+                        fit_score_gam
+                        if self.score_type == ScoreType.GAM
+                        else (
+                            fit_score_spln
+                            if self.score_type == ScoreType.SPLINE
+                            else (
+                                fit_score_ln
+                                if self.score_type == ScoreType.LIN
+                                else None
+                            )
+                        )
+                    )
+                )
+            )
         )
         if score_fun is None:
             raise ValueError(f"Unsupported score_type: {self.score_type}")
@@ -60,7 +83,7 @@ class EdgeScore:
         ret_full_result: bool = True,
         ret_residuals: bool = False,
     ):
-        """ scores causal relationship pa->j"""
+        """scores causal relationship pa->j"""
         pa_key = tuple(sorted(int(p) for p in pa))
         key = (j, pa_key)
 

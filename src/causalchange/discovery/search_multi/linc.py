@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Hashable, Iterable, Literal, Optional
+from typing import Any, Callable, Hashable, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -22,7 +22,6 @@ class LINCGroupingParams:
 
 
 class LINCAggregator:
-
     def __init__(self, *, grouping: LINCGroupingParams, higher_is_better: bool):
         self.grouping = grouping
         self.higher_is_better = bool(higher_is_better)
@@ -30,7 +29,11 @@ class LINCAggregator:
         self.last_gain_contexts: Optional[tuple[Hashable, ...]] = None
 
     def transition_gain(self, old_score: float, new_score: float) -> float:
-        return (new_score - old_score) if self.higher_is_better else (old_score - new_score)
+        return (
+            (new_score - old_score)
+            if self.higher_is_better
+            else (old_score - new_score)
+        )
 
     def score_significant(self, gain: float) -> bool:
         return gain > float(self.grouping.gain_threshold)
@@ -50,12 +53,17 @@ class LINCAggregator:
             return AggregationResult(total=0.0, diagnostics={})
 
         # per-context
-        ctx_scores: dict[Hashable, float] = {c: float(score_ctx(contexts[c])) for c in ctx_ids}
+        ctx_scores: dict[Hashable, float] = {
+            c: float(score_ctx(contexts[c])) for c in ctx_ids
+        }
 
         if n == 1:
             return AggregationResult(
                 total=float(ctx_scores[ctx_ids[0]]),
-                diagnostics={"groups": [frozenset([ctx_ids[0]])], "ctx_scores": ctx_scores},
+                diagnostics={
+                    "groups": [frozenset([ctx_ids[0]])],
+                    "ctx_scores": ctx_scores,
+                },
             )
 
         if self.grouping.method == "agglomerative":
@@ -69,9 +77,13 @@ class LINCAggregator:
         for i in range(n):
             for j in range(i + 1, n):
                 ci, cj = ctx_ids[i], ctx_ids[j]
-                pooled = pd.concat([contexts[ci], contexts[cj]], axis=0, ignore_index=True)
+                pooled = pd.concat(
+                    [contexts[ci], contexts[cj]], axis=0, ignore_index=True
+                )
                 pooled_score = float(score_ctx(pooled))
-                g = float(self.transition_gain(ctx_scores[ci] + ctx_scores[cj], pooled_score))
+                g = float(
+                    self.transition_gain(ctx_scores[ci] + ctx_scores[cj], pooled_score)
+                )
                 gain[i, j] = gain[j, i] = g
                 if self.score_significant(g):
                     edges.append((ci, cj))

@@ -32,17 +32,19 @@ class ChainAggregator:
     def __init__(
         self,
         *,
-            cfg: CausalChangeConfig,
+        cfg: CausalChangeConfig,
     ):
         self.lambda_inv = 1.0
         self.mmd_max_samples = 200
         self.mmd_gamma = None
-        self.mmd_compare_to = "pooled"#pairwise
+        self.mmd_compare_to = "pooled"  # pairwise
         self.higher_is_better = bool(cfg.score_type.higher_is_better())
 
         seed = 42
         self._rng = np.random.default_rng(seed)
-        self._pooled_cache: dict[tuple[str, tuple[str, ...]], tuple[dict[Hashable, np.ndarray], np.ndarray]] = {}
+        self._pooled_cache: dict[
+            tuple[str, tuple[str, ...]], tuple[dict[Hashable, np.ndarray], np.ndarray]
+        ] = {}
         self._mmd_cache: dict[tuple[Any, ...], float] = {}
 
     def aggregate(
@@ -63,7 +65,9 @@ class ChainAggregator:
             fit += float(score_ctx(contexts[c]))
 
         if self.lambda_inv <= 0.0 or len(ctx_ids) <= 1:
-            return AggregationResult(total=float(fit), diagnostics={"fit": float(fit), "penalty": 0.0})
+            return AggregationResult(
+                total=float(fit), diagnostics={"fit": float(fit), "penalty": 0.0}
+            )
 
         pen = float(self._invariance_penalty(contexts, effect, parents))
         if self.higher_is_better:
@@ -73,10 +77,16 @@ class ChainAggregator:
 
         return AggregationResult(
             total=total,
-            diagnostics={"fit": float(fit), "penalty": float(pen), "lambda_inv": self.lambda_inv},
+            diagnostics={
+                "fit": float(fit),
+                "penalty": float(pen),
+                "lambda_inv": self.lambda_inv,
+            },
         )
 
-    def _invariance_penalty(self, contexts: dict[Hashable, pd.DataFrame], effect: Any, parents: tuple) -> float:
+    def _invariance_penalty(
+        self, contexts: dict[Hashable, pd.DataFrame], effect: Any, parents: tuple
+    ) -> float:
         eff = _colname(effect)
         par = tuple(sorted(_colname(p) for p in parents))
 
@@ -126,7 +136,9 @@ class ChainAggregator:
             return self._pooled_cache[key]
 
         residuals_by_c, pooled_resid = self._pooled_residuals(contexts, effect, parents)
-        residuals_by_c = {c: self._normalize_residuals(r) for c, r in residuals_by_c.items()}
+        residuals_by_c = {
+            c: self._normalize_residuals(r) for c, r in residuals_by_c.items()
+        }
         pooled_resid = self._normalize_residuals(pooled_resid)
 
         self._pooled_cache[key] = (residuals_by_c, pooled_resid)
@@ -183,7 +195,9 @@ class ChainAggregator:
         idx = self._rng.choice(x.size, size=max_n, replace=False)
         return x[idx]
 
-    def _mmd2_rbf(self, x: np.ndarray, y: np.ndarray, gamma: float | None = None) -> float:
+    def _mmd2_rbf(
+        self, x: np.ndarray, y: np.ndarray, gamma: float | None = None
+    ) -> float:
         x = np.asarray(x, dtype=float).reshape(-1, 1)
         y = np.asarray(y, dtype=float).reshape(-1, 1)
         if x.shape[0] == 0 or y.shape[0] == 0:

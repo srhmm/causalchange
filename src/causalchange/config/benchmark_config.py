@@ -1,13 +1,22 @@
 from __future__ import annotations
 
-from typing import Annotated, Literal, Optional, Union, Any
+from typing import Annotated, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 
-MetricName = Literal["shd", "edge_f1", "skel_f1", "edge_precision", "edge_recall", "skel_precision", "skel_recall", "time_s"]
+MetricName = Literal[
+    "shd",
+    "edge_f1",
+    "skel_f1",
+    "edge_precision",
+    "edge_recall",
+    "skel_precision",
+    "skel_recall",
+    "time_s",
+]
 Nonlinearity = Literal["lin", "tanh", "sin", "relu"]
 InterventionLinear = Literal["hard", "soft_weight", "shift", "noise"]
-InterventionNonlinear = Literal["hard", "soft_weight",  "shift", "noise"]
+InterventionNonlinear = Literal["hard", "soft_weight", "shift", "noise"]
 
 
 class DataConfigBase(BaseModel):
@@ -28,7 +37,6 @@ class SingleDataConfig(DataConfigBase):
     nonlinearity: Nonlinearity
 
 
-
 class MultiDataConfig(DataConfigBase):
     setting: Literal["multi"] = "multi"
     nonlinearity: Nonlinearity
@@ -44,10 +52,13 @@ class MultiDataConfig(DataConfigBase):
 
     intervention_type: InterventionNonlinear = "soft_weight"
     alt_nonlinearity: Optional[Nonlinearity] = None
+
     @model_validator(mode="after")
     def _alt_required_for_soft_mechanism(self):
         if self.intervention_type == "soft_mechanism" and self.alt_nonlinearity is None:
-            raise ValueError("alt_nonlinearity is required when intervention_type='soft_mechanism'.")
+            raise ValueError(
+                "alt_nonlinearity is required when intervention_type='soft_mechanism'."
+            )
         return self
 
 
@@ -71,9 +82,10 @@ class MixedDataConfig(DataConfigBase):
     @model_validator(mode="after")
     def _alt_required_for_soft_mechanism(self):
         if self.intervention_type == "soft_mechanism" and self.alt_nonlinearity is None:
-            raise ValueError("alt_nonlinearity is required when intervention_type='soft_mechanism'.")
+            raise ValueError(
+                "alt_nonlinearity is required when intervention_type='soft_mechanism'."
+            )
         return self
-
 
 
 class SingleTemporalDataConfig(DataConfigBase):
@@ -90,6 +102,7 @@ class SingleTemporalDataConfig(DataConfigBase):
 
     nonlinearity: Nonlinearity = "tanh"
 
+
 class MultiTemporalDataConfig(DataConfigBase):
     setting: Literal["time-contexts"] = "time-contexts"
 
@@ -103,7 +116,9 @@ class MultiTemporalDataConfig(DataConfigBase):
     tau_max: int = Field(1, ge=1)
 
     n_intervened_per_context: int = Field(1, ge=0)
-    intervention_type: Literal["hard", "soft_weight", "shift", "noise"] = "hard" #, "soft_mechanism"] = "hard"
+    intervention_type: Literal["hard", "soft_weight", "shift", "noise"] = (
+        "hard"  # , "soft_mechanism"] = "hard"
+    )
 
     weight_scale: float = 2.0
     noise_scale: float = 0.7
@@ -111,7 +126,13 @@ class MultiTemporalDataConfig(DataConfigBase):
 
 
 DataConfig = Annotated[
-    Union[SingleDataConfig, MultiDataConfig, SingleTemporalDataConfig, MultiTemporalDataConfig, MixedDataConfig],
+    Union[
+        SingleDataConfig,
+        MultiDataConfig,
+        SingleTemporalDataConfig,
+        MultiTemporalDataConfig,
+        MixedDataConfig,
+    ],
     Field(discriminator="setting"),
 ]
 
@@ -130,19 +151,17 @@ class ChainAlgoConfig(BaseModel):
     score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
 
 
-
 class TopicAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Literal["topic"] = "topic"
     score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
 
 
-
 class SpaceTimeCAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Literal["spacetime-c"] = "spacetime-c"
     context_col: str = "context"
-    #todo tau_max
+    # todo tau_max
     score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
 
 
@@ -152,12 +171,17 @@ class SpaceTimeAlgoConfig(BaseModel):
     score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
 
 
-
-
 AlgoConfig = Annotated[
-    Union[LincAlgoConfig, ChainAlgoConfig, TopicAlgoConfig, SpaceTimeAlgoConfig, SpaceTimeCAlgoConfig],
+    Union[
+        LincAlgoConfig,
+        ChainAlgoConfig,
+        TopicAlgoConfig,
+        SpaceTimeAlgoConfig,
+        SpaceTimeCAlgoConfig,
+    ],
     Field(discriminator="name"),
 ]
+
 
 class ScoringConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -170,6 +194,7 @@ class ScoringConfig(BaseModel):
         if not v:
             raise ValueError("metrics must not be empty.")
         return v
+
 
 class BenchmarkConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -187,5 +212,7 @@ class BenchmarkConfig(BaseModel):
         if self.algo.name == "spacetime" and self.data.setting != "time":
             raise ValueError("algo=time is only valid with data.setting='time'.")
         if self.algo.name == "spacetime-c" and self.data.setting != "time-contexts":
-            raise ValueError("algo=spacetime-c is only valid with data.setting='time-contexts'.")
+            raise ValueError(
+                "algo=spacetime-c is only valid with data.setting='time-contexts'."
+            )
         return self

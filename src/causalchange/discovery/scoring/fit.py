@@ -1,10 +1,11 @@
 from __future__ import annotations
 import numpy as np
 from math import log
-from pygam import GAM
 from numpy.linalg import inv
 from typing import Sequence, Any
 from math import log2
+
+from sklearn.kernel_ridge import KernelRidge
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler, SplineTransformer
 from sklearn.linear_model import LinearRegression, Ridge
@@ -12,7 +13,8 @@ from scipy.special import comb
 from sklearn.cluster import KMeans, DBSCAN, SpectralClustering
 from sklearn.metrics import silhouette_score, adjusted_mutual_info_score
 from sklearn.mixture import GaussianMixture
-from sklearn.linear_model import LinearRegression
+
+from causalchange.config.cc_types import MixingType
 
 
 def fit_score_functional_model(
@@ -53,10 +55,8 @@ def fit_score_gp(Xtr, ytr, return_residuals=False, **params):
         Xtr = np.nan_to_num(Xtr, nan=0.0, posinf=0.0, neginf=0.0)
         ytr = np.nan_to_num(ytr, nan=0.0, posinf=0.0, neginf=0.0)
 
-
     Xn, yn, scalers = _standardize(Xtr, ytr)
     n = Xn.shape[0]
-
 
     restarts = params.get("restarts", 10)
     low = params.get("bounds", {}).get("low", -5.0)
@@ -67,14 +67,13 @@ def fit_score_gp(Xtr, ytr, return_residuals=False, **params):
     k_params = params.get("k_params", 3)
     use_bic = params.get("bic_penalty", False)
 
-
     cands = _random_restarts_bounds(3, low=low, high=high, rng=rng, n=restarts)
     cands += [
         np.array([0.0, 0.0, -2.0]),
         np.array([1.0, 0.0, -1.0]),
-        np.array([-1.0, 0.0,  0.0]),
+        np.array([-1.0, 0.0, 0.0]),
         np.array([0.0, -2.0, 0.0]),
-        np.array([0.0,  2.0, 2.0]),
+        np.array([0.0, 2.0, 2.0]),
     ]
 
     best = None
@@ -85,7 +84,9 @@ def fit_score_gp(Xtr, ytr, return_residuals=False, **params):
     def eval_params(theta):
         log_ell, log_sf2, log_sn2 = theta
         log_sn2 = max(log_sn2, np.log(1e-6))
-        K, used_jitter = _build_K_adaptive(Xn, log_ell, log_sf2, log_sn2, base_jitter=base_jitter)
+        K, used_jitter = _build_K_adaptive(
+            Xn, log_ell, log_sf2, log_sn2, base_jitter=base_jitter
+        )
         try:
             nll, L, alpha = _neg_log_marginal_lik(yn, K)
         except np.linalg.LinAlgError:
@@ -94,12 +95,10 @@ def fit_score_gp(Xtr, ytr, return_residuals=False, **params):
             return np.inf, None, used_jitter
         return nll, (theta, K, L, alpha), used_jitter
 
-
     for th in cands:
         nll, cache, used_jit = eval_params(th)
         if nll < best_nll:
             best_nll, best, best_cache, best_jitter = nll, th, cache, used_jit
-
 
     if refine and best is not None and np.isfinite(best_nll):
         for th in _grid_around(best, width=0.75, steps=3):
@@ -107,9 +106,10 @@ def fit_score_gp(Xtr, ytr, return_residuals=False, **params):
             if nll < best_nll:
                 best_nll, best, best_cache, best_jitter = nll, th, cache, used_jit
 
-
     if (best is None) or (not np.isfinite(best_nll)):
-        score_bits = _null_gaussian_mdl_bits(yn) if use_bic else _null_gaussian_mdl_bits(yn)
+        score_bits = (
+            _null_gaussian_mdl_bits(yn) if use_bic else _null_gaussian_mdl_bits(yn)
+        )
         Xmu, Xsd, ymu, ysd = scalers
 
         def predict(Xte, return_var=False):
@@ -132,7 +132,6 @@ def fit_score_gp(Xtr, ytr, return_residuals=False, **params):
             return model, float(score_bits), resid
 
         return model, float(score_bits)
-
 
     (log_ell, log_sf2, log_sn2), K, L, alpha = best_cache
 
@@ -176,6 +175,7 @@ def fit_score_gp(Xtr, ytr, return_residuals=False, **params):
 
     return model, float(score_bits)
 
+
 def fit_score_rff(Xtr, ytr, return_residuals=False, **params):
     Xtr = np.asarray(Xtr, float)
     ytr = np.asarray(ytr, float).reshape(-1)
@@ -196,7 +196,7 @@ def fit_score_rff(Xtr, ytr, return_residuals=False, **params):
 
     D = int(params.get("D", 300))
     omegas = rng.standard_normal(size=(d, D))
-    biases = rng.uniform(0.0, 2.0*np.pi, size=(D,))
+    biases = rng.uniform(0.0, 2.0 * np.pi, size=(D,))
 
     def _rff_features(Xscaled):
         proj = Xscaled @ omegas
@@ -233,9 +233,9 @@ def fit_score_rff(Xtr, ytr, return_residuals=False, **params):
     cands += [
         np.array([0.0, 0.0, -2.0]),
         np.array([1.0, 0.0, -1.0]),
-        np.array([-1.0, 0.0,  0.0]),
+        np.array([-1.0, 0.0, 0.0]),
         np.array([0.0, -2.0, 0.0]),
-        np.array([0.0,  2.0, 2.0]),
+        np.array([0.0, 2.0, 2.0]),
     ]
 
     best = None
@@ -319,7 +319,14 @@ def fit_score_rff(Xtr, ytr, return_residuals=False, **params):
         "predict": predict,
         "nll_nats": float(best_nll),
         "mdl_bits": float(score_bits),
-        "rff": {"D": D, "omegas": omegas, "biases": biases, "PtP": PtP, "A_chol": L_A, "b": b_vec},
+        "rff": {
+            "D": D,
+            "omegas": omegas,
+            "biases": biases,
+            "PtP": PtP,
+            "A_chol": L_A,
+            "b": b_vec,
+        },
         "scalers": dict(Xmu=Xmu, Xsd=Xsd, ymu=ymu, ysd=ysd),
     }
 
@@ -340,9 +347,11 @@ def _standardize(X, y, eps=1e-12):
     Xn = (X - Xmu) / Xsd
     ymu = y.mean()
     ysd = y.std()
-    if ysd < eps: ysd = 1.0
+    if ysd < eps:
+        ysd = 1.0
     yn = (y - ymu) / ysd
     return Xn, yn, (Xmu, Xsd, ymu, ysd)
+
 
 def _rbf_kernel(X, Z, log_ell, log_sf2):
     ell = np.exp(log_ell)
@@ -352,9 +361,11 @@ def _rbf_kernel(X, Z, log_ell, log_sf2):
     d2 = X2 + Z2 - 2.0 * X @ Z.T
     return sf2 * np.exp(-0.5 * d2 / (ell**2 + 1e-12))
 
+
 def _chol_solve(L, b):
     y = np.linalg.solve(L, b)
     return np.linalg.solve(L.T, y)
+
 
 def _neg_log_marginal_lik(y, K):
     n = y.shape[0]
@@ -365,6 +376,7 @@ def _neg_log_marginal_lik(y, K):
         nll = np.inf
     return float(nll), L, alpha
 
+
 def _build_K_adaptive(X, log_ell, log_sf2, log_sn2, base_jitter=1e-6, max_tries=6):
     K = _rbf_kernel(X, X, log_ell, log_sf2)
     sn2 = np.exp(log_sn2)
@@ -372,19 +384,21 @@ def _build_K_adaptive(X, log_ell, log_sf2, log_sn2, base_jitter=1e-6, max_tries=
     jitter = base_jitter
     for _ in range(max_tries):
         K_try = K.copy()
-        K_try.flat[:: n + 1] += (sn2 + jitter)
+        K_try.flat[:: n + 1] += sn2 + jitter
         try:
             _ = np.linalg.cholesky(K_try)
             return K_try, jitter
         except np.linalg.LinAlgError:
             jitter *= 10.0
 
-    K.flat[:: n + 1] += (sn2 + jitter)
+    K.flat[:: n + 1] += sn2 + jitter
     return K, jitter
+
 
 def _random_restarts_bounds(d, low=-5.0, high=5.0, rng=None, n=12):
     rng = np.random.default_rng() if rng is None else rng
     return [rng.uniform(low, high, size=d) for _ in range(n)]
+
 
 def _grid_around(best, width=0.75, steps=3):
     grids = []
@@ -395,15 +409,17 @@ def _grid_around(best, width=0.75, steps=3):
     cand = np.stack([m.reshape(-1) for m in mesh], axis=1)
     return [c for c in cand]
 
+
 def _mdl_bits_from_nll(nll_nats, k_params, n):
     penalty = 0.5 * k_params * np.log(max(n, 2))
     return (nll_nats + penalty) / np.log(2.0)
+
 
 def _null_gaussian_mdl_bits(y):
     n = len(y)
     if n == 0:
         return 1e9
-    mu = np.mean(y)
+    # mu = np.mean(y)
     var = np.var(y) + 1e-12
     nll = 0.5 * n * (np.log(2 * np.pi * var) + 1.0)
     k = 2
@@ -421,7 +437,9 @@ def fit_score_ln(Xtr, ytr, return_residuals=False, **params):
     n = Xtr.shape[0]
 
     if model_type == "ridge":
-        base = Ridge(alpha=alpha, fit_intercept=fit_intercept, solver="auto", random_state=None)
+        base = Ridge(
+            alpha=alpha, fit_intercept=fit_intercept, solver="auto", random_state=None
+        )
     else:
         base = LinearRegression(fit_intercept=fit_intercept)
 
@@ -466,7 +484,7 @@ def fit_score_gam(Xtr, ytr, return_residuals=False, **params):
         degree=degree,
         include_bias=include_bias,
         knots=knots,
-        extrapolation=extrapolation
+        extrapolation=extrapolation,
     )
     if model_type == "ridge":
         reg = Ridge(alpha=alpha, fit_intercept=fit_intercept)
@@ -493,7 +511,6 @@ def fit_score_gam(Xtr, ytr, return_residuals=False, **params):
 
     return model, float(score_bits)
 
-from sklearn.kernel_ridge import KernelRidge
 
 def fit_score_krr(Xtr, ytr, return_residuals=False, **params):
     alpha = float(params.get("alpha", 1.0))
@@ -538,6 +555,7 @@ def fit_score_krr(Xtr, ytr, return_residuals=False, **params):
 
     return model, float(score_bits)
 
+
 def _gaussian_nlml_bits(y_true, y_pred):
     n = y_true.shape[0]
     rss = np.sum((y_true - y_pred) ** 2)
@@ -545,10 +563,12 @@ def _gaussian_nlml_bits(y_true, y_pred):
     nlml_nats = 0.5 * n * (np.log(2.0 * np.pi * sigma2) + 1.0)
     return nlml_nats / log(2), rss, sigma2
 
+
 def _penalty_bits(param_penalty, k, n):
     if str(param_penalty).lower() in ("rissanen", "bic"):
         return (0.5 * k * np.log(n)) / log(2)
     return 0.0
+
 
 def _ridge_df_hat(Phi, alpha):
     Phic = Phi - Phi.mean(axis=0, keepdims=True)
@@ -556,6 +576,7 @@ def _ridge_df_hat(Phi, alpha):
     A = G + alpha * np.eye(G.shape[0])
     H = Phic @ inv(A) @ Phic.T
     return float(np.trace(H)) + 1.0
+
 
 def _ols_df(Phi):
     return float(Phi.shape[1] + 1)
@@ -600,9 +621,12 @@ class _SlopeBits:
         sig2 = sigma * sigma
         if sse == 0.0 or sig2 == 0.0:
             return 0.0
-        err = (sse / (2.0 * sig2 * np.log(2.0))) + ((n / 2.0) * self.logg(2.0 * np.pi * sig2)) - n * self.logg(resolution)
+        err = (
+            (sse / (2.0 * sig2 * np.log(2.0)))
+            + ((n / 2.0) * self.logg(2.0 * np.pi * sig2))
+            - n * self.logg(resolution)
+        )
         return float(max(err, 0.0))
-
 
 
 def _min_diff(y):
@@ -614,15 +638,18 @@ def _min_diff(y):
     diffs = diffs[np.nonzero(diffs)]
     return float(np.min(diffs) if diffs.size else 10.01)
 
+
 def _combinator(M, k):
     val = comb(M + k - 1, M, exact=False)
     return 0.0 if val <= 0 else np.log2(val)
+
 
 def _aggregate_hinges(interactions, k, slope_bits, F):
     cost = 0.0
     for M in interactions:
         cost += slope_bits.logN(M) + _combinator(M, k) + M * np.log2(F)
     return float(cost)
+
 
 def fit_score_spln(Xtr, ytr, return_residuals: bool = False, **params):
     X = np.asarray(Xtr, float)
@@ -639,8 +666,16 @@ def fit_score_spln(Xtr, ytr, return_residuals: bool = False, **params):
         dummy = {
             "kind": "splines_sklearn",
             "model": None,
-            "predict": (lambda Xte, return_var=False: (
-            np.full(len(Xte), np.nan), np.full(len(Xte), np.nan)) if return_var else np.full(len(Xte), np.nan)),
+            "predict": (
+                lambda Xte, return_var=False: (
+                    (
+                        np.full(len(Xte), np.nan),
+                        np.full(len(Xte), np.nan),
+                    )
+                    if return_var
+                    else np.full(len(Xte), np.nan)
+                )
+            ),
             "sse": float("inf"),
             "mdl_bits": float("inf"),
             "details": {"reason": f"too_few_finite_rows: {y.size}"},
@@ -669,12 +704,16 @@ def fit_score_spln(Xtr, ytr, return_residuals: bool = False, **params):
     )
     reg = Ridge(alpha=alpha) if model_type == "ridge" else LinearRegression()
     model = make_pipeline(StandardScaler(), spline, reg)
-    print("X finite:", np.isfinite(X).all(),
-          "n_nan:", np.isnan(X).sum(),
-          "n_inf:", np.isinf(X).sum(),
-          "col_nan_counts:", np.isnan(X).sum(axis=0))
-
-
+    print(
+        "X finite:",
+        np.isfinite(X).all(),
+        "n_nan:",
+        np.isnan(X).sum(),
+        "n_inf:",
+        np.isinf(X).sum(),
+        "col_nan_counts:",
+        np.isnan(X).sum(axis=0),
+    )
 
     model.fit(X, y)
 
@@ -690,7 +729,9 @@ def fit_score_spln(Xtr, ytr, return_residuals: bool = False, **params):
 
     st = model.named_steps["splinetransformer"]
     knots_arr = getattr(st, "knots_", None)
-    knots_flat = knots_arr.ravel() if knots_arr is not None else np.array([], dtype=float)
+    knots_flat = (
+        knots_arr.ravel() if knots_arr is not None else np.array([], dtype=float)
+    )
     coef = model.named_steps[list(model.named_steps.keys())[-1]].coef_
     coeffs_concat = np.concatenate([knots_flat, np.atleast_1d(coef).ravel()])
 
@@ -705,7 +746,9 @@ def fit_score_spln(Xtr, ytr, return_residuals: bool = False, **params):
     base_cost += slope.model_score(hinge_count)
     base_cost += _aggregate_hinges(interactions, int(k[0]), slope, globe_F)
 
-    cost_bits = slope.gaussian_score_emp_sse(sse, rows, mindiff) + model_bits + base_cost
+    cost_bits = (
+        slope.gaussian_score_emp_sse(sse, rows, mindiff) + model_bits + base_cost
+    )
 
     def predict(Xte, return_var=False):
         ypred = model.predict(np.asarray(Xte, float))
@@ -738,9 +781,6 @@ def fit_score_spln(Xtr, ytr, return_residuals: bool = False, **params):
     return out, float(cost_bits)
 
 
-
-
-
 def to_params(params_r):
     params_np = np.array(params_r)
     D_plus1, K = params_np.shape
@@ -769,7 +809,7 @@ def mix_regression_params_kn_assgn(X, y, idl):
         beta_k = model.coef_
 
         residuals = y_k - X_k @ beta_k
-        sigma_k = np.sqrt(np.mean(residuals ** 2))
+        sigma_k = np.sqrt(np.mean(residuals**2))
 
         beta_l.append(beta_k)
         sigma_l.append(sigma_k)
@@ -791,12 +831,14 @@ def mix_regression_bic(X, y, idl, beta_l, sigma_l):
         beta_k = beta_l[k]
         sigma_k = sigma_l[k]
 
-        if len(y_k) == 0: continue
+        if len(y_k) == 0:
+            continue
 
         residuals = y_k - X_k @ beta_k
-        log_likelihood += np.sum(-0.5 * np.log(2 * np.pi * sigma_k ** 2) - 0.5 * (residuals ** 2) / sigma_k ** 2)
-        log_likelihood += len(y_k) * np.log(
-            mixture_weights[k] + 1e-12)
+        log_likelihood += np.sum(
+            -0.5 * np.log(2 * np.pi * sigma_k**2) - 0.5 * (residuals**2) / sigma_k**2
+        )
+        log_likelihood += len(y_k) * np.log(mixture_weights[k] + 1e-12)
     num_params = K * D + K + (K - 1)
 
     bic = -2 * log_likelihood + num_params * np.log(N)
@@ -806,22 +848,40 @@ def mix_regression_bic(X, y, idl, beta_l, sigma_l):
 def fit_conditional_mixture(mty: MixingType, **kwargs):
     assert mty.value != MixingType.SKIP.value
 
-    if mty.value.startswith('mix'):
-        method= 'quad' if mty.value=='mixQuad' else 'cub' if mty.value=='mixCub' else 'ns' if mty.value=='mixNS' else \
-            'bs' if mty.value=='mixBS' else 'lin'
+    if mty.value.startswith("mix"):
+        method = (
+            "quad"
+            if mty.value == "mixQuad"
+            else (
+                "cub"
+                if mty.value == "mixCub"
+                else (
+                    "ns"
+                    if mty.value == "mixNS"
+                    else "bs" if mty.value == "mixBS" else "lin"
+                )
+            )
+        )
         return fit_functional_mixture(**kwargs, method=method)
-    elif mty.value.startswith('resid'):
+    elif mty.value.startswith("resid"):
         return fit_resid_mixture(mty, **kwargs)
-    elif mty.value.startswith('clus'):
+    elif mty.value.startswith("clus"):
         return fit_marginal_mixture(mty, **kwargs)
     else:
         raise ValueError(mty)
 
 
-def _fit_best_mixture(X, range_k, true_idl, sim_score=adjusted_mutual_info_score, sim_min=-np.inf):
+def _fit_best_mixture(
+    X, range_k, true_idl, sim_score=adjusted_mutual_info_score, sim_min=-np.inf
+):
     best_ami = sim_min
     best_arg = None
-    for mty in [MixingType.BASE_GMM, MixingType.BASE_KMEANS, MixingType.BASE_SPECTRAL, MixingType.BASE_DBSCAN]:
+    for mty in [
+        MixingType.BASE_GMM,
+        MixingType.BASE_KMEANS,
+        MixingType.BASE_SPECTRAL,
+        MixingType.BASE_DBSCAN,
+    ]:
         idl, pproba, div = fit_mixture_model(mty, X, range_k, None)
         ami = sim_score(true_idl, idl)
         if ami > best_ami:
@@ -835,14 +895,21 @@ def _fit_best_mixture(X, range_k, true_idl, sim_score=adjusted_mutual_info_score
     return res_dict
 
 
-def fit_mixture_model(mty, X, range_k, true_idl=None, kchoice_score=silhouette_score, kchoice_threshold=0.5,
-                      kchoice_min=-1):
+def fit_mixture_model(
+    mty,
+    X,
+    range_k,
+    true_idl=None,
+    kchoice_score=silhouette_score,
+    kchoice_threshold=0.5,
+    kchoice_min=-1,
+):
     if mty == MixingType.BASE_RANDOM_SPLIT:
         assert true_idl is not None
         true_k = len(np.unique(true_idl))
         # sample random labels with true k
         rand_split = np.random.choice(true_k, size=len(true_idl))
-        res_dict = dict( bic=0, idl=rand_split )
+        res_dict = dict(bic=0, idl=rand_split)
         return rand_split, None, dict()
 
     elif mty == MixingType._BASE_BEST:
@@ -851,14 +918,17 @@ def fit_mixture_model(mty, X, range_k, true_idl=None, kchoice_score=silhouette_s
 
     elif mty in [MixingType.BASE_GMM, MixingType.BASE_GMM_GLOB]:
         mm = GaussianMixture
-        best_bic, best_k, best_m = np.inf, 0, None
+        best_bic, best_m = np.inf, None
         for k in range_k:
             gm = mm(k)
             gm.fit(X)
             bic_k = gm.bic(X)
-            if bic_k < best_bic: best_bic, best_k, best_m = bic_k, k, gm
+            if bic_k < best_bic:
+                best_bic, best_m = bic_k, gm
 
-        res_dict = dict( bic=best_bic, idl=best_m.predict(X), pproba = best_m.predict_proba(X))
+        res_dict = dict(
+            bic=best_bic, idl=best_m.predict(X), pproba=best_m.predict_proba(X)
+        )
         return res_dict
 
     elif mty == MixingType.BASE_DBSCAN:
@@ -866,29 +936,40 @@ def fit_mixture_model(mty, X, range_k, true_idl=None, kchoice_score=silhouette_s
         res_dict = dict(idl=mm.labels_)
         return res_dict
     elif mty == MixingType.BASE_HDBSCAN:
+        from sklearn.cluster import HDBSCAN
 
-        from sklearn.cluster import  HDBSCAN
         mm = HDBSCAN().fit(X)
         res_dict = dict(idl=mm.labels_)
         return res_dict
     else:
-        model = KMeans if mty == MixingType.BASE_KMEANS \
+        model = (
+            KMeans
+            if mty == MixingType.BASE_KMEANS
             else SpectralClustering if mty == MixingType.BASE_SPECTRAL else None
-        if model is None: raise ValueError(mty)
-        best_s, best_k, best_idl = kchoice_min, 1, None
+        )
+        if model is None:
+            raise ValueError(mty)
+        best_s, best_idl = kchoice_min, None
         for k in range_k:
-            if k == 1: continue
+            if k == 1:
+                continue
             mm = model(n_clusters=k, random_state=42)
             idl = mm.fit_predict(X)
             s = kchoice_score(X, idl)
-            if s > best_s: best_s, best_k, best_idl = s, k, idl
-        if best_s < kchoice_threshold:  best_idl = model(n_clusters=1, random_state=42).fit_predict(X)
+            if s > best_s:
+                best_s, best_idl = s, idl
+        if best_s < kchoice_threshold:
+            best_idl = model(n_clusters=1, random_state=42).fit_predict(X)
         res_dict = dict(idl=best_idl)
         return res_dict
 
 
 def fit_marginal_mixture(mty, X, node_i, pa_i, range_k, resid, true_idl, **kwargs):
-    X = np.hstack([X[:, pa_i], X[:, node_i].reshape(-1, 1)]) if len(pa_i) > 0 else X[:, node_i].reshape(-1, 1)
+    X = (
+        np.hstack([X[:, pa_i], X[:, node_i].reshape(-1, 1)])
+        if len(pa_i) > 0
+        else X[:, node_i].reshape(-1, 1)
+    )
     return fit_mixture_model(mty, X, range_k, true_idl)
 
 
@@ -897,8 +978,7 @@ def fit_resid_mixture(mty, X, node_i, pa_i, range_k, resid, true_idl):
 
 
 def fit_functional_mixture(
-        X, node_i, pa_i, range_k, resid, true_idl,
-        lg=None, vb=0, degree=3, method="lin"
+    X, node_i, pa_i, range_k, resid, true_idl, lg=None, vb=0, degree=3, method="lin"
 ):
     if not len(pa_i):
         return fit_marginal_mixture(
@@ -916,7 +996,7 @@ def fit_functional_mixture(
 
     with localconverter(default_converter + numpy2ri.converter):
         flexmix = importr("flexmix")
-        splines = importr("splines")
+        # splines = importr("splines")
 
         y = X[:, node_i].reshape(-1, 1)
         X_pa = X[:, pa_i]
@@ -985,7 +1065,7 @@ def fit_functional_mixture(
 
 
 def conditional_mixture_known_assgn(X, node_i, pa_i, true_idl, **scoring_params):
-    """ fit regresssions for a known mix assignment, pproba from log liks of those regressions (todo or degen?) """
+    """fit regresssions for a known mix assignment, pproba from log liks of those regressions (todo or degen?)"""
     if len(pa_i) > 0:
         (Xx, y) = (X[:, pa_i], X[:, node_i])
         beta_l, sig_l = mix_regression_params_kn_assgn(Xx, y, true_idl)
@@ -996,10 +1076,5 @@ def conditional_mixture_known_assgn(X, node_i, pa_i, true_idl, **scoring_params)
         pproba = None
         bic = 0
         ent_idl = 0
-    res_dict = dict(
-        bic=bic,
-        idl=true_idl,
-        pproba=pproba,
-        ent_idl=ent_idl
-    )
+    res_dict = dict(bic=bic, idl=true_idl, pproba=pproba, ent_idl=ent_idl)
     return res_dict

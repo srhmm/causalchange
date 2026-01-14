@@ -11,7 +11,14 @@ from causalchange.config.cc_config import CausalChangeConfig
 from causalchange.discovery.factory import PipelineFactory
 from causalchange.discovery.pipeline import DiscoveryEngine, AggregationResult
 from causalchange.discovery.scoring.edge_score import EdgeScore
-from causalchange.config.cc_types import ScoreType, GPType, DataMode, GraphSearch, MixingType, ContextAggregation
+from causalchange.config.cc_types import (
+    ScoreType,
+    GPType,
+    DataMode,
+    GraphSearch,
+    MixingType,
+    ContextAggregation,
+)
 from causalchange.discovery.search.topic import DAGSearchResult
 
 
@@ -40,20 +47,22 @@ class CausalChange:
     fitted_graph: bool
 
     def __init__(
-            self,
-            cfg: CausalChangeConfig | None = None, *,
-            data_mode: DataMode = DataMode.SKIP,
-            graph_search: GraphSearch = GraphSearch.SKIP,
-            score_type: ScoreType = ScoreType.SKIP,
-            aggregation: ContextAggregation = ContextAggregation.SKIP,
-            truths: dict[str, Any] | None = None,
-            node_nms: list[str] | None = None,
-            context_col: str | None = None,
-            tau_max: int| None = None,
-            lg = None,
-            vb = 0,
-            **kwargs):
-        r""" CausalChange: Causal Discovery Algorithms under Distribution Change (continuous data, multi-context continuous data, multi-context data with latent confounding, continuous-valued time series, or mixtures of causal mechanisms).
+        self,
+        cfg: CausalChangeConfig | None = None,
+        *,
+        data_mode: DataMode = DataMode.SKIP,
+        graph_search: GraphSearch = GraphSearch.SKIP,
+        score_type: ScoreType = ScoreType.SKIP,
+        aggregation: ContextAggregation = ContextAggregation.SKIP,
+        truths: dict[str, Any] | None = None,
+        node_nms: list[str] | None = None,
+        context_col: str | None = None,
+        tau_max: int | None = None,
+        lg=None,
+        vb=0,
+        **kwargs,
+    ):
+        r"""CausalChange: Causal Discovery Algorithms under Distribution Change (continuous data, multi-context continuous data, multi-context data with latent confounding, continuous-valued time series, or mixtures of causal mechanisms).
         :param optargs: optional arguments
 
         :Arguments:
@@ -73,21 +82,31 @@ class CausalChange:
         self.lg = lg
         self.vb = vb
         if cfg is not None:
-            if any([ty.value != 'skip' for ty in [data_mode, graph_search, score_type]]): # or kwargs:
+            if any(
+                [ty.value != "skip" for ty in [data_mode, graph_search, score_type]]
+            ):  # or kwargs:
                 raise ValueError(
-                    "Pass either cfg=... OR (data_mode, graph_search, score_type), not both.")
+                    "Pass either cfg=... OR (data_mode, graph_search, score_type), not both."
+                )
         else:
-
-            if data_mode.is_temporal(): assert tau_max is not None
-            if data_mode.is_context(): assert context_col is not None
-            if any([ty.value == 'skip' for ty in [data_mode, graph_search, score_type]]):
-                raise ValueError("When cfg is None you must pass data_mode, graph_search, score_type")
+            if data_mode.is_temporal():
+                assert tau_max is not None
+            if data_mode.is_context():
+                assert context_col is not None
+            if any(
+                [ty.value == "skip" for ty in [data_mode, graph_search, score_type]]
+            ):
+                raise ValueError(
+                    "When cfg is None you must pass data_mode, graph_search, score_type"
+                )
             cfg = CausalChangeConfig(
                 data_mode=data_mode,
                 graph_search=graph_search,
                 score_type=score_type,
                 aggregation=aggregation,
-                context_col=context_col if context_col is not None else "", #todo uglies
+                context_col=(
+                    context_col if context_col is not None else ""
+                ),  # todo uglies
                 tau_max=tau_max if tau_max is not None else 0,
                 **kwargs,
             )
@@ -100,27 +119,46 @@ class CausalChange:
         self.context_col = cfg.context_col
         self.tau_max = cfg.tau_max
 
-        assert self.graph_search.is_compatible_with(self.data_mode) and  self.aggregation.is_compatible_with(self.data_mode), \
-            f"Graph search {self.graph_search} & {self.aggregation} not compatible with data type {self.data_mode}"
-
+        assert self.graph_search.is_compatible_with(
+            self.data_mode
+        ) and self.aggregation.is_compatible_with(
+            self.data_mode
+        ), f"Graph search {self.graph_search} & {self.aggregation} not compatible with data type {self.data_mode}"
 
         def _info(st, strength=0):
-            (self.lg.info(st) if self.lg is not None else print(st)) if self.vb + strength > 0 else None
+            (
+                (self.lg.info(st) if self.lg is not None else print(st))
+                if self.vb + strength > 0
+                else None
+            )
+
         self._info = _info
-        self.is_true_edge = (lambda i: lambda j: "") if 'true_g' not in self.truths else \
-            (lambda node: lambda other: 'causal' if self.truths['true_g'].has_edge(node, other) else (
-                'rev' if self.truths['true_g'].has_edge(other, node) else 'spurious'))
+        self.is_true_edge = (
+            (lambda i: lambda j: "")
+            if "true_g" not in self.truths
+            else (
+                lambda node: lambda other: (
+                    "causal"
+                    if self.truths["true_g"].has_edge(node, other)
+                    else (
+                        "rev"
+                        if self.truths["true_g"].has_edge(other, node)
+                        else "spurious"
+                    )
+                )
+            )
+        )
         self.graph_state_ = nx.DiGraph()
         self.fitted_graph = False
         self.search_history: list[dict] = []
         self.engine: Optional[DiscoveryEngine] = None
 
-
     def _check_X(self, X: pd.DataFrame) -> pd.DataFrame:
-        """ Check input data shape is compat with DataMode
-       :param X: ``pd.DataFrame``: input data
+        """Check input data shape is compat with DataMode
+        :param X: ``pd.DataFrame``: input data
         """
-        if not isinstance(X, pd.DataFrame): X = pd.DataFrame(X)
+        if not isinstance(X, pd.DataFrame):
+            X = pd.DataFrame(X)
 
         if self.data_mode.is_context():
             if self.context_col not in X.columns:
@@ -156,32 +194,34 @@ class CausalChange:
         self.X = X
         return X
 
-    #%% Graph search
+    # %% Graph search
     def fit(self, X: pd.DataFrame) -> nx.DiGraph:
-        """ Discover a causal DAG over the columns in X
-       :param X: ``pd.DataFrame``: input data
-       :return: ``nx.DiGraph``: causal DAG over nodes in X. Also sets ``self.result_: DAGSearchResult``
+        """Discover a causal DAG over the columns in X
+        :param X: ``pd.DataFrame``: input data
+        :return: ``nx.DiGraph``: causal DAG over nodes in X. Also sets ``self.result_: DAGSearchResult``
         """
         X = self._check_X(X)
         self.engine = PipelineFactory.from_config(self.cfg)
         self.engine.fit(X)
-        self.result_ : DAGSearchResult = self.engine.discover()
+        self.result_: DAGSearchResult = self.engine.discover()
         self.graph_ = self.result_.graph
 
         self.fitted_graph = True
         return self.graph_
 
-
-    #%% other wrappers
+    # %% other wrappers
     @property
     def last_aggregation_(self) -> AggregationResult | None:
-        if self.engine is None: return None
+        if self.engine is None:
+            return None
         return self.engine.last_aggregation_
 
     def score(self, effect, parents) -> float:
-        if self.engine is None: raise RuntimeError("Call fit(X) before score().")
+        if self.engine is None:
+            raise RuntimeError("Call fit(X) before score().")
         return float(self.engine.score_edge(effect, parents))
 
     def get_result(self) -> DAGSearchResult:
-        if self.engine is None: raise RuntimeError("Call fit(X) before get_result().")
-        return self.result_ 
+        if self.engine is None:
+            raise RuntimeError("Call fit(X) before get_result().")
+        return self.result_

@@ -10,7 +10,11 @@ from causalchange.config.benchmark_config import SingleDataConfig, MultiDataConf
 
 
 def sample_single_continuous(config: SingleDataConfig):
-    sampling_fun = sample_linear_gaussian if config.nonlinearity == "lin" else sample_nonlinear_additive
+    sampling_fun = (
+        sample_linear_gaussian
+        if config.nonlinearity == "lin"
+        else sample_nonlinear_additive
+    )
     return sampling_fun(
         nonlinearity=config.nonlinearity,
         n_samples=config.n_samples,
@@ -21,8 +25,13 @@ def sample_single_continuous(config: SingleDataConfig):
         noise_scale=config.noise_scale,
     )
 
+
 def sample_multi_continuous(config: MultiDataConfig):
-    sampling_fun = sample_multicontext_linear_gaussian_interventional if config.nonlinearity == "lin" else sample_multicontext_nonlinear_additive_interventional
+    sampling_fun = (
+        sample_multicontext_linear_gaussian_interventional
+        if config.nonlinearity == "lin"
+        else sample_multicontext_nonlinear_additive_interventional
+    )
 
     return sampling_fun(
         nonlinearity=config.nonlinearity,
@@ -41,9 +50,13 @@ def sample_multi_continuous(config: MultiDataConfig):
         noise_scale_intervened=config.noise_scale_intervened,
     )
 
-def sample_single_temporal(config: SingleDataConfig):
-    sampling_fun = sample_temporal_linear if config.nonlinearity == "lin" else sample_temporal_nonlinear
 
+def sample_single_temporal(config: SingleDataConfig):
+    sampling_fun = (
+        sample_temporal_linear
+        if config.nonlinearity == "lin"
+        else sample_temporal_nonlinear
+    )
 
     return sampling_fun(
         nonlinearity=config.nonlinearity,
@@ -54,8 +67,14 @@ def sample_single_temporal(config: SingleDataConfig):
         weight_scale=config.weight_scale,
         noise_scale=config.noise_scale,
     )
+
+
 def sample_multi_temporal(config: SingleDataConfig):
-    sampling_fun = sample_multicontext_temporal_linear if config.nonlinearity == "lin" else sample_multicontext_temporal_nonlinear
+    sampling_fun = (
+        sample_multicontext_temporal_linear
+        if config.nonlinearity == "lin"
+        else sample_multicontext_temporal_nonlinear
+    )
     return sampling_fun(
         n_samples_per_context=config.n_samples_per_context,
         n_nodes=config.n_nodes,
@@ -89,6 +108,7 @@ def _random_dag(n_nodes: int, edge_prob: float, rng: np.random.Generator) -> nx.
                 g.add_edge(i, j)
     return g
 
+
 def sample_nonlinear_additive(
     *,
     n_samples: int,
@@ -114,7 +134,10 @@ def sample_nonlinear_additive(
     elif nonlinearity == "sin":
         f = np.sin
     elif nonlinearity == "relu":
-        f = lambda x: np.maximum(x, 0.0)
+
+        def f(x):
+            return np.maximum(x, 0.0)
+
     else:
         raise ValueError(f"Unknown nonlinearity: {nonlinearity}")
 
@@ -145,7 +168,7 @@ def sample_linear_gaussian(
     seed: int,
     weight_scale: float = 2.0,
     noise_scale: float = 0.7,
-        nonlinearity: str = "",
+    nonlinearity: str = "",
 ) -> Tuple[pd.DataFrame, nx.DiGraph]:
     rng = np.random.default_rng(seed)
     g = _random_dag(n_nodes=n_nodes, edge_prob=edge_prob, rng=rng)
@@ -173,7 +196,6 @@ def sample_linear_gaussian(
     mapping = {i: cols[i] for i in range(n_nodes)}
     g_named = nx.relabel_nodes(g, mapping, copy=True)
     return df, g_named
-
 
 
 def _cut_incoming_edges(g: nx.DiGraph, targets: List[int]) -> nx.DiGraph:
@@ -232,7 +254,10 @@ def _sample_from_weighted_dag_nonlinear(
     elif nonlinearity == "sin":
         f = np.sin
     elif nonlinearity == "relu":
-        f = lambda x: np.maximum(x, 0.0)
+
+        def f(x):
+            return np.maximum(x, 0.0)
+
     else:
         raise ValueError(f"Unknown nonlinearity: {nonlinearity}")
 
@@ -250,6 +275,7 @@ def _sample_from_weighted_dag_nonlinear(
             X[:, v] = eps[:, v]
     return X
 
+
 def sample_multicontext_linear_gaussian_interventional(
     *,
     n_samples_per_context: int,
@@ -265,7 +291,7 @@ def sample_multicontext_linear_gaussian_interventional(
     weight_scale_intervened: float = 2.0,
     shift_scale: float = 2.0,
     noise_scale_intervened: float | None = None,
-        nonlinearity="",
+    nonlinearity="",
 ) -> Tuple[pd.DataFrame, nx.DiGraph]:
     rng = np.random.default_rng(seed)
     g_base = _random_dag(n_nodes=n_nodes, edge_prob=edge_prob, rng=rng)
@@ -289,7 +315,9 @@ def sample_multicontext_linear_gaussian_interventional(
     mapping = {i: cols[i] for i in range(n_nodes)}
 
     for c in contexts:
-        targets = rng.choice(n_nodes, size=min(n_intervened_per_context, n_nodes), replace=False).tolist()
+        targets = rng.choice(
+            n_nodes, size=min(n_intervened_per_context, n_nodes), replace=False
+        ).tolist()
 
         if intervention_type == "hard":
             g_c = _cut_incoming_edges(g_base, targets)
@@ -311,7 +339,11 @@ def sample_multicontext_linear_gaussian_interventional(
                 shift[t] = rng.normal(loc=0.0, scale=shift_scale)
 
         elif intervention_type == "noise":
-            ns = noise_scale_intervened if noise_scale_intervened is not None else (2.0 * noise_scale)
+            ns = (
+                noise_scale_intervened
+                if noise_scale_intervened is not None
+                else (2.0 * noise_scale)
+            )
             for t in targets:
                 noise_vec[t] = ns
 
@@ -340,7 +372,8 @@ def sample_multicontext_linear_gaussian_interventional(
 
     true_base = nx.relabel_nodes(g_base, mapping, copy=True)
     true_target = _true_target_graph(true_base, context_graphs, intervention_type)
-    return df, true_target #df, true_base, true_target, context_graphs, interventions
+    return df, true_target  # df, true_base, true_target, context_graphs, interventions
+
 
 def sample_multicontext_nonlinear_additive_interventional(
     *,
@@ -370,7 +403,13 @@ def sample_multicontext_nonlinear_additive_interventional(
             w = 0.1 if w >= 0 else -0.1
         W_base[u, v] = w
 
-    if intervention_type not in {"hard", "soft_weight", "soft_mechanism", "shift", "noise"}:
+    if intervention_type not in {
+        "hard",
+        "soft_weight",
+        "soft_mechanism",
+        "shift",
+        "noise",
+    }:
         raise ValueError(f"Unknown intervention_type: {intervention_type}")
 
     # activation functions
@@ -395,7 +434,9 @@ def sample_multicontext_nonlinear_additive_interventional(
     mapping = {i: cols[i] for i in range(n_nodes)}
 
     for c in contexts:
-        targets = rng.choice(n_nodes, size=min(n_intervened_per_context, n_nodes), replace=False).tolist()
+        targets = rng.choice(
+            n_nodes, size=min(n_intervened_per_context, n_nodes), replace=False
+        ).tolist()
 
         if intervention_type == "hard":
             g_c = _cut_incoming_edges(g_base, targets)
@@ -423,7 +464,11 @@ def sample_multicontext_nonlinear_additive_interventional(
                 shift[t] = rng.normal(loc=0.0, scale=shift_scale)
 
         elif intervention_type == "noise":
-            ns = noise_scale_intervened if noise_scale_intervened is not None else (2.0 * noise_scale)
+            ns = (
+                noise_scale_intervened
+                if noise_scale_intervened is not None
+                else (2.0 * noise_scale)
+            )
             for t in targets:
                 noise_vec[t] = ns
 
@@ -452,17 +497,20 @@ def sample_multicontext_nonlinear_additive_interventional(
 
     true_base = nx.relabel_nodes(g_base, mapping, copy=True)
     true_target = _true_target_graph(true_base, context_graphs, intervention_type)
-    return df, true_target #df, true_base, true_target, context_graphs, interventions
+    return df, true_target  # df, true_base, true_target, context_graphs, interventions
+
 
 def _true_target_graph(
     true_base: nx.DiGraph,
     context_graphs: Dict[int, nx.DiGraph],
     intervention_type: str,
 ) -> nx.DiGraph:
-        return true_base
-    #if intervention_type == "hard":
-    #    return _intersect_edges(list(context_graphs.values()))
-    #return true_base
+    return true_base
+
+
+# if intervention_type == "hard":
+#    return _intersect_edges(list(context_graphs.values()))
+# return true_base
 
 
 def _act(name: str):
@@ -539,9 +587,9 @@ def _simulate_temporal_sem(
     W_inst: np.ndarray,
     A_lags: List[np.ndarray],
     rng: np.random.Generator,
-    noise_scale: np.ndarray,         # shape (n_nodes,)
-    shift: np.ndarray,               # shape (n_nodes,)
-    node_act: List[callable],        # len n_nodes
+    noise_scale: np.ndarray,  # shape (n_nodes,)
+    shift: np.ndarray,  # shape (n_nodes,)
+    node_act: List[callable],  # len n_nodes
     burnin: int,
 ) -> np.ndarray:
     n_nodes = len(cols)
@@ -588,7 +636,7 @@ def sample_temporal_linear(
     weight_scale: float = 0.3,
     noise_scale: float = 0.7,
     burnin: int | None = None,
-        nonlinearity="",
+    nonlinearity="",
 ) -> Tuple[pd.DataFrame, nx.DiGraph]:
     rng = np.random.default_rng(seed)
     burnin = int(10 * tau_max) if burnin is None else int(burnin)
@@ -596,7 +644,9 @@ def sample_temporal_linear(
     cols = [f"X{i}" for i in range(n_nodes)]
 
     # instantaneous DAG + weights
-    g_inst = _random_dag(n_nodes=n_nodes, edge_prob=edge_prob, rng=rng)  # reuse your helper :contentReference[oaicite:2]{index=2}
+    g_inst = _random_dag(
+        n_nodes=n_nodes, edge_prob=edge_prob, rng=rng
+    )  # reuse your helper :contentReference[oaicite:2]{index=2}
     W_inst = np.zeros((n_nodes, n_nodes), dtype=float)
     for u, v in g_inst.edges():
         w = rng.normal(loc=0.0, scale=weight_scale)
@@ -609,8 +659,11 @@ def sample_temporal_linear(
 
     # lagged matrices
     A_lags = _make_lag_mats(
-        n_nodes=n_nodes, tau_max=tau_max, edge_prob=edge_prob,
-        rng=rng, weight_scale=weight_scale,
+        n_nodes=n_nodes,
+        tau_max=tau_max,
+        edge_prob=edge_prob,
+        rng=rng,
+        weight_scale=weight_scale,
     )
 
     node_act = [_act("lin") for _ in range(n_nodes)]
@@ -633,7 +686,9 @@ def sample_temporal_linear(
     )
 
     df = pd.DataFrame(X, columns=cols)
-    true_g = _temporal_true_graph(cols=cols, tau_max=tau_max, g_inst=g_inst, A_lags=A_lags)
+    true_g = _temporal_true_graph(
+        cols=cols, tau_max=tau_max, g_inst=g_inst, A_lags=A_lags
+    )
     return df, true_g
 
 
@@ -654,7 +709,9 @@ def sample_temporal_nonlinear(
 
     cols = [f"X{i}" for i in range(n_nodes)]
 
-    g_inst = _random_dag(n_nodes=n_nodes, edge_prob=edge_prob, rng=rng)  # :contentReference[oaicite:3]{index=3}
+    g_inst = _random_dag(
+        n_nodes=n_nodes, edge_prob=edge_prob, rng=rng
+    )  # :contentReference[oaicite:3]{index=3}
     W_inst = np.zeros((n_nodes, n_nodes), dtype=float)
     for u, v in g_inst.edges():
         w = rng.normal(loc=0.0, scale=weight_scale)
@@ -666,8 +723,11 @@ def sample_temporal_nonlinear(
     inst_parents = [list(g_inst.predecessors(v)) for v in range(n_nodes)]
 
     A_lags = _make_lag_mats(
-        n_nodes=n_nodes, tau_max=tau_max, edge_prob=edge_prob,
-        rng=rng, weight_scale=weight_scale,
+        n_nodes=n_nodes,
+        tau_max=tau_max,
+        edge_prob=edge_prob,
+        rng=rng,
+        weight_scale=weight_scale,
     )
 
     f = _act(nonlinearity)
@@ -691,7 +751,9 @@ def sample_temporal_nonlinear(
     )
 
     df = pd.DataFrame(X, columns=cols)
-    true_g = _temporal_true_graph(cols=cols, tau_max=tau_max, g_inst=g_inst, A_lags=A_lags)
+    true_g = _temporal_true_graph(
+        cols=cols, tau_max=tau_max, g_inst=g_inst, A_lags=A_lags
+    )
     return df, true_g
 
 
@@ -712,7 +774,7 @@ def sample_multicontext_temporal_linear(
     shift_scale: float = 2.0,
     noise_scale_intervened: float | None = None,
     burnin: int | None = None,
-    nonlinearity = "",
+    nonlinearity="",
 ) -> Tuple[pd.DataFrame, nx.DiGraph]:
     rng = np.random.default_rng(seed)
     burnin = int(10 * tau_max) if burnin is None else int(burnin)
@@ -721,7 +783,9 @@ def sample_multicontext_temporal_linear(
     mapping = {i: cols[i] for i in range(n_nodes)}
 
     # base instantaneous DAG + weights
-    g_inst = _random_dag(n_nodes=n_nodes, edge_prob=edge_prob, rng=rng)  # :contentReference[oaicite:4]{index=4}
+    g_inst = _random_dag(
+        n_nodes=n_nodes, edge_prob=edge_prob, rng=rng
+    )  # :contentReference[oaicite:4]{index=4}
     W_inst_base = np.zeros((n_nodes, n_nodes), dtype=float)
     for u, v in g_inst.edges():
         w = rng.normal(loc=0.0, scale=weight_scale)
@@ -734,8 +798,11 @@ def sample_multicontext_temporal_linear(
 
     # base lag mats
     A_lags_base = _make_lag_mats(
-        n_nodes=n_nodes, tau_max=tau_max, edge_prob=edge_prob,
-        rng=rng, weight_scale=weight_scale,
+        n_nodes=n_nodes,
+        tau_max=tau_max,
+        edge_prob=edge_prob,
+        rng=rng,
+        weight_scale=weight_scale,
     )
 
     if intervention_type not in {"hard", "soft_weight", "shift", "noise"}:
@@ -746,7 +813,9 @@ def sample_multicontext_temporal_linear(
     interventions: Dict[int, List[str]] = {}
 
     for c in range(n_contexts):
-        targets = rng.choice(n_nodes, size=min(n_intervened_per_context, n_nodes), replace=False).tolist()
+        targets = rng.choice(
+            n_nodes, size=min(n_intervened_per_context, n_nodes), replace=False
+        ).tolist()
 
         # copy parameters
         W_inst = W_inst_base.copy()
@@ -775,7 +844,11 @@ def sample_multicontext_temporal_linear(
                 shift[t] = rng.normal(loc=0.0, scale=shift_scale)
 
         elif intervention_type == "noise":
-            ns = noise_scale_intervened if noise_scale_intervened is not None else (2.0 * float(noise_scale))
+            ns = (
+                noise_scale_intervened
+                if noise_scale_intervened is not None
+                else (2.0 * float(noise_scale))
+            )
             for t in targets:
                 noise_vec[t] = ns
 
@@ -798,17 +871,21 @@ def sample_multicontext_temporal_linear(
         blocks.append(df_c)
 
         # context temporal graph
-        g_true_c = _temporal_true_graph(cols=cols, tau_max=tau_max, g_inst=g_inst, A_lags=A_lags)
+        g_true_c = _temporal_true_graph(
+            cols=cols, tau_max=tau_max, g_inst=g_inst, A_lags=A_lags
+        )
         context_graphs[c] = nx.relabel_nodes(g_true_c, lambda x: x, copy=True)
         interventions[c] = [mapping[t] for t in targets]
 
     df = pd.concat(blocks, ignore_index=True)
 
-    true_base = _temporal_true_graph(cols=cols, tau_max=tau_max, g_inst=g_inst, A_lags=A_lags_base)
+    true_base = _temporal_true_graph(
+        cols=cols, tau_max=tau_max, g_inst=g_inst, A_lags=A_lags_base
+    )
 
     # for now: use base as target graph (same as your current behavior) :contentReference[oaicite:5]{index=5}
     true_target = true_base
-    return df, true_target#df, true_base, true_target, context_graphs, interventions
+    return df, true_target  # df, true_base, true_target, context_graphs, interventions
 
 
 def sample_multicontext_temporal_nonlinear(
@@ -837,7 +914,9 @@ def sample_multicontext_temporal_nonlinear(
     cols = [f"X{i}" for i in range(n_nodes)]
     mapping = {i: cols[i] for i in range(n_nodes)}
 
-    g_inst = _random_dag(n_nodes=n_nodes, edge_prob=edge_prob, rng=rng)  # :contentReference[oaicite:6]{index=6}
+    g_inst = _random_dag(
+        n_nodes=n_nodes, edge_prob=edge_prob, rng=rng
+    )  # :contentReference[oaicite:6]{index=6}
     W_inst_base = np.zeros((n_nodes, n_nodes), dtype=float)
     for u, v in g_inst.edges():
         w = rng.normal(loc=0.0, scale=weight_scale)
@@ -849,11 +928,20 @@ def sample_multicontext_temporal_nonlinear(
     inst_parents = [list(g_inst.predecessors(v)) for v in range(n_nodes)]
 
     A_lags_base = _make_lag_mats(
-        n_nodes=n_nodes, tau_max=tau_max, edge_prob=edge_prob,
-        rng=rng, weight_scale=weight_scale,
+        n_nodes=n_nodes,
+        tau_max=tau_max,
+        edge_prob=edge_prob,
+        rng=rng,
+        weight_scale=weight_scale,
     )
 
-    if intervention_type not in {"hard", "soft_weight", "soft_mechanism", "shift", "noise"}:
+    if intervention_type not in {
+        "hard",
+        "soft_weight",
+        "soft_mechanism",
+        "shift",
+        "noise",
+    }:
         raise ValueError(f"Unknown intervention_type: {intervention_type}")
 
     f_base = _act(nonlinearity)
@@ -864,7 +952,9 @@ def sample_multicontext_temporal_nonlinear(
     interventions: Dict[int, List[str]] = {}
 
     for c in range(n_contexts):
-        targets = rng.choice(n_nodes, size=min(n_intervened_per_context, n_nodes), replace=False).tolist()
+        targets = rng.choice(
+            n_nodes, size=min(n_intervened_per_context, n_nodes), replace=False
+        ).tolist()
 
         W_inst = W_inst_base.copy()
         A_lags = [A.copy() for A in A_lags_base]
@@ -894,7 +984,11 @@ def sample_multicontext_temporal_nonlinear(
                 shift[t] = rng.normal(loc=0.0, scale=shift_scale)
 
         elif intervention_type == "noise":
-            ns = noise_scale_intervened if noise_scale_intervened is not None else (2.0 * float(noise_scale))
+            ns = (
+                noise_scale_intervened
+                if noise_scale_intervened is not None
+                else (2.0 * float(noise_scale))
+            )
             for t in targets:
                 noise_vec[t] = ns
 
@@ -916,12 +1010,16 @@ def sample_multicontext_temporal_nonlinear(
         df_c[context_col] = c
         blocks.append(df_c)
 
-        g_true_c = _temporal_true_graph(cols=cols, tau_max=tau_max, g_inst=g_inst, A_lags=A_lags)
+        g_true_c = _temporal_true_graph(
+            cols=cols, tau_max=tau_max, g_inst=g_inst, A_lags=A_lags
+        )
         context_graphs[c] = nx.relabel_nodes(g_true_c, lambda x: x, copy=True)
         interventions[c] = [mapping[t] for t in targets]
 
     df = pd.concat(blocks, ignore_index=True)
 
-    true_base = _temporal_true_graph(cols=cols, tau_max=tau_max, g_inst=g_inst, A_lags=A_lags_base)
+    true_base = _temporal_true_graph(
+        cols=cols, tau_max=tau_max, g_inst=g_inst, A_lags=A_lags_base
+    )
     true_target = true_base
-    return df, true_target #df, true_base, true_target, context_graphs, interventions
+    return df, true_target  # df, true_base, true_target, context_graphs, interventions

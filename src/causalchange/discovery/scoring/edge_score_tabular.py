@@ -12,13 +12,18 @@ from causalchange.discovery.scoring.edge_score import EdgeScore
 from dataclasses import dataclass
 from typing import Callable
 
+
 @dataclass(frozen=True)
 class GainPolicy:
     higher_is_better: bool
     gain_threshold_fn: Callable[[int], float] = lambda n: 0.0  # default any pos gain
 
     def transition_gain(self, old_score: float, new_score: float) -> float:
-        return (new_score - old_score) if self.higher_is_better else (old_score - new_score)
+        return (
+            (new_score - old_score)
+            if self.higher_is_better
+            else (old_score - new_score)
+        )
 
     def is_better(self, a: float, b: float) -> bool:
         return a > b
@@ -28,9 +33,13 @@ class GainPolicy:
 
 
 class EdgeScoreTabular:
-
     def __init__(self, cfg: CausalChangeConfig):
-        if cfg.data_mode not in (DataMode.IID, DataMode.CONTEXTS, DataMode.TIME, DataMode.TIME_CONTEXTS):
+        if cfg.data_mode not in (
+            DataMode.IID,
+            DataMode.CONTEXTS,
+            DataMode.TIME,
+            DataMode.TIME_CONTEXTS,
+        ):
             raise ValueError(f"data_mode not valid or implemented {cfg.data_mode}")
 
         self.data_mode = cfg.data_mode
@@ -56,7 +65,9 @@ class EdgeScoreTabular:
 
     def _bind(self, df: pd.DataFrame) -> None:
         X_np = df.to_numpy(dtype=float)
-        edges = EdgeScore(data_mode=self.data_mode, score_type=self.score_type, **self.score_params)
+        edges = EdgeScore(
+            data_mode=self.data_mode, score_type=self.score_type, **self.score_params
+        )
         edges.fit(X_np)
 
         self._edges = edges
@@ -72,7 +83,9 @@ class EdgeScoreTabular:
         self._global_n_samples = int(df.shape[0])
         self._bind(df)
 
-    def score_edge(self, df: pd.DataFrame, effect: str, parents: Sequence[str]) -> float:
+    def score_edge(
+        self, df: pd.DataFrame, effect: str, parents: Sequence[str]
+    ) -> float:
         self._ensure_bound(df)
         assert self._edges is not None
 

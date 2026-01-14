@@ -3,12 +3,18 @@ import numpy as np
 
 from benchmarks.run_methods import run_sampling
 from causalchange.config.cc_types import DataMode, GraphSearch, ScoreType
-from causalchange.discovery.old._mixins import LINCMixin, LINCGroupingParams, TabularScoreMixin
+from causalchange.discovery.old._mixins import (
+    LINCMixin,
+    LINCGroupingParams,
+    TabularScoreMixin,
+)
 from endtoend.test_endtoend import _get_config_for_data_and_algo
 
 
 class Host(LINCMixin):
-    def __init__(self, *, grouping: LINCGroupingParams, score_higher_better: bool = True):
+    def __init__(
+        self, *, grouping: LINCGroupingParams, score_higher_better: bool = True
+    ):
         super().__init__(grouping=grouping)
         self.data_mode = DataMode.CONTEXTS
         self.score_higher_better = score_higher_better
@@ -31,13 +37,17 @@ def test_components_no_contexts_returns_zero(monkeypatch):
 
     assert h._score("y", []) == 0.0
 
+
 def test_components_one_context_returns_context_score(monkeypatch):
     h = Host(grouping=LINCGroupingParams(method="components", gain_threshold=0.0))
     h._X_context = {"A": pd.DataFrame({"x": [1, 2]})}
     # Score = number of rows in current df
-    patch_parent_score(monkeypatch, lambda self, effect, parents: float(len(self._current_df)))
+    patch_parent_score(
+        monkeypatch, lambda self, effect, parents: float(len(self._current_df))
+    )
 
     assert h._score("y", []) == 2.0
+
 
 def test_components_edge_added_when_gain_exceeds_threshold_and_caches_gain(monkeypatch):
     h = Host(grouping=LINCGroupingParams(method="components", gain_threshold=0.5))
@@ -64,6 +74,7 @@ def test_components_edge_added_when_gain_exceeds_threshold_and_caches_gain(monke
     assert h._last_gain_matrix.shape == (2, 2)
     assert np.allclose(h._last_gain_matrix, h._last_gain_matrix.T)
     assert h._last_gain_matrix[0, 1] > 0.5
+
 
 def test_agglomerative_merges_until_threshold(monkeypatch):
     h = Host(grouping=LINCGroupingParams(method="agglomerative", gain_threshold=1.0))
@@ -93,8 +104,10 @@ def test_agglomerative_merges_until_threshold(monkeypatch):
 
 
 def test_transition_gain_respects_score_higher_better_false(monkeypatch):
-    h = Host(grouping=LINCGroupingParams(method="components", gain_threshold=0.0),
-             score_higher_better=False)
+    h = Host(
+        grouping=LINCGroupingParams(method="components", gain_threshold=0.0),
+        score_higher_better=False,
+    )
 
     h._X_context = {
         "A": pd.DataFrame({"x": [1, 2]}),
@@ -116,29 +129,37 @@ def test_transition_gain_respects_score_higher_better_false(monkeypatch):
 
 
 def test_extension_LINCMixin():
-
-    linc_model = Host(grouping=LINCGroupingParams(method="components", gain_threshold=0.0))
+    linc_model = Host(
+        grouping=LINCGroupingParams(method="components", gain_threshold=0.0)
+    )
 
     linc_model.score_higher_better = True
     old_score = 10
     new_score = 0
-    assert linc_model._transition_gain(old_score, new_score)==new_score-old_score
-
+    assert linc_model._transition_gain(old_score, new_score) == new_score - old_score
 
     linc_model.score_higher_better = False
     old_score = 10
     new_score = 0
-    assert linc_model._transition_gain(old_score, new_score)==old_score-new_score
-
+    assert linc_model._transition_gain(old_score, new_score) == old_score - new_score
 
     linc_model.score_higher_better = True
 
-    old_score, new_score, new_better_score = 0, LINCGroupingParams.gain_threshold -0.01,  LINCGroupingParams.gain_threshold + 0.01
-    assert not linc_model._score_significant(linc_model._transition_gain(old_score, new_score))
-    assert linc_model._score_significant(linc_model._transition_gain(old_score, new_better_score))
+    old_score, new_score, new_better_score = (
+        0,
+        LINCGroupingParams.gain_threshold - 0.01,
+        LINCGroupingParams.gain_threshold + 0.01,
+    )
+    assert not linc_model._score_significant(
+        linc_model._transition_gain(old_score, new_score)
+    )
+    assert linc_model._score_significant(
+        linc_model._transition_gain(old_score, new_better_score)
+    )
 
-
-    cfg = _get_config_for_data_and_algo(DataMode.CONTEXTS, GraphSearch.TOPIC, ScoreType.GAM)
+    cfg = _get_config_for_data_and_algo(
+        DataMode.CONTEXTS, GraphSearch.TOPIC, ScoreType.GAM
+    )
     df, true_g = run_sampling(cfg.data)
 
     host = linc_model._host()
@@ -148,8 +169,8 @@ def test_extension_LINCMixin():
     # smoke test for scoring
     for x in df.columns:
         for y in df.columns:
-            if x==y: continue
-            s = linc_model._score(x, [y])
+            if x == y:
+                continue
+            _ = linc_model._score(x, [y])
 
     # todo test scoring more?
-

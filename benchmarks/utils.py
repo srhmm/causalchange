@@ -1,7 +1,6 @@
-
 import math
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 import networkx as nx
 
@@ -11,6 +10,8 @@ def _pgmpy_graph_to_nx(dag: Any) -> nx.DiGraph:
     g.add_nodes_from([str(n) for n in dag.nodes()])
     g.add_edges_from([(str(u), str(v)) for (u, v) in dag.edges()])
     return g
+
+
 def mean_std(xs: list[float]) -> tuple[float, float]:
     n = len(xs)
     if n == 0:
@@ -21,6 +22,7 @@ def mean_std(xs: list[float]) -> tuple[float, float]:
     var = sum((x - m) ** 2 for x in xs) / (n - 1)
     return (m, math.sqrt(var))
 
+
 def flatten_dict(d: dict[str, Any], parent: str = "", sep: str = ".") -> dict[str, Any]:
     out: dict[str, Any] = {}
     for k, v in d.items():
@@ -30,6 +32,7 @@ def flatten_dict(d: dict[str, Any], parent: str = "", sep: str = ".") -> dict[st
         else:
             out[key] = v
     return out
+
 
 def _freeze(v: Any) -> Any:
     if isinstance(v, dict):
@@ -46,6 +49,7 @@ def config_group_key(cfg) -> tuple[tuple[str, Any], ...]:
     d.get("data", {}).pop("seed", None)
     frozen = _freeze(d)
     return frozen
+
 
 @dataclass(frozen=True)
 class SummaryRow:
@@ -66,8 +70,7 @@ def file_name_from_cfg(cfg) -> str:
         data["setting"],
         algo["name"],
         data["nonlinearity"],
-        f"nn-{data.get('n_nodes')}"
-        f"p-{data.get('edge_prob')}"
+        f"nn-{data.get('n_nodes')}" f"p-{data.get('edge_prob')}",
     ]
     if data["setting"] == "multi":
         parts.append(f"nc-{data.get('n_contexts')}")
@@ -77,6 +80,7 @@ def file_name_from_cfg(cfg) -> str:
     else:
         parts.append(f"ns-{data.get('n_samples')}")
     return "_".join(parts)
+
 
 def bench_name_from_cfg(cfg) -> str:
     d = cfg.model_dump()
@@ -93,7 +97,9 @@ def bench_name_from_cfg(cfg) -> str:
     return "_".join(parts)
 
 
-def summarize_groups(groups: dict[tuple[tuple[str, Any], ...], dict[str, Any]]) -> list[SummaryRow]:
+def summarize_groups(
+    groups: dict[tuple[tuple[str, Any], ...], dict[str, Any]],
+) -> list[SummaryRow]:
     rows: list[SummaryRow] = []
     for key, payload in groups.items():
         config_example = payload["config_example"]
@@ -102,17 +108,20 @@ def summarize_groups(groups: dict[tuple[tuple[str, Any], ...], dict[str, Any]]) 
 
         for metric, values in metrics_map.items():
             m, s = mean_std(values)
-            rows.append(SummaryRow(
-                bench=bench,
-                metric=metric,
-                mean=m,
-                std=s,
-                n=len(values),
-                config=config_example,
-            ))
+            rows.append(
+                SummaryRow(
+                    bench=bench,
+                    metric=metric,
+                    mean=m,
+                    std=s,
+                    n=len(values),
+                    config=config_example,
+                )
+            )
 
     rows.sort(key=lambda r: (r.bench, r.metric))
     return rows
+
 
 def to_json_safe(x):
     if isinstance(x, dict):

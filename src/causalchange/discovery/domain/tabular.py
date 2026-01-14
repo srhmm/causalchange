@@ -4,8 +4,7 @@ from typing import Any, Sequence
 import pandas as pd
 
 
-class TabularDomain: 
-
+class TabularDomain:
     def prepare_X(self, X: pd.DataFrame) -> pd.DataFrame:
         return X
 

@@ -43,7 +43,7 @@ def test_temporal_domain_nodes_candidates_and_allowed_edge_respects_lags_and_ins
     assert d_no_inst.allowed_edge(("X0", 0), ("X1", 1)) is False
 
     d_inst = TemporalDomain(tau_max=1, allow_instantaneous=True)
-    X1 = d_inst.prepare_X(X)
+    # X1 = d_inst.prepare_X(X)
     assert d_inst.allowed_edge(("X0", 0), ("X1", 0)) is True
 
 

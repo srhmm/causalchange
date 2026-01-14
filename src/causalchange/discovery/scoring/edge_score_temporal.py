@@ -13,15 +13,18 @@ Node = tuple[str, int]  # (variable, lag)
 
 
 class EdgeScoreTemporal:
-    """ scoring for temporal domain (both single and multi contexts)
+    """scoring for temporal domain (both single and multi contexts)
     w lagged design matrix Z, everything else delegated to EdgeScoreTabular on Z"""
 
-
     def __init__(
-        self, *, cfg: CausalChangeConfig,
+        self,
+        *,
+        cfg: CausalChangeConfig,
     ):
         if cfg.data_mode not in {DataMode.TIME, DataMode.TIME_CONTEXTS}:
-            raise ValueError(f"EdgeScoreTemporal expects temporal, got {cfg.data_mode=}")
+            raise ValueError(
+                f"EdgeScoreTemporal expects temporal, got {cfg.data_mode=}"
+            )
         if cfg.tau_max is None or cfg.tau_max <= 0:
             raise ValueError("provide (positive) tau_max (max time lag)")
 
@@ -63,7 +66,9 @@ class EdgeScoreTemporal:
         self._Z = Z
         self._tab.fit(Z)
 
-    def score_edge(self, X: pd.DataFrame, effect: Node, parents: Sequence[Node]) -> float:
+    def score_edge(
+        self, X: pd.DataFrame, effect: Node, parents: Sequence[Node]
+    ) -> float:
         if self._Z is None or not self._node_to_col:
             self.fit(X)
 
