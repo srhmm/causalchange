@@ -5,10 +5,10 @@ import pandas as pd
 
 from causalchange.causal_change import CausalChange
 from causalchange.config.cc_types import (
+    ContextAggregation,
     DataMode,
     GraphSearch,
     ScoreType,
-    ContextAggregation,
 )
 
 
@@ -22,9 +22,7 @@ def _linear_chain_df(n: int, seed: int = 0) -> pd.DataFrame:
 
 def test_causalchange_fit_discovers_single_context_graph_and_returns_dag_like_object():
     df = _linear_chain_df(2000, seed=1)
-    est = CausalChange(
-        data_mode=DataMode.IID, graph_search=GraphSearch.TOPIC, score_type=ScoreType.LIN
-    )
+    est = CausalChange(data_mode=DataMode.IID, graph_search=GraphSearch.TOPIC, score_type=ScoreType.LIN)
     dag = est.fit(df)
 
     nodes = list(dag.nodes())

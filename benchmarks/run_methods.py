@@ -1,44 +1,42 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 import time
+from collections.abc import Iterable
 from itertools import product
-from typing import Any, Iterable
+from typing import Any
 
-import dataclasses
 import networkx as nx
 import pandas as pd
 from pydantic import BaseModel, ValidationError
 
 from benchmarks.synthetic.generators import (
-    sample_single_continuous,
     sample_multi_continuous,
-    sample_single_temporal,
     sample_multi_temporal,
+    sample_single_continuous,
+    sample_single_temporal,
 )
-
 from benchmarks.synthetic.metrics import compute_metrics
-
+from benchmarks.utils import _pgmpy_graph_to_nx
+from causalchange.causal_change import CausalChange
 from causalchange.config.benchmark_config import (
-    BenchmarkConfig,
-    DataConfig,
-    ScoringConfig,
     AlgoConfig,
-    LincAlgoConfig,
-    TopicAlgoConfig,
+    BenchmarkConfig,
     ChainAlgoConfig,
-    SingleDataConfig,
+    DataConfig,
+    LincAlgoConfig,
+    MixedDataConfig,
     MultiDataConfig,
     MultiTemporalDataConfig,
+    ScoringConfig,
+    SingleDataConfig,
     SingleTemporalDataConfig,
     SpaceTimeAlgoConfig,
     SpaceTimeCAlgoConfig,
-    MixedDataConfig,
+    TopicAlgoConfig,
 )
-from benchmarks.utils import _pgmpy_graph_to_nx
-
-from causalchange.config.cc_types import ScoreType, ContextAggregation
-from causalchange.causal_change import CausalChange
+from causalchange.config.cc_types import ContextAggregation, ScoreType
 
 
 def run_sampling(config: DataConfig):
@@ -51,9 +49,7 @@ def run_sampling(config: DataConfig):
             else (
                 sample_single_temporal
                 if config.setting == "time"
-                else (
-                    sample_multi_temporal if config.setting == "time-contexts" else None
-                )
+                else (sample_multi_temporal if config.setting == "time-contexts" else None)
             )
         )
     )
@@ -78,11 +74,7 @@ def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> An
     aggregation = (
         ContextAggregation.LINC
         if algo_cfg.name == "linc"
-        else (
-            ContextAggregation.CHAIN
-            if algo_cfg.name == "chain"
-            else ContextAggregation.SKIP
-        )
+        else (ContextAggregation.CHAIN if algo_cfg.name == "chain" else ContextAggregation.SKIP)
     )
     score_type = ScoreType(algo_cfg.score_type)
 
@@ -104,9 +96,10 @@ def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> An
     return est.fit(df)
 
 
-def run_scoring(
-    true_g, est_dag, scoring_cfg: ScoringConfig, return_nx=False
-) -> dict[str, float] | [dict[str, float], nx.DiGraph]:
+def run_scoring(true_g, est_dag, scoring_cfg: ScoringConfig, return_nx=False) -> dict[str, float] | [
+    dict[str, float],
+    nx.DiGraph,
+]:
     est_nx = _pgmpy_graph_to_nx(est_dag)
     graph_metrics = compute_metrics(true_g, est_nx)
 
@@ -137,9 +130,7 @@ def run_on_config(cfg: BenchmarkConfig, return_nx=False) -> dict[str, float] | [
     return metrics
 
 
-def _filter_to_model_fields(
-    model_cls: type[BaseModel], data: dict[str, Any]
-) -> dict[str, Any]:
+def _filter_to_model_fields(model_cls: type[BaseModel], data: dict[str, Any]) -> dict[str, Any]:
     allowed = set(model_cls.model_fields.keys())
     return {k: v for k, v in data.items() if k in allowed}
 
@@ -148,7 +139,7 @@ def _product_dict(d: dict[str, list[Any]]) -> Iterable[dict[str, Any]]:
     keys = list(d.keys())
     vals = [d[k] for k in keys]
     for combo in product(*vals):
-        yield dict(zip(keys, combo))
+        yield dict(zip(keys, combo, strict=False))
 
 
 def iter_valid_configs(grid: dict[str, Any]):
@@ -174,7 +165,9 @@ def iter_valid_configs(grid: dict[str, Any]):
                     else (
                         MultiTemporalDataConfig
                         if setting == "time-contexts"
-                        else MixedDataConfig if setting == "mixed" else None
+                        else MixedDataConfig
+                        if setting == "mixed"
+                        else None
                     )
                 )
             )
@@ -201,9 +194,7 @@ def iter_valid_configs(grid: dict[str, Any]):
                             _filter_to_model_fields(SpaceTimeAlgoConfig, algo)
                             if name == "spacetime"
                             else (
-                                _filter_to_model_fields(SpaceTimeCAlgoConfig, algo)
-                                if name == "spacetime-c"
-                                else None
+                                _filter_to_model_fields(SpaceTimeCAlgoConfig, algo) if name == "spacetime-c" else None
                             )
                         )
                     )

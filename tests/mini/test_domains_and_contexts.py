@@ -3,10 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from causalchange.discovery.domain.multi import MultiContextDomain
-
 from causalchange.discovery.domain.single import SingleContextDomain
-
-
 from causalchange.discovery.domain.tabular import TabularDomain
 from causalchange.discovery.domain.temporal import TemporalDomain
 

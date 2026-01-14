@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
+
 import numpy as np
 
-from causalchange.config.cc_types import DataMode, ScoreType, GPType
+from causalchange.config.cc_types import DataMode, GPType, ScoreType
 from causalchange.discovery.scoring.fit import (
     fit_score_functional_model,
-    fit_score_krr,
-    fit_score_gp,
-    fit_score_rff,
     fit_score_gam,
-    fit_score_spln,
+    fit_score_gp,
+    fit_score_krr,
     fit_score_ln,
+    fit_score_rff,
+    fit_score_spln,
 )
 
 
@@ -31,9 +33,7 @@ class EdgeScore:
         self.lg = scoring_params.get("lg", None)
         self.vb = scoring_params.get("vb", 0)
         self._info = (
-            (lambda st: (self.lg.info(st) if self.lg is not None else print(st)))
-            if self.vb > 0
-            else (lambda st: None)
+            (lambda st: (self.lg.info(st) if self.lg is not None else print(st))) if self.vb > 0 else (lambda st: None)
         )
 
         # Memoization
@@ -62,11 +62,7 @@ class EdgeScore:
                         else (
                             fit_score_spln
                             if self.score_type == ScoreType.SPLINE
-                            else (
-                                fit_score_ln
-                                if self.score_type == ScoreType.LIN
-                                else None
-                            )
+                            else (fit_score_ln if self.score_type == ScoreType.LIN else None)
                         )
                     )
                 )

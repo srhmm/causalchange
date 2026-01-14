@@ -1,24 +1,23 @@
 from __future__ import annotations
 
-from typing import Optional, Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import networkx as nx
-import warnings
-
 import pandas as pd
 
 from causalchange.config.cc_config import CausalChangeConfig
-from causalchange.discovery.factory import PipelineFactory
-from causalchange.discovery.pipeline import DiscoveryEngine, AggregationResult
-from causalchange.discovery.scoring.edge_score import EdgeScore
 from causalchange.config.cc_types import (
-    ScoreType,
-    GPType,
+    ContextAggregation,
     DataMode,
+    GPType,
     GraphSearch,
     MixingType,
-    ContextAggregation,
+    ScoreType,
 )
+from causalchange.discovery.factory import PipelineFactory
+from causalchange.discovery.pipeline import AggregationResult, DiscoveryEngine
+from causalchange.discovery.scoring.edge_score import EdgeScore
 from causalchange.discovery.search.topic import DAGSearchResult
 
 
@@ -32,7 +31,7 @@ class CausalChange:
     context_col: str
 
     # debug info
-    lg: Optional[Any]
+    lg: Any | None
     vb: int
     truths: dict[str, Any]
     true_graph: nx.DiGraph | None
@@ -62,7 +61,9 @@ class CausalChange:
         vb=0,
         **kwargs,
     ):
-        r"""CausalChange: Causal Discovery Algorithms under Distribution Change (continuous data, multi-context continuous data, multi-context data with latent confounding, continuous-valued time series, or mixtures of causal mechanisms).
+        r"""CausalChange: Causal Discovery Algorithms under Distribution Change (continuous data, multi-context
+        continuous data, multi-context data with latent confounding, continuous-valued time series,
+        or mixtures of causal mechanisms).
         :param optargs: optional arguments
 
         :Arguments:
@@ -82,31 +83,21 @@ class CausalChange:
         self.lg = lg
         self.vb = vb
         if cfg is not None:
-            if any(
-                [ty.value != "skip" for ty in [data_mode, graph_search, score_type]]
-            ):  # or kwargs:
-                raise ValueError(
-                    "Pass either cfg=... OR (data_mode, graph_search, score_type), not both."
-                )
+            if any([ty.value != "skip" for ty in [data_mode, graph_search, score_type]]):  # or kwargs:
+                raise ValueError("Pass either cfg=... OR (data_mode, graph_search, score_type), not both.")
         else:
             if data_mode.is_temporal():
                 assert tau_max is not None
             if data_mode.is_context():
                 assert context_col is not None
-            if any(
-                [ty.value == "skip" for ty in [data_mode, graph_search, score_type]]
-            ):
-                raise ValueError(
-                    "When cfg is None you must pass data_mode, graph_search, score_type"
-                )
+            if any([ty.value == "skip" for ty in [data_mode, graph_search, score_type]]):
+                raise ValueError("When cfg is None you must pass data_mode, graph_search, score_type")
             cfg = CausalChangeConfig(
                 data_mode=data_mode,
                 graph_search=graph_search,
                 score_type=score_type,
                 aggregation=aggregation,
-                context_col=(
-                    context_col if context_col is not None else ""
-                ),  # todo uglies
+                context_col=(context_col if context_col is not None else ""),  # todo uglies
                 tau_max=tau_max if tau_max is not None else 0,
                 **kwargs,
             )
@@ -119,18 +110,12 @@ class CausalChange:
         self.context_col = cfg.context_col
         self.tau_max = cfg.tau_max
 
-        assert self.graph_search.is_compatible_with(
-            self.data_mode
-        ) and self.aggregation.is_compatible_with(
+        assert self.graph_search.is_compatible_with(self.data_mode) and self.aggregation.is_compatible_with(
             self.data_mode
         ), f"Graph search {self.graph_search} & {self.aggregation} not compatible with data type {self.data_mode}"
 
         def _info(st, strength=0):
-            (
-                (self.lg.info(st) if self.lg is not None else print(st))
-                if self.vb + strength > 0
-                else None
-            )
+            ((self.lg.info(st) if self.lg is not None else print(st)) if self.vb + strength > 0 else None)
 
         self._info = _info
         self.is_true_edge = (
@@ -140,18 +125,14 @@ class CausalChange:
                 lambda node: lambda other: (
                     "causal"
                     if self.truths["true_g"].has_edge(node, other)
-                    else (
-                        "rev"
-                        if self.truths["true_g"].has_edge(other, node)
-                        else "spurious"
-                    )
+                    else ("rev" if self.truths["true_g"].has_edge(other, node) else "spurious")
                 )
             )
         )
         self.graph_state_ = nx.DiGraph()
         self.fitted_graph = False
         self.search_history: list[dict] = []
-        self.engine: Optional[DiscoveryEngine] = None
+        self.engine: DiscoveryEngine | None = None
 
     def _check_X(self, X: pd.DataFrame) -> pd.DataFrame:
         """Check input data shape is compat with DataMode
@@ -182,8 +163,8 @@ class CausalChange:
         if self.N <= 0 or self.D <= 0:
             raise ValueError(f"Invalid data shape after checks: N={self.N}, D={self.D}")
 
-        if self.N < self.D:
-            warnings.warn("n_samples < n_nodes", RuntimeWarning)
+        # if self.N < self.D:
+        #    warnings.warn("n_samples < n_nodes", RuntimeWarning)
 
         if self.node_nms is not None:
             if len(self.node_nms) != self.D:

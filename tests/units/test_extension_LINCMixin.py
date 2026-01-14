@@ -1,20 +1,18 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
+from endtoend.test_endtoend import _get_config_for_data_and_algo
 
 from benchmarks.run_methods import run_sampling
 from causalchange.config.cc_types import DataMode, GraphSearch, ScoreType
 from causalchange.discovery.old._mixins import (
-    LINCMixin,
     LINCGroupingParams,
+    LINCMixin,
     TabularScoreMixin,
 )
-from endtoend.test_endtoend import _get_config_for_data_and_algo
 
 
 class Host(LINCMixin):
-    def __init__(
-        self, *, grouping: LINCGroupingParams, score_higher_better: bool = True
-    ):
+    def __init__(self, *, grouping: LINCGroupingParams, score_higher_better: bool = True):
         super().__init__(grouping=grouping)
         self.data_mode = DataMode.CONTEXTS
         self.score_higher_better = score_higher_better
@@ -42,9 +40,7 @@ def test_components_one_context_returns_context_score(monkeypatch):
     h = Host(grouping=LINCGroupingParams(method="components", gain_threshold=0.0))
     h._X_context = {"A": pd.DataFrame({"x": [1, 2]})}
     # Score = number of rows in current df
-    patch_parent_score(
-        monkeypatch, lambda self, effect, parents: float(len(self._current_df))
-    )
+    patch_parent_score(monkeypatch, lambda self, effect, parents: float(len(self._current_df)))
 
     assert h._score("y", []) == 2.0
 
@@ -129,9 +125,7 @@ def test_transition_gain_respects_score_higher_better_false(monkeypatch):
 
 
 def test_extension_LINCMixin():
-    linc_model = Host(
-        grouping=LINCGroupingParams(method="components", gain_threshold=0.0)
-    )
+    linc_model = Host(grouping=LINCGroupingParams(method="components", gain_threshold=0.0))
 
     linc_model.score_higher_better = True
     old_score = 10
@@ -150,16 +144,10 @@ def test_extension_LINCMixin():
         LINCGroupingParams.gain_threshold - 0.01,
         LINCGroupingParams.gain_threshold + 0.01,
     )
-    assert not linc_model._score_significant(
-        linc_model._transition_gain(old_score, new_score)
-    )
-    assert linc_model._score_significant(
-        linc_model._transition_gain(old_score, new_better_score)
-    )
+    assert not linc_model._score_significant(linc_model._transition_gain(old_score, new_score))
+    assert linc_model._score_significant(linc_model._transition_gain(old_score, new_better_score))
 
-    cfg = _get_config_for_data_and_algo(
-        DataMode.CONTEXTS, GraphSearch.TOPIC, ScoreType.GAM
-    )
+    cfg = _get_config_for_data_and_algo(DataMode.CONTEXTS, GraphSearch.TOPIC, ScoreType.GAM)
     df, true_g = run_sampling(cfg.data)
 
     host = linc_model._host()

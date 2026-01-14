@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 import pandas as pd
 
@@ -35,14 +36,10 @@ class TemporalDomain:
     def candidates(self, X0: pd.DataFrame) -> list[Node]:
         return [(v, 0) for v in list(X0.columns)]
 
-    def parent_candidates(
-        self, child: Node, remaining_lag0: Sequence[Node]
-    ) -> list[Node]:
+    def parent_candidates(self, child: Node, remaining_lag0: Sequence[Node]) -> list[Node]:
         v_child, lag_child = child
         if lag_child != 0:
-            raise ValueError(
-                "This design assumes only lag-0 nodes are scored as effects."
-            )
+            raise ValueError("This design assumes only lag-0 nodes are scored as effects.")
 
         parents: list[Node] = []
 
@@ -57,12 +54,7 @@ class TemporalDomain:
         return parents
 
     def allowed_edge(self, u: Any, v: Any) -> bool:
-        if not (
-            isinstance(u, tuple)
-            and isinstance(v, tuple)
-            and len(u) == 2
-            and len(v) == 2
-        ):
+        if not (isinstance(u, tuple) and isinstance(v, tuple) and len(u) == 2 and len(v) == 2):
             raise TypeError("TemporalDomain expects node tuples (var, lag).")
 
         _, lag_u = u

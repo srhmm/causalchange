@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Hashable, Iterable
+from collections.abc import Hashable, Iterable
 
 
 def union_find_components(

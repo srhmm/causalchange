@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import pandas as pd
 
-from causalchange.discovery.search_multi.chain import ChainAggregator
 from causalchange.config.cc_config import CausalChangeConfig
 from causalchange.config.cc_types import (
+    ContextAggregation,
     DataMode,
     GraphSearch,
     ScoreType,
-    ContextAggregation,
 )
+from causalchange.discovery.search_multi.chain import ChainAggregator
 from causalchange.discovery.search_multi.linc import LINCAggregator, LINCGroupingParams
 
 

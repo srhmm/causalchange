@@ -3,15 +3,15 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from causalchange.config.cc_config import CausalChangeConfig
 from causalchange.config.cc_types import (
     ContextAggregation,
     DataMode,
     GraphSearch,
     ScoreType,
 )
-from causalchange.config.cc_config import CausalChangeConfig
-from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabular
 from causalchange.discovery.scoring.edge_score import EdgeScore
+from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabular
 from causalchange.discovery.search.topic import TopicSearch
 
 

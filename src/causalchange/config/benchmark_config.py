@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 MetricName = Literal[
     "shd",
@@ -48,17 +48,15 @@ class MultiDataConfig(DataConfigBase):
 
     weight_scale_intervened: float = 2.0
     shift_scale: float = 2.0
-    noise_scale_intervened: Optional[float] = None
+    noise_scale_intervened: float | None = None
 
     intervention_type: InterventionNonlinear = "soft_weight"
-    alt_nonlinearity: Optional[Nonlinearity] = None
+    alt_nonlinearity: Nonlinearity | None = None
 
     @model_validator(mode="after")
     def _alt_required_for_soft_mechanism(self):
         if self.intervention_type == "soft_mechanism" and self.alt_nonlinearity is None:
-            raise ValueError(
-                "alt_nonlinearity is required when intervention_type='soft_mechanism'."
-            )
+            raise ValueError("alt_nonlinearity is required when intervention_type='soft_mechanism'.")
         return self
 
 
@@ -74,17 +72,15 @@ class MixedDataConfig(DataConfigBase):
 
     weight_scale_intervened: float = 2.0
     shift_scale: float = 2.0
-    noise_scale_intervened: Optional[float] = None
+    noise_scale_intervened: float | None = None
 
     nonlinearity: Nonlinearity
-    alt_nonlinearity: Optional[Nonlinearity] = None
+    alt_nonlinearity: Nonlinearity | None = None
 
     @model_validator(mode="after")
     def _alt_required_for_soft_mechanism(self):
         if self.intervention_type == "soft_mechanism" and self.alt_nonlinearity is None:
-            raise ValueError(
-                "alt_nonlinearity is required when intervention_type='soft_mechanism'."
-            )
+            raise ValueError("alt_nonlinearity is required when intervention_type='soft_mechanism'.")
         return self
 
 
@@ -116,9 +112,7 @@ class MultiTemporalDataConfig(DataConfigBase):
     tau_max: int = Field(1, ge=1)
 
     n_intervened_per_context: int = Field(1, ge=0)
-    intervention_type: Literal["hard", "soft_weight", "shift", "noise"] = (
-        "hard"  # , "soft_mechanism"] = "hard"
-    )
+    intervention_type: Literal["hard", "soft_weight", "shift", "noise"] = "hard"  # , "soft_mechanism"] = "hard"
 
     weight_scale: float = 2.0
     noise_scale: float = 0.7
@@ -126,13 +120,7 @@ class MultiTemporalDataConfig(DataConfigBase):
 
 
 DataConfig = Annotated[
-    Union[
-        SingleDataConfig,
-        MultiDataConfig,
-        SingleTemporalDataConfig,
-        MultiTemporalDataConfig,
-        MixedDataConfig,
-    ],
+    SingleDataConfig | MultiDataConfig | SingleTemporalDataConfig | MultiTemporalDataConfig | MixedDataConfig,
     Field(discriminator="setting"),
 ]
 
@@ -172,13 +160,7 @@ class SpaceTimeAlgoConfig(BaseModel):
 
 
 AlgoConfig = Annotated[
-    Union[
-        LincAlgoConfig,
-        ChainAlgoConfig,
-        TopicAlgoConfig,
-        SpaceTimeAlgoConfig,
-        SpaceTimeCAlgoConfig,
-    ],
+    LincAlgoConfig | ChainAlgoConfig | TopicAlgoConfig | SpaceTimeAlgoConfig | SpaceTimeCAlgoConfig,
     Field(discriminator="name"),
 ]
 
@@ -212,7 +194,5 @@ class BenchmarkConfig(BaseModel):
         if self.algo.name == "spacetime" and self.data.setting != "time":
             raise ValueError("algo=time is only valid with data.setting='time'.")
         if self.algo.name == "spacetime-c" and self.data.setting != "time-contexts":
-            raise ValueError(
-                "algo=spacetime-c is only valid with data.setting='time-contexts'."
-            )
+            raise ValueError("algo=spacetime-c is only valid with data.setting='time-contexts'.")
         return self

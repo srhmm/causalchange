@@ -101,7 +101,7 @@ def summarize_groups(
     groups: dict[tuple[tuple[str, Any], ...], dict[str, Any]],
 ) -> list[SummaryRow]:
     rows: list[SummaryRow] = []
-    for key, payload in groups.items():
+    for _, payload in groups.items():
         config_example = payload["config_example"]
         bench = payload["bench"]
         metrics_map: dict[str, list[float]] = payload["metrics"]
@@ -126,9 +126,9 @@ def summarize_groups(
 def to_json_safe(x):
     if isinstance(x, dict):
         return {k: to_json_safe(v) for k, v in x.items()}
-    if isinstance(x, (list, tuple)):
+    if isinstance(x, list | tuple):
         return [to_json_safe(v) for v in x]
-    if isinstance(x, (set, frozenset)):
+    if isinstance(x, set | frozenset):
         return sorted(to_json_safe(v) for v in x)
     if hasattr(x, "__dict__"):
         return to_json_safe(vars(x))

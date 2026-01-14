@@ -1,21 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Set, Tuple
 
 import networkx as nx
 
+Edge = tuple[str, str]
+Undir = tuple[str, str]
 
-Edge = Tuple[str, str]
-Undir = Tuple[str, str]
 
-
-def directed_edges(G: nx.DiGraph) -> Set[Edge]:
+def directed_edges(G: nx.DiGraph) -> set[Edge]:
     return {(str(u), str(v)) for (u, v) in G.edges() if u != v}
 
 
-def skeleton_edges(G: nx.DiGraph) -> Set[Undir]:
-    out: Set[Undir] = set()
+def skeleton_edges(G: nx.DiGraph) -> set[Undir]:
+    out: set[Undir] = set()
     for u, v in directed_edges(G):
         a, b = (u, v) if u < v else (v, u)
         out.add((a, b))

@@ -1,6 +1,8 @@
 from __future__ import annotations
+
+from collections.abc import Callable, Hashable, Iterable
 from dataclasses import dataclass
-from typing import Callable, Hashable, Iterable, Optional, Protocol, Any
+from typing import Any, Protocol
 
 import pandas as pd
 
@@ -24,9 +26,7 @@ class BaseScoring(Protocol):
     higher_is_better: bool
 
     def fit(self, X0: pd.DataFrame) -> None: ...
-    def score_edge(
-        self, df: pd.DataFrame, effect: Any, parents: tuple[Any, ...]
-    ) -> float: ...
+    def score_edge(self, df: pd.DataFrame, effect: Any, parents: tuple[Any, ...]) -> float: ...
     def transition_gain(self, old_score: float, new_score: float) -> float: ...
     def score_significant(self, gain: float) -> bool: ...
     def score_is_better(self, a: float, b: float) -> bool: ...
@@ -78,11 +78,11 @@ class DiscoveryEngine:
         self.aggregator = aggregation
         self.search = search
 
-        self.X0_: Optional[pd.DataFrame] = None
-        self.contexts_: Optional[dict[Hashable, pd.DataFrame]] = None
-        self.last_aggregation_: Optional[AggregationResult] = None
+        self.X0_: pd.DataFrame | None = None
+        self.contexts_: dict[Hashable, pd.DataFrame] | None = None
+        self.last_aggregation_: AggregationResult | None = None
 
-    def fit(self, X: pd.DataFrame) -> "DiscoveryEngine":
+    def fit(self, X: pd.DataFrame) -> DiscoveryEngine:
         self.contexts_ = self.context_preproc.make_contexts(X)
         X0 = self.context_preproc.prepare_X(X)
         X0 = self.domain.prepare_X(X0)

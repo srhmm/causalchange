@@ -1,18 +1,19 @@
 from __future__ import annotations
-import numpy as np
-from math import log
-from numpy.linalg import inv
-from typing import Sequence, Any
-from math import log2
 
-from sklearn.kernel_ridge import KernelRidge
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler, SplineTransformer
-from sklearn.linear_model import LinearRegression, Ridge
+from collections.abc import Sequence
+from math import log, log2
+from typing import Any
+
+import numpy as np
+from numpy.linalg import inv
 from scipy.special import comb
-from sklearn.cluster import KMeans, DBSCAN, SpectralClustering
-from sklearn.metrics import silhouette_score, adjusted_mutual_info_score
+from sklearn.cluster import DBSCAN, KMeans, SpectralClustering
+from sklearn.kernel_ridge import KernelRidge
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.metrics import adjusted_mutual_info_score, silhouette_score
 from sklearn.mixture import GaussianMixture
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import SplineTransformer, StandardScaler
 
 from causalchange.config.cc_types import MixingType
 
@@ -84,9 +85,7 @@ def fit_score_gp(Xtr, ytr, return_residuals=False, **params):
     def eval_params(theta):
         log_ell, log_sf2, log_sn2 = theta
         log_sn2 = max(log_sn2, np.log(1e-6))
-        K, used_jitter = _build_K_adaptive(
-            Xn, log_ell, log_sf2, log_sn2, base_jitter=base_jitter
-        )
+        K, used_jitter = _build_K_adaptive(Xn, log_ell, log_sf2, log_sn2, base_jitter=base_jitter)
         try:
             nll, L, alpha = _neg_log_marginal_lik(yn, K)
         except np.linalg.LinAlgError:
@@ -107,9 +106,7 @@ def fit_score_gp(Xtr, ytr, return_residuals=False, **params):
                 best_nll, best, best_cache, best_jitter = nll, th, cache, used_jit
 
     if (best is None) or (not np.isfinite(best_nll)):
-        score_bits = (
-            _null_gaussian_mdl_bits(yn) if use_bic else _null_gaussian_mdl_bits(yn)
-        )
+        score_bits = _null_gaussian_mdl_bits(yn) if use_bic else _null_gaussian_mdl_bits(yn)
         Xmu, Xsd, ymu, ysd = scalers
 
         def predict(Xte, return_var=False):
@@ -437,9 +434,7 @@ def fit_score_ln(Xtr, ytr, return_residuals=False, **params):
     n = Xtr.shape[0]
 
     if model_type == "ridge":
-        base = Ridge(
-            alpha=alpha, fit_intercept=fit_intercept, solver="auto", random_state=None
-        )
+        base = Ridge(alpha=alpha, fit_intercept=fit_intercept, solver="auto", random_state=None)
     else:
         base = LinearRegression(fit_intercept=fit_intercept)
 
@@ -622,9 +617,7 @@ class _SlopeBits:
         if sse == 0.0 or sig2 == 0.0:
             return 0.0
         err = (
-            (sse / (2.0 * sig2 * np.log(2.0)))
-            + ((n / 2.0) * self.logg(2.0 * np.pi * sig2))
-            - n * self.logg(resolution)
+            (sse / (2.0 * sig2 * np.log(2.0))) + ((n / 2.0) * self.logg(2.0 * np.pi * sig2)) - n * self.logg(resolution)
         )
         return float(max(err, 0.0))
 
@@ -729,9 +722,7 @@ def fit_score_spln(Xtr, ytr, return_residuals: bool = False, **params):
 
     st = model.named_steps["splinetransformer"]
     knots_arr = getattr(st, "knots_", None)
-    knots_flat = (
-        knots_arr.ravel() if knots_arr is not None else np.array([], dtype=float)
-    )
+    knots_flat = knots_arr.ravel() if knots_arr is not None else np.array([], dtype=float)
     coef = model.named_steps[list(model.named_steps.keys())[-1]].coef_
     coeffs_concat = np.concatenate([knots_flat, np.atleast_1d(coef).ravel()])
 
@@ -746,9 +737,7 @@ def fit_score_spln(Xtr, ytr, return_residuals: bool = False, **params):
     base_cost += slope.model_score(hinge_count)
     base_cost += _aggregate_hinges(interactions, int(k[0]), slope, globe_F)
 
-    cost_bits = (
-        slope.gaussian_score_emp_sse(sse, rows, mindiff) + model_bits + base_cost
-    )
+    cost_bits = slope.gaussian_score_emp_sse(sse, rows, mindiff) + model_bits + base_cost
 
     def predict(Xte, return_var=False):
         ypred = model.predict(np.asarray(Xte, float))
@@ -835,9 +824,7 @@ def mix_regression_bic(X, y, idl, beta_l, sigma_l):
             continue
 
         residuals = y_k - X_k @ beta_k
-        log_likelihood += np.sum(
-            -0.5 * np.log(2 * np.pi * sigma_k**2) - 0.5 * (residuals**2) / sigma_k**2
-        )
+        log_likelihood += np.sum(-0.5 * np.log(2 * np.pi * sigma_k**2) - 0.5 * (residuals**2) / sigma_k**2)
         log_likelihood += len(y_k) * np.log(mixture_weights[k] + 1e-12)
     num_params = K * D + K + (K - 1)
 
@@ -855,11 +842,7 @@ def fit_conditional_mixture(mty: MixingType, **kwargs):
             else (
                 "cub"
                 if mty.value == "mixCub"
-                else (
-                    "ns"
-                    if mty.value == "mixNS"
-                    else "bs" if mty.value == "mixBS" else "lin"
-                )
+                else ("ns" if mty.value == "mixNS" else "bs" if mty.value == "mixBS" else "lin")
             )
         )
         return fit_functional_mixture(**kwargs, method=method)
@@ -871,9 +854,7 @@ def fit_conditional_mixture(mty: MixingType, **kwargs):
         raise ValueError(mty)
 
 
-def _fit_best_mixture(
-    X, range_k, true_idl, sim_score=adjusted_mutual_info_score, sim_min=-np.inf
-):
+def _fit_best_mixture(X, range_k, true_idl, sim_score=adjusted_mutual_info_score, sim_min=-np.inf):
     best_ami = sim_min
     best_arg = None
     for mty in [
@@ -926,9 +907,7 @@ def fit_mixture_model(
             if bic_k < best_bic:
                 best_bic, best_m = bic_k, gm
 
-        res_dict = dict(
-            bic=best_bic, idl=best_m.predict(X), pproba=best_m.predict_proba(X)
-        )
+        res_dict = dict(bic=best_bic, idl=best_m.predict(X), pproba=best_m.predict_proba(X))
         return res_dict
 
     elif mty == MixingType.BASE_DBSCAN:
@@ -943,9 +922,7 @@ def fit_mixture_model(
         return res_dict
     else:
         model = (
-            KMeans
-            if mty == MixingType.BASE_KMEANS
-            else SpectralClustering if mty == MixingType.BASE_SPECTRAL else None
+            KMeans if mty == MixingType.BASE_KMEANS else SpectralClustering if mty == MixingType.BASE_SPECTRAL else None
         )
         if model is None:
             raise ValueError(mty)
@@ -965,11 +942,7 @@ def fit_mixture_model(
 
 
 def fit_marginal_mixture(mty, X, node_i, pa_i, range_k, resid, true_idl, **kwargs):
-    X = (
-        np.hstack([X[:, pa_i], X[:, node_i].reshape(-1, 1)])
-        if len(pa_i) > 0
-        else X[:, node_i].reshape(-1, 1)
-    )
+    X = np.hstack([X[:, pa_i], X[:, node_i].reshape(-1, 1)]) if len(pa_i) > 0 else X[:, node_i].reshape(-1, 1)
     return fit_mixture_model(mty, X, range_k, true_idl)
 
 
@@ -977,22 +950,17 @@ def fit_resid_mixture(mty, X, node_i, pa_i, range_k, resid, true_idl):
     return fit_mixture_model(mty, resid, range_k)
 
 
-def fit_functional_mixture(
-    X, node_i, pa_i, range_k, resid, true_idl, lg=None, vb=0, degree=3, method="lin"
-):
+def fit_functional_mixture(X, node_i, pa_i, range_k, resid, true_idl, lg=None, vb=0, degree=3, method="lin"):
     if not len(pa_i):
-        return fit_marginal_mixture(
-            MixingType.BASE_GMM, X, node_i, pa_i, range_k, resid, true_idl
-        )
+        return fit_marginal_mixture(MixingType.BASE_GMM, X, node_i, pa_i, range_k, resid, true_idl)
     if lg is not None and vb > 0:
         lg.info(f"Fitting mixture ({method})")
 
     import numpy as np
     import rpy2.robjects as robjects
-    from rpy2.robjects import Formula, default_converter
+    from rpy2.robjects import Formula, default_converter, numpy2ri
     from rpy2.robjects.conversion import localconverter
     from rpy2.robjects.packages import importr
-    from rpy2.robjects import numpy2ri
 
     with localconverter(default_converter + numpy2ri.converter):
         flexmix = importr("flexmix")
@@ -1065,7 +1033,7 @@ def fit_functional_mixture(
 
 
 def conditional_mixture_known_assgn(X, node_i, pa_i, true_idl, **scoring_params):
-    """fit regresssions for a known mix assignment, pproba from log liks of those regressions (todo or degen?)"""
+    """fit regresssions for a known mix assignment, pproba from log liks of those regressions"""
     if len(pa_i) > 0:
         (Xx, y) = (X[:, pa_i], X[:, node_i])
         beta_l, sig_l = mix_regression_params_kn_assgn(Xx, y, true_idl)

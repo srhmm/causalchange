@@ -3,15 +3,15 @@ import os
 from dataclasses import asdict
 
 import benchmarks.benchmark_grids
-from benchmarks.utils import (
-    config_group_key,
-    bench_name_from_cfg,
-    summarize_groups,
-    mean_std,
-    to_json_safe,
-    file_name_from_cfg,
-)
 from benchmarks.run_methods import iter_valid_configs, run_on_config
+from benchmarks.utils import (
+    bench_name_from_cfg,
+    config_group_key,
+    file_name_from_cfg,
+    mean_std,
+    summarize_groups,
+    to_json_safe,
+)
 
 BASE_SEED = 42
 N_REPEATS = 10
@@ -57,22 +57,21 @@ if __name__ == "__main__":
         data_setting = cfg0.data.setting
         data_nonlinearity = cfg0.data.nonlinearity
 
-        header = f"[{bench}] algo={algo_name} scoring={scoring_method} data={data_setting}/{data_nonlinearity} n_n={cfg0.data.n_nodes}"
+        header = (
+            f"[{bench}] algo={algo_name} scoring={scoring_method} data={data_setting}/{data_nonlinearity} "
+            f"n_n={cfg0.data.n_nodes}"
+        )
         print("\n" + header + str(cfg0))
 
         for metric_name in sorted(local.keys()):
             m, s = mean_std(local[metric_name])
-            print(
-                f"  {metric_name:10s} = {m:.4f} ± {s:.4f} (n={len(local[metric_name])})"
-            )
+            print(f"  {metric_name:10s} = {m:.4f} ± {s:.4f} (n={len(local[metric_name])})")
 
     rows = summarize_groups(groups)
 
     print("\n\n================ BENCHMARK SUMMARY ================")
     for rw in rows:
-        print(
-            f"{rw.bench:28s} | {rw.metric:10s} = {rw.mean:.4f} ± {rw.std:.4f} (n={rw.n})"
-        )
+        print(f"{rw.bench:28s} | {rw.metric:10s} = {rw.mean:.4f} ± {rw.std:.4f} (n={rw.n})")
 
     out_dir = os.path.join("../benchmarks", "_results")
     os.makedirs(out_dir, exist_ok=True)

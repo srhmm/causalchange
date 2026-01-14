@@ -39,11 +39,7 @@ class GraphSearch(Enum):
                 DataMode.TIME_CONTEXTS,
             ]
             if self.value == GraphSearch.TOPIC.value
-            else (
-                [DataMode.IID, DataMode.CONTEXTS]
-                if self.value == GraphSearch.GLOBE.value
-                else []
-            )
+            else ([DataMode.IID, DataMode.CONTEXTS] if self.value == GraphSearch.GLOBE.value else [])
         )
 
     def is_compatible_with(self, data_mode: DataMode) -> bool:
@@ -61,8 +57,7 @@ class ContextAggregation(Enum):
             if self.value == ContextAggregation.SKIP.value
             else (
                 [DataMode.TIME_CONTEXTS, DataMode.CONTEXTS]
-                if self.value
-                in [ContextAggregation.CHAIN.value, ContextAggregation.LINC.value]
+                if self.value in [ContextAggregation.CHAIN.value, ContextAggregation.LINC.value]
                 else []
             )
         )

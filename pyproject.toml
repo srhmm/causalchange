@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "causalchange"
+version = "0.1.0"
+description = "Algorithms for Causal Discovery under Distribution Change"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "Sarah Mameche" }]
+dependencies = [
+  # "numpy>=1.26",
+]
+
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/srhmm/causalchange"
+Issues = "https://github.com/srhmm/causalchange/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+# E,F: pycodestyle/pyflakes-ish, I: import sorting, B: bugbear, UP: pyupgrade
+
+[tool.ruff.format]
+quote-style = "double"

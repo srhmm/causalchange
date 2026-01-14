@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from typing import Sequence, Optional
+from collections.abc import Sequence
 
 import pandas as pd
 
-from causalchange.config.cc_types import DataMode
 from causalchange.config.cc_config import CausalChangeConfig
-
+from causalchange.config.cc_types import DataMode
 from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabular
 
 Node = tuple[str, int]  # (variable, lag)
@@ -22,9 +21,7 @@ class EdgeScoreTemporal:
         cfg: CausalChangeConfig,
     ):
         if cfg.data_mode not in {DataMode.TIME, DataMode.TIME_CONTEXTS}:
-            raise ValueError(
-                f"EdgeScoreTemporal expects temporal, got {cfg.data_mode=}"
-            )
+            raise ValueError(f"EdgeScoreTemporal expects temporal, got {cfg.data_mode=}")
         if cfg.tau_max is None or cfg.tau_max <= 0:
             raise ValueError("provide (positive) tau_max (max time lag)")
 
@@ -34,7 +31,7 @@ class EdgeScoreTemporal:
         self._tab = EdgeScoreTabular(cfg)
 
         self._node_to_col: dict[Node, str] = {}
-        self._Z: Optional[pd.DataFrame] = None
+        self._Z: pd.DataFrame | None = None
 
     @property
     def higher_is_better(self) -> bool:
@@ -58,17 +55,11 @@ class EdgeScoreTemporal:
 
     def fit(self, X: pd.DataFrame) -> None:
         Z = self.build_design(X)
-        self._node_to_col = {
-            (v, lag): self._ar_col((v, lag))
-            for v in X.columns
-            for lag in range(0, self.tau_max + 1)
-        }
+        self._node_to_col = {(v, lag): self._ar_col((v, lag)) for v in X.columns for lag in range(0, self.tau_max + 1)}
         self._Z = Z
         self._tab.fit(Z)
 
-    def score_edge(
-        self, X: pd.DataFrame, effect: Node, parents: Sequence[Node]
-    ) -> float:
+    def score_edge(self, X: pd.DataFrame, effect: Node, parents: Sequence[Node]) -> float:
         if self._Z is None or not self._node_to_col:
             self.fit(X)
 

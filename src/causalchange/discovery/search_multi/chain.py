@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Hashable
 from dataclasses import dataclass
-from typing import Any, Callable, Hashable, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -42,9 +43,7 @@ class ChainAggregator:
 
         seed = 42
         self._rng = np.random.default_rng(seed)
-        self._pooled_cache: dict[
-            tuple[str, tuple[str, ...]], tuple[dict[Hashable, np.ndarray], np.ndarray]
-        ] = {}
+        self._pooled_cache: dict[tuple[str, tuple[str, ...]], tuple[dict[Hashable, np.ndarray], np.ndarray]] = {}
         self._mmd_cache: dict[tuple[Any, ...], float] = {}
 
     def aggregate(
@@ -65,9 +64,7 @@ class ChainAggregator:
             fit += float(score_ctx(contexts[c]))
 
         if self.lambda_inv <= 0.0 or len(ctx_ids) <= 1:
-            return AggregationResult(
-                total=float(fit), diagnostics={"fit": float(fit), "penalty": 0.0}
-            )
+            return AggregationResult(total=float(fit), diagnostics={"fit": float(fit), "penalty": 0.0})
 
         pen = float(self._invariance_penalty(contexts, effect, parents))
         if self.higher_is_better:
@@ -84,9 +81,7 @@ class ChainAggregator:
             },
         )
 
-    def _invariance_penalty(
-        self, contexts: dict[Hashable, pd.DataFrame], effect: Any, parents: tuple
-    ) -> float:
+    def _invariance_penalty(self, contexts: dict[Hashable, pd.DataFrame], effect: Any, parents: tuple) -> float:
         eff = _colname(effect)
         par = tuple(sorted(_colname(p) for p in parents))
 
@@ -136,9 +131,7 @@ class ChainAggregator:
             return self._pooled_cache[key]
 
         residuals_by_c, pooled_resid = self._pooled_residuals(contexts, effect, parents)
-        residuals_by_c = {
-            c: self._normalize_residuals(r) for c, r in residuals_by_c.items()
-        }
+        residuals_by_c = {c: self._normalize_residuals(r) for c, r in residuals_by_c.items()}
         pooled_resid = self._normalize_residuals(pooled_resid)
 
         self._pooled_cache[key] = (residuals_by_c, pooled_resid)
@@ -152,7 +145,7 @@ class ChainAggregator:
     ):
         ys = []
         Xps = []
-        by_context: dict[Hashable, tuple[Optional[np.ndarray], np.ndarray]] = {}
+        by_context: dict[Hashable, tuple[np.ndarray | None, np.ndarray]] = {}
 
         for c, df in contexts.items():
             y = df[effect].to_numpy(dtype=float)
@@ -195,9 +188,7 @@ class ChainAggregator:
         idx = self._rng.choice(x.size, size=max_n, replace=False)
         return x[idx]
 
-    def _mmd2_rbf(
-        self, x: np.ndarray, y: np.ndarray, gamma: float | None = None
-    ) -> float:
+    def _mmd2_rbf(self, x: np.ndarray, y: np.ndarray, gamma: float | None = None) -> float:
         x = np.asarray(x, dtype=float).reshape(-1, 1)
         y = np.asarray(y, dtype=float).reshape(-1, 1)
         if x.shape[0] == 0 or y.shape[0] == 0:
