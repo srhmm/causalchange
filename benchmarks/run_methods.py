@@ -82,7 +82,7 @@ def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> An
     context_col = getattr(data_cfg, "context_col", None)
 
     lg = logging.basicConfig(level=logging.DEBUG)
-    vb = 1
+    vb = 2
     est = CausalChange(
         data_mode=data_mode,
         graph_search=graph_search,
