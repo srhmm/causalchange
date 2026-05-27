@@ -8,7 +8,7 @@ import networkx as nx
 import numpy as np
 
 from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabular
-from causalchange.discovery.scoring.edge_score_temporal import EdgeScoreTemporal
+from causalchange.discovery.scoring.edge_score_time import EdgeScoreTemporal
 
 ScoreFunction = Callable[[Any, tuple[Any, ...]], float]  # comes from EdgeScoreTabular|EdgeScoreTemporal.score_edge()
 AllowedEdge = Callable[[Any, Any], bool]

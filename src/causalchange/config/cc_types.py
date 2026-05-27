@@ -52,15 +52,18 @@ class ContextAggregation(Enum):
     LINC = "linc"
 
     def compatible_modes(self) -> list[DataMode]:
-        return (
-            [DataMode.IID, DataMode.MIXED, DataMode.TIME]
-            if self.value == ContextAggregation.SKIP.value
-            else (
-                [DataMode.TIME_CONTEXTS, DataMode.CONTEXTS]
-                if self.value in [ContextAggregation.CHAIN.value, ContextAggregation.LINC.value]
-                else []
-            )
-        )
+        if self == ContextAggregation.SKIP:
+            return [
+                DataMode.IID,
+                DataMode.MIXED,
+                DataMode.TIME,
+                DataMode.TIME_CONTEXTS,
+            ]
+
+        if self in {ContextAggregation.CHAIN, ContextAggregation.LINC}:
+            return [DataMode.CONTEXTS]
+
+        return []
 
     def is_compatible_with(self, data_mode):
         return data_mode in self.compatible_modes()
