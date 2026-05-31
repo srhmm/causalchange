@@ -36,7 +36,21 @@ from causalchange.config.benchmark_config import (
     SpaceTimeCAlgoConfig,
     TopicAlgoConfig,
 )
-from causalchange.config.cc_types import ContextAggregation, ScoreType
+from causalchange.config.cc_types import ContextAggregation, GPType, ScoreType
+
+
+def _estimator_to_nx(est_or_graph: Any) -> nx.DiGraph:
+    if isinstance(est_or_graph, CausalChange):
+        return est_or_graph.graph
+    if isinstance(est_or_graph, nx.DiGraph):
+        return est_or_graph
+    return _pgmpy_graph_to_nx(est_or_graph)
+
+
+def _resolve_score_type(value: str) -> ScoreType | GPType:
+    if value in (GPType.EXACT.value, GPType.FOURIER.value):
+        return GPType(value)
+    return ScoreType(value)
 
 
 def run_sampling(config: DataConfig):
@@ -65,23 +79,22 @@ def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> An
 
     data_mode = DataMode(data_cfg.setting)
     graph_search = (
-        GraphSearch.TOPIC
-        if algo_cfg.name in ("topic", "linc", "spacetime", "spacetime-c", "chain")
-        else GraphSearch.SKIP
+        GraphSearch.GLOBE
+        if algo_cfg.name in ("spacetime", "spacetime-c")
+        else (GraphSearch.TOPIC if algo_cfg.name in ("topic", "linc", "chain") else GraphSearch.SKIP)
     )
-    if graph_search in [GraphSearch.SKIP, GraphSearch.GLOBE]:
-        raise NotImplementedError(f"Not implemented/invalid: {algo_cfg.name}")
+    if graph_search == GraphSearch.SKIP:
+        raise ValueError(f"invalid: {algo_cfg.name}")
     aggregation = (
         ContextAggregation.LINC
         if algo_cfg.name == "linc"
         else (ContextAggregation.CHAIN if algo_cfg.name == "chain" else ContextAggregation.SKIP)
     )
-    score_type = ScoreType(algo_cfg.score_type)
-
-    tau_max = getattr(algo_cfg, "tau_max", None)
+    score_type = _resolve_score_type(algo_cfg.score_type)
+    tau_max = getattr(algo_cfg, "tau_max", None) or getattr(data_cfg, "tau_max", None)
     context_col = getattr(data_cfg, "context_col", None)
 
-    lg = logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG)
     vb = 2
     est = CausalChange(
         data_mode=data_mode,
@@ -91,16 +104,17 @@ def run_algo(df: pd.DataFrame, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> An
         context_col=context_col,
         tau_max=tau_max,
         vb=vb,
-        lg=lg,
     )
     return est.fit(df)
 
 
-def run_scoring(true_g, est_dag, scoring_cfg: ScoringConfig, return_nx=False) -> dict[str, float] | [
-    dict[str, float],
-    nx.DiGraph,
-]:
-    est_nx = _pgmpy_graph_to_nx(est_dag)
+def run_scoring(
+    true_g,
+    est_dag,
+    scoring_cfg: ScoringConfig,
+    return_nx=False,
+) -> dict[str, float] | tuple[dict[str, float], nx.DiGraph]:
+    est_nx = _estimator_to_nx(est_dag)
     graph_metrics = compute_metrics(true_g, est_nx)
 
     metrics = dataclasses.asdict(graph_metrics)
@@ -111,10 +125,10 @@ def run_scoring(true_g, est_dag, scoring_cfg: ScoringConfig, return_nx=False) ->
     return ret_metrics
 
 
-def run_on_config(cfg: BenchmarkConfig, return_nx=False) -> dict[str, float] | [
-    dict[str, float],
-    nx.DiGraph,
-]:
+def run_on_config(
+    cfg: BenchmarkConfig,
+    return_nx=False,
+) -> dict[str, float] | tuple[dict[str, float], nx.DiGraph]:
     df, true_g = run_sampling(cfg.data)
 
     t0 = time.perf_counter()

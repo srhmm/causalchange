@@ -3,6 +3,14 @@ from enum import Enum, EnumMeta
 import numpy as np
 
 
+class MDLScoreMixin:
+    def higher_is_better(self) -> bool:
+        return False
+
+    def get_gain_threshold(self, n: int) -> float:
+        return 0.5 * np.log(max(n, 2))
+
+
 class DataMode(Enum):
     SKIP = "skip"
     IID = "single"
@@ -17,30 +25,33 @@ class DataMode(Enum):
     def is_temporal(self):
         return self.value in [DataMode.TIME.value, DataMode.TIME_CONTEXTS.value]
 
-    def __eq__(self, other):
-        return self.value == other.value
-
 
 class GraphSearch(Enum):
     TOPIC = "topological"
     GLOBE = "edge-greedy"
     SKIP = "skip"
 
-    def __eq__(self, other):
-        return self.value == other.value
-
     def compatible_modes(self) -> list[DataMode]:
-        return (
-            [
+        if self == GraphSearch.TOPIC:
+            return [
                 DataMode.IID,
                 DataMode.CONTEXTS,
-                DataMode.MIXED,
+                # once implemented:
+                # DataMode.MIXED,
+                # DataMode.TIME,
+                # DataMode.TIME_CONTEXTS,
+            ]
+
+        if self == GraphSearch.GLOBE:
+            return [
+                # once implemented:
+                # DataMode.IID,
+                # DataMode.CONTEXTS,
                 DataMode.TIME,
                 DataMode.TIME_CONTEXTS,
             ]
-            if self.value == GraphSearch.TOPIC.value
-            else ([DataMode.IID, DataMode.CONTEXTS] if self.value == GraphSearch.GLOBE.value else [])
-        )
+
+        return []
 
     def is_compatible_with(self, data_mode: DataMode) -> bool:
         return data_mode in self.compatible_modes()
@@ -60,7 +71,7 @@ class ContextAggregation(Enum):
                 DataMode.TIME_CONTEXTS,
             ]
 
-        if self in {ContextAggregation.CHAIN, ContextAggregation.LINC}:
+        if self in (ContextAggregation.CHAIN, ContextAggregation.LINC):
             return [DataMode.CONTEXTS]
 
         return []
@@ -68,20 +79,13 @@ class ContextAggregation(Enum):
     def is_compatible_with(self, data_mode):
         return data_mode in self.compatible_modes()
 
-    def __eq__(self, other):
-        return self.value == other.value
 
-
-class GPType(Enum):
+class GPType(MDLScoreMixin, Enum):
     EXACT = "gp"
     FOURIER = "ff"
 
-    def __eq__(self, other):
-        return self.value == other.value
 
-
-class MixingType(Enum):
-    # mixtures of regressions
+class MixingType(MDLScoreMixin, Enum):
     MIX_LIN = "mixLin"
     MIX_QUAD = "mixQuad"
     MIX_CUB = "mixCub"
@@ -90,31 +94,18 @@ class MixingType(Enum):
 
     SKIP = ""
 
-    def __eq__(self, other):
-        return self.value == other.value
-
     def __str__(self):
         return str(self.value)
 
 
-class ScoreType(Enum):
+class ScoreType(MDLScoreMixin, Enum):
     LIN = "lin"
     GAM = "gam"
     SPLINE = "spline"
     KRR = "krr"
     GP = GPType
-    # CI = CIType
     MIX = MixingType
     SKIP = "skip"
-
-    def higher_is_better(self) -> bool:
-        return False  # all mdl scores rn
-
-    def get_gain_threshold(self, n: int) -> float:
-        return 0.5 * np.log(n)
-
-    def __eq__(self, other):
-        return self.value == other.value
 
 
 def util_score_type_get_all():

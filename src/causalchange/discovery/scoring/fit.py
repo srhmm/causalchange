@@ -49,182 +49,75 @@ def fit_score_functional_model(
 
 
 def fit_score_gp(Xtr, ytr, return_residuals=False, **params):
+    """
+    GP refined-MDL score for a local causal mechanism.
+
+    This implements the SPACETIME-style local score:
+
+        -log p(y | f, sigma^2) + ||f||_K^2
+        + 0.5 log det(I + sigma^{-2} K)
+
+    where f is the kernel-ridge/GP posterior mean under an RBF kernel.
+    The returned score is in bits.
+    """
     Xtr = np.asarray(Xtr, float)
     ytr = np.asarray(ytr, float).reshape(-1)
 
-    if not np.all(np.isfinite(Xtr)) or not np.all(np.isfinite(ytr)):
-        Xtr = np.nan_to_num(Xtr, nan=0.0, posinf=0.0, neginf=0.0)
-        ytr = np.nan_to_num(ytr, nan=0.0, posinf=0.0, neginf=0.0)
+    if Xtr.ndim == 1:
+        Xtr = Xtr.reshape(-1, 1)
 
-    Xn, yn, scalers = _standardize(Xtr, ytr)
-    n = Xn.shape[0]
+    finite = np.isfinite(ytr) & np.all(np.isfinite(Xtr), axis=1)
+    Xtr = Xtr[finite]
+    ytr = ytr[finite]
 
-    restarts = params.get("restarts", 10)
-    low = params.get("bounds", {}).get("low", -5.0)
-    high = params.get("bounds", {}).get("high", 5.0)
-    refine = params.get("refine", True)
-    rng = np.random.default_rng(params.get("seed", None))
-    base_jitter = params.get("base_jitter", 1e-6)
-    k_params = params.get("k_params", 3)
-    use_bic = params.get("bic_penalty", False)
+    n = ytr.shape[0]
+    min_n = int(params.get("min_n", 5))
+    if n < min_n:
+        score_bits = _null_gaussian_mdl_bits(ytr)
 
-    cands = _random_restarts_bounds(3, low=low, high=high, rng=rng, n=restarts)
-    cands += [
-        np.array([0.0, 0.0, -2.0]),
-        np.array([1.0, 0.0, -1.0]),
-        np.array([-1.0, 0.0, 0.0]),
-        np.array([0.0, -2.0, 0.0]),
-        np.array([0.0, 2.0, 2.0]),
-    ]
-
-    best = None
-    best_nll = np.inf
-    best_cache = None
-    best_jitter = base_jitter
-
-    def eval_params(theta):
-        log_ell, log_sf2, log_sn2 = theta
-        log_sn2 = max(log_sn2, np.log(1e-6))
-        K, used_jitter = _build_K_adaptive(Xn, log_ell, log_sf2, log_sn2, base_jitter=base_jitter)
-        try:
-            nll, L, alpha = _neg_log_marginal_lik(yn, K)
-        except np.linalg.LinAlgError:
-            return np.inf, None, used_jitter
-        if not np.isfinite(nll):
-            return np.inf, None, used_jitter
-        return nll, (theta, K, L, alpha), used_jitter
-
-    for th in cands:
-        nll, cache, used_jit = eval_params(th)
-        if nll < best_nll:
-            best_nll, best, best_cache, best_jitter = nll, th, cache, used_jit
-
-    if refine and best is not None and np.isfinite(best_nll):
-        for th in _grid_around(best, width=0.75, steps=3):
-            nll, cache, used_jit = eval_params(th)
-            if nll < best_nll:
-                best_nll, best, best_cache, best_jitter = nll, th, cache, used_jit
-
-    if (best is None) or (not np.isfinite(best_nll)):
-        score_bits = _null_gaussian_mdl_bits(yn) if use_bic else _null_gaussian_mdl_bits(yn)
-        Xmu, Xsd, ymu, ysd = scalers
+        ymu = float(np.mean(ytr)) if n else 0.0
+        ysd = float(np.std(ytr)) if n else 1.0
+        if ysd <= 1e-12:
+            ysd = 1.0
 
         def predict(Xte, return_var=False):
             Xte = np.asarray(Xte, float)
-            m = np.full((Xte.shape[0],), ymu)
+            mean = np.full((Xte.shape[0],), ymu)
             if return_var:
-                return m, np.full_like(m, ysd**2)
-            return m
+                return mean, np.full_like(mean, ysd**2)
+            return mean
 
-        model = dict(
-            kind="fallback_null",
-            mdl_bits=float(score_bits),
-            predict=predict,
-            scalers=dict(Xmu=Xmu, Xsd=Xsd, ymu=ymu, ysd=ysd),
-        )
+        model = {
+            "kind": "fallback_null_too_few_samples",
+            "mdl_bits": float(score_bits),
+            "predict": predict,
+            "details": {"reason": f"too_few_samples: {n}"},
+        }
 
         if return_residuals:
-            yhat = predict(Xtr)
-            resid = ytr - yhat
+            resid = ytr - predict(Xtr)
             return model, float(score_bits), resid
 
         return model, float(score_bits)
 
-    (log_ell, log_sf2, log_sn2), K, L, alpha = best_cache
-
-    penalty = (0.5 * k_params * np.log(max(n, 2))) if use_bic else 0.0
-    score_bits = (best_nll + penalty) / np.log(2.0)
-
-    Xmu, Xsd, ymu, ysd = scalers
-
-    def predict(Xte, return_var=False):
-        Xte = np.asarray(Xte, float)
-        Xte_n = (Xte - Xmu) / Xsd
-        Kxs = _rbf_kernel(Xn, Xte_n, log_ell, log_sf2)
-        mean_n = Kxs.T @ alpha
-        if not return_var:
-            return ymu + ysd * mean_n
-        Kxx = _rbf_kernel(Xte_n, Xte_n, log_ell, log_sf2)
-        v = np.linalg.solve(L, Kxs)
-        var_n = np.maximum(0.0, np.diag(Kxx) - np.sum(v**2, axis=0)) + np.exp(log_sn2)
-        return ymu + ysd * mean_n, (ysd**2) * var_n
-
-    model = {
-        "kind": "gp_rbf",
-        "log_ell": float(log_ell),
-        "log_sf2": float(log_sf2),
-        "log_sn2": float(max(log_sn2, np.log(1e-6))),
-        "Xtr_std": Xn,
-        "ytr_std": yn,
-        "L": L,
-        "alpha": alpha,
-        "predict": predict,
-        "nll_nats": float(best_nll),
-        "mdl_bits": float(score_bits),
-        "used_jitter": float(best_jitter),
-        "scalers": dict(Xmu=Xmu, Xsd=Xsd, ymu=ymu, ysd=ysd),
-    }
-
-    if return_residuals:
-        yhat = predict(Xtr)
-        resid = ytr - yhat
-        return model, float(score_bits), resid
-
-    return model, float(score_bits)
-
-
-def fit_score_rff(Xtr, ytr, return_residuals=False, **params):
-    Xtr = np.asarray(Xtr, float)
-    ytr = np.asarray(ytr, float).reshape(-1)
-    if not np.all(np.isfinite(Xtr)) or not np.all(np.isfinite(ytr)):
-        Xtr = np.nan_to_num(Xtr, nan=0.0, posinf=0.0, neginf=0.0)
-        ytr = np.nan_to_num(ytr, nan=0.0, posinf=0.0, neginf=0.0)
-
     Xn, yn, scalers = _standardize(Xtr, ytr)
-    n, d = Xn.shape
+    n = Xn.shape[0]
 
     restarts = int(params.get("restarts", 10))
     low = float(params.get("bounds", {}).get("low", -5.0))
     high = float(params.get("bounds", {}).get("high", 5.0))
     refine = bool(params.get("refine", True))
     rng = np.random.default_rng(params.get("seed", None))
-    k_params = int(params.get("k_params", 3))
+
+    base_jitter = float(params.get("base_jitter", 1e-8))
+    min_noise_var = float(params.get("min_noise_var", 1e-8))
+    norm_weight = float(params.get("rkhs_norm_weight", 1.0))
+
+    # Optional small hyperparameter coding cost. Default False because the
+    # paper's displayed refined-MDL score already contains the GP complexity
+    # term through the log determinant.
     use_bic = bool(params.get("bic_penalty", False))
-
-    D = int(params.get("D", 300))
-    omegas = rng.standard_normal(size=(d, D))
-    biases = rng.uniform(0.0, 2.0 * np.pi, size=(D,))
-
-    def _rff_features(Xscaled):
-        proj = Xscaled @ omegas
-        return np.sqrt(2.0 / D) * np.cos(proj + biases)
-
-    def _evidence_nlml_nats(log_ell, log_sf2, log_sn2):
-        log_sn2 = max(log_sn2, np.log(1e-12))
-        ell = np.exp(log_ell)
-        sf2 = np.exp(log_sf2)
-        sn2 = np.exp(log_sn2)
-
-        Xs = Xn / (ell + 1e-12)
-        Phi = _rff_features(Xs)
-        PtP = Phi.T @ Phi
-        b = Phi.T @ yn
-
-        a = sf2 / sn2
-        A = np.eye(D) + a * PtP
-        try:
-            L_A = np.linalg.cholesky(A)
-        except np.linalg.LinAlgError:
-            return np.inf, None
-
-        logdetS = n * np.log(sn2) + 2.0 * np.sum(np.log(np.diag(L_A)))
-        tmp = np.linalg.solve(L_A, b)
-        Ainv_b = np.linalg.solve(L_A.T, tmp)
-        quad = (yn @ yn) / sn2 - (sf2 / (sn2**2)) * (b @ Ainv_b)
-
-        nll = 0.5 * (logdetS + quad + n * np.log(2.0 * np.pi))
-        cache = (ell, sf2, sn2, L_A, b, PtP)
-        return nll, cache
+    k_params = int(params.get("k_params", 3))
 
     cands = _random_restarts_bounds(3, low=low, high=high, rng=rng, n=restarts)
     cands += [
@@ -235,38 +128,64 @@ def fit_score_rff(Xtr, ytr, return_residuals=False, **params):
         np.array([0.0, 2.0, 2.0]),
     ]
 
-    best = None
-    best_nll = np.inf
+    best_theta = None
+    best_score_nats = np.inf
     best_cache = None
 
-    for th in cands:
-        nll, cache = _evidence_nlml_nats(*th)
-        if np.isfinite(nll) and nll < best_nll:
-            best_nll, best, best_cache = nll, th, cache
+    def eval_params(theta):
+        log_ell, log_sf2, log_sn2 = theta
+        log_sn2 = max(float(log_sn2), float(np.log(min_noise_var)))
 
-    if refine and (best is not None) and np.isfinite(best_nll):
-        for th in _grid_around(best, width=0.75, steps=3):
-            nll, cache = _evidence_nlml_nats(*th)
-            if np.isfinite(nll) and nll < best_nll:
-                best_nll, best, best_cache = nll, th, cache
+        try:
+            score_nats, cache = _gp_refined_mdl_terms(
+                X=Xn,
+                y=yn,
+                log_ell=float(log_ell),
+                log_sf2=float(log_sf2),
+                log_sn2=log_sn2,
+                base_jitter=base_jitter,
+                norm_weight=norm_weight,
+            )
+        except np.linalg.LinAlgError:
+            return np.inf, None
 
-    if (best is None) or (not np.isfinite(best_nll)):
+        if not np.isfinite(score_nats):
+            return np.inf, None
+
+        return float(score_nats), cache
+
+    for theta in cands:
+        score_nats, cache = eval_params(theta)
+        if score_nats < best_score_nats:
+            best_score_nats = score_nats
+            best_theta = theta
+            best_cache = cache
+
+    if refine and best_theta is not None and np.isfinite(best_score_nats):
+        for theta in _grid_around(best_theta, width=0.75, steps=3):
+            score_nats, cache = eval_params(theta)
+            if score_nats < best_score_nats:
+                best_score_nats = score_nats
+                best_theta = theta
+                best_cache = cache
+
+    if best_cache is None or not np.isfinite(best_score_nats):
         score_bits = _null_gaussian_mdl_bits(yn)
         Xmu, Xsd, ymu, ysd = scalers
 
         def predict(Xte, return_var=False):
             Xte = np.asarray(Xte, float)
-            m = np.full((Xte.shape[0],), ymu)
+            mean = np.full((Xte.shape[0],), ymu)
             if return_var:
-                return m, np.full_like(m, ysd**2)
-            return m
+                return mean, np.full_like(mean, ysd**2)
+            return mean
 
-        model = dict(
-            kind="fallback_null_rff",
-            mdl_bits=float(score_bits),
-            predict=predict,
-            scalers=dict(Xmu=Xmu, Xsd=Xsd, ymu=ymu, ysd=ysd),
-        )
+        model = {
+            "kind": "fallback_null",
+            "mdl_bits": float(score_bits),
+            "predict": predict,
+            "scalers": {"Xmu": Xmu, "Xsd": Xsd, "ymu": ymu, "ysd": ysd},
+        }
 
         if return_residuals:
             yhat = predict(Xtr)
@@ -275,64 +194,491 @@ def fit_score_rff(Xtr, ytr, return_residuals=False, **params):
 
         return model, float(score_bits)
 
-    (log_ell, log_sf2, log_sn2) = best
-    ell, sf2, sn2, L_A, b_vec, PtP = best_cache
+    if use_bic:
+        best_score_nats += 0.5 * k_params * np.log(max(n, 2))
 
-    penalty_nats = (0.5 * k_params * np.log(max(n, 2))) if use_bic else 0.0
-    score_bits = (best_nll + penalty_nats) / np.log(2.0)
+    score_bits = best_score_nats / np.log(2.0)
+
+    log_ell = best_cache["log_ell"]
+    log_sf2 = best_cache["log_sf2"]
+    log_sn2 = best_cache["log_sn2"]
+    K_signal = best_cache["K_signal"]
+    L = best_cache["L"]
+    alpha = best_cache["alpha"]
+    sigma2_eff = best_cache["sigma2_eff"]
 
     Xmu, Xsd, ymu, ysd = scalers
 
     def predict(Xte, return_var=False):
         Xte = np.asarray(Xte, float)
+        if Xte.ndim == 1:
+            Xte = Xte.reshape(-1, 1)
+
         Xte_n = (Xte - Xmu) / Xsd
-        Xte_s = Xte_n / (ell + 1e-12)
-        Phi_star = np.sqrt(2.0 / D) * np.cos((Xte_s @ omegas) + biases)
-
-        tmp = np.linalg.solve(L_A, b_vec)
-        Ainv_b = np.linalg.solve(L_A.T, tmp)
-        mu_w = (sf2 / sn2) * Ainv_b
-
-        mean_n = Phi_star @ mu_w
+        Kxs = _rbf_kernel(Xn, Xte_n, log_ell, log_sf2)
+        mean_n = Kxs.T @ alpha
         mean = ymu + ysd * mean_n
+
         if not return_var:
             return mean
 
-        tmp2 = np.linalg.solve(L_A, Phi_star.T)
-        quad = np.sum(tmp2**2, axis=0)
-        var_n = sn2 + sf2 * quad
+        Kxx = _rbf_kernel(Xte_n, Xte_n, log_ell, log_sf2)
+        v = np.linalg.solve(L, Kxs)
+        var_n = np.maximum(0.0, np.diag(Kxx) - np.sum(v**2, axis=0)) + sigma2_eff
         return mean, (ysd**2) * var_n
 
+    yhat = predict(Xtr)
+    resid = ytr - yhat
+
     model = {
-        "kind": "gp_rff",
+        "kind": "gp_rbf_refined_mdl",
         "log_ell": float(log_ell),
         "log_sf2": float(log_sf2),
-        "log_sn2": float(max(log_sn2, np.log(1e-12))),
-        "ell": float(ell),
-        "sf2": float(sf2),
-        "sn2": float(sn2),
+        "log_sn2": float(log_sn2),
+        "sigma2_eff": float(sigma2_eff),
         "Xtr_std": Xn,
         "ytr_std": yn,
+        "K_signal": K_signal,
+        "L": L,
+        "alpha": alpha,
         "predict": predict,
-        "nll_nats": float(best_nll),
         "mdl_bits": float(score_bits),
-        "rff": {
-            "D": D,
-            "omegas": omegas,
-            "biases": biases,
-            "PtP": PtP,
-            "A_chol": L_A,
-            "b": b_vec,
-        },
-        "scalers": dict(Xmu=Xmu, Xsd=Xsd, ymu=ymu, ysd=ysd),
+        "score_nats": float(best_score_nats),
+        "data_nll_nats": float(best_cache["data_nll_nats"]),
+        "rkhs_norm": float(best_cache["rkhs_norm"]),
+        "complexity_nats": float(best_cache["complexity_nats"]),
+        "used_jitter": float(best_cache["used_jitter"]),
+        "pointwise_error_bits": best_cache["pointwise_error_nats"] / np.log(2.0),
+        "scalers": {"Xmu": Xmu, "Xsd": Xsd, "ymu": ymu, "ysd": ysd},
     }
 
     if return_residuals:
-        yhat = predict(Xtr)
-        resid = ytr - yhat
         return model, float(score_bits), resid
 
     return model, float(score_bits)
+
+
+def _gp_refined_mdl_terms(
+    *,
+    X: np.ndarray,
+    y: np.ndarray,
+    log_ell: float,
+    log_sf2: float,
+    log_sn2: float,
+    base_jitter: float,
+    norm_weight: float,
+):
+    """
+    Compute the refined-MDL GP terms in nats.
+
+    Score =
+        -log p(y | f, sigma^2)
+        + norm_weight * ||f||_K^2
+        + 0.5 log det(I + sigma^{-2} K)
+
+    with f = K (K + sigma^2 I)^-1 y.
+    """
+    X = np.asarray(X, float)
+    y = np.asarray(y, float).reshape(-1)
+    n = y.shape[0]
+
+    K_signal = _rbf_kernel(X, X, log_ell, log_sf2)
+    sigma2 = float(np.exp(log_sn2))
+
+    jitter = float(base_jitter)
+    last_error = None
+
+    for _ in range(8):
+        sigma2_eff = sigma2 + jitter
+        A = K_signal.copy()
+        A.flat[:: n + 1] += sigma2_eff
+
+        try:
+            L = np.linalg.cholesky(A)
+            alpha = _chol_solve(L, y)
+            break
+        except np.linalg.LinAlgError as exc:
+            last_error = exc
+            jitter *= 10.0
+    else:
+        raise last_error if last_error is not None else np.linalg.LinAlgError("Cholesky failed.")
+
+    f_hat = K_signal @ alpha
+    resid = y - f_hat
+
+    data_nll_nats = 0.5 * (np.dot(resid, resid) / sigma2_eff + n * np.log(2.0 * np.pi * sigma2_eff))
+
+    rkhs_norm = float(alpha @ K_signal @ alpha)
+
+    # 0.5 log det(I + sigma^{-2} K)
+    # Since A = K + sigma^2 I:
+    # log det(I + K/sigma^2) = log det(A) - n log(sigma^2)
+    logdet_A = 2.0 * np.sum(np.log(np.diag(L)))
+    complexity_nats = 0.5 * (logdet_A - n * np.log(sigma2_eff))
+
+    pointwise_error_nats = 0.5 * ((resid**2) / sigma2_eff + np.log(2.0 * np.pi * sigma2_eff))
+
+    score_nats = data_nll_nats + norm_weight * rkhs_norm + complexity_nats
+
+    return float(score_nats), {
+        "log_ell": float(log_ell),
+        "log_sf2": float(log_sf2),
+        "log_sn2": float(log_sn2),
+        "sigma2_eff": float(sigma2_eff),
+        "K_signal": K_signal,
+        "L": L,
+        "alpha": alpha,
+        "residuals_std": resid,
+        "data_nll_nats": float(data_nll_nats),
+        "rkhs_norm": float(rkhs_norm),
+        "complexity_nats": float(complexity_nats),
+        "pointwise_error_nats": pointwise_error_nats,
+        "used_jitter": float(jitter),
+    }
+
+
+def fit_score_rff(Xtr, ytr, return_residuals=False, **params):
+    """
+    RFF approximation of the GP refined-MDL score.
+
+    Approximates the RBF kernel by random Fourier features Phi and computes
+
+        -log p(y | Phi w, sigma^2)
+        + ||w||^2
+        + 0.5 log det(I + sigma^{-2} Phi^T Phi)
+
+    in bits.
+    """
+    Xtr = np.asarray(Xtr, float)
+    ytr = np.asarray(ytr, float).reshape(-1)
+
+    if Xtr.ndim == 1:
+        Xtr = Xtr.reshape(-1, 1)
+
+    finite = np.isfinite(ytr) & np.all(np.isfinite(Xtr), axis=1)
+    Xtr = Xtr[finite]
+    ytr = ytr[finite]
+
+    n = ytr.shape[0]
+    min_n = int(params.get("min_n", 5))
+    if n < min_n:
+        score_bits = _null_gaussian_mdl_bits(ytr)
+
+        ymu = float(np.mean(ytr)) if n else 0.0
+        ysd = float(np.std(ytr)) if n else 1.0
+        if ysd <= 1e-12:
+            ysd = 1.0
+
+        def predict(Xte, return_var=False):
+            Xte = np.asarray(Xte, float)
+            mean = np.full((Xte.shape[0],), ymu)
+            if return_var:
+                return mean, np.full_like(mean, ysd**2)
+            return mean
+
+        model = {
+            "kind": "fallback_null_rff_too_few_samples",
+            "mdl_bits": float(score_bits),
+            "predict": predict,
+            "details": {"reason": f"too_few_samples: {n}"},
+        }
+
+        if return_residuals:
+            resid = ytr - predict(Xtr)
+            return model, float(score_bits), resid
+
+        return model, float(score_bits)
+
+    Xn, yn, scalers = _standardize(Xtr, ytr)
+    n, d = Xn.shape
+
+    D = int(params.get("D", 300))
+    restarts = int(params.get("restarts", 10))
+    low = float(params.get("bounds", {}).get("low", -5.0))
+    high = float(params.get("bounds", {}).get("high", 5.0))
+    refine = bool(params.get("refine", True))
+    rng = np.random.default_rng(params.get("seed", None))
+
+    base_jitter = float(params.get("base_jitter", 1e-8))
+    min_noise_var = float(params.get("min_noise_var", 1e-8))
+    norm_weight = float(params.get("rkhs_norm_weight", 1.0))
+
+    # Optional small hyperparameter coding cost. Default False because the
+    # refined-MDL score already contains the GP/RFF complexity term.
+    use_bic = bool(params.get("bic_penalty", False))
+    k_params = int(params.get("k_params", 3))
+
+    # Fix random features across hyperparameter candidates. This makes the
+    # score deterministic for a given seed and avoids comparing different
+    # random bases during optimization.
+    base_omegas = rng.standard_normal(size=(d, D))
+    biases = rng.uniform(0.0, 2.0 * np.pi, size=(D,))
+
+    cands = _random_restarts_bounds(3, low=low, high=high, rng=rng, n=restarts)
+    cands += [
+        np.array([0.0, 0.0, -2.0]),
+        np.array([1.0, 0.0, -1.0]),
+        np.array([-1.0, 0.0, 0.0]),
+        np.array([0.0, -2.0, 0.0]),
+        np.array([0.0, 2.0, 2.0]),
+    ]
+
+    best_theta = None
+    best_score_nats = np.inf
+    best_cache = None
+
+    def eval_params(theta):
+        log_ell, log_sf2, log_sn2 = theta
+        log_sn2 = max(float(log_sn2), float(np.log(min_noise_var)))
+
+        try:
+            score_nats, cache = _rff_refined_mdl_terms(
+                X=Xn,
+                y=yn,
+                base_omegas=base_omegas,
+                biases=biases,
+                log_ell=float(log_ell),
+                log_sf2=float(log_sf2),
+                log_sn2=log_sn2,
+                base_jitter=base_jitter,
+                norm_weight=norm_weight,
+            )
+        except np.linalg.LinAlgError:
+            return np.inf, None
+
+        if not np.isfinite(score_nats):
+            return np.inf, None
+
+        return float(score_nats), cache
+
+    for theta in cands:
+        score_nats, cache = eval_params(theta)
+        if score_nats < best_score_nats:
+            best_score_nats = score_nats
+            best_theta = theta
+            best_cache = cache
+
+    if refine and best_theta is not None and np.isfinite(best_score_nats):
+        for theta in _grid_around(best_theta, width=0.75, steps=3):
+            score_nats, cache = eval_params(theta)
+            if score_nats < best_score_nats:
+                best_score_nats = score_nats
+                best_theta = theta
+                best_cache = cache
+
+    if best_cache is None or not np.isfinite(best_score_nats):
+        score_bits = _null_gaussian_mdl_bits(yn)
+        Xmu, Xsd, ymu, ysd = scalers
+
+        def predict(Xte, return_var=False):
+            Xte = np.asarray(Xte, float)
+            mean = np.full((Xte.shape[0],), ymu)
+            if return_var:
+                return mean, np.full_like(mean, ysd**2)
+            return mean
+
+        model = {
+            "kind": "fallback_null_rff",
+            "mdl_bits": float(score_bits),
+            "predict": predict,
+            "scalers": {"Xmu": Xmu, "Xsd": Xsd, "ymu": ymu, "ysd": ysd},
+        }
+
+        if return_residuals:
+            yhat = predict(Xtr)
+            resid = ytr - yhat
+            return model, float(score_bits), resid
+
+        return model, float(score_bits)
+
+    if use_bic:
+        best_score_nats += 0.5 * k_params * np.log(max(n, 2))
+
+    score_bits = best_score_nats / np.log(2.0)
+
+    log_ell = best_cache["log_ell"]
+    log_sf2 = best_cache["log_sf2"]
+    log_sn2 = best_cache["log_sn2"]
+    sigma2_eff = best_cache["sigma2_eff"]
+    w = best_cache["w"]
+    A_chol = best_cache["A_chol"]
+
+    Xmu, Xsd, ymu, ysd = scalers
+
+    def predict(Xte, return_var=False):
+        Xte = np.asarray(Xte, float)
+        if Xte.ndim == 1:
+            Xte = Xte.reshape(-1, 1)
+
+        Xte_n = (Xte - Xmu) / Xsd
+        Phi_te = _rff_features_from_base(
+            X=Xte_n,
+            base_omegas=base_omegas,
+            biases=biases,
+            log_ell=log_ell,
+            log_sf2=log_sf2,
+        )
+
+        mean_n = Phi_te @ w
+        mean = ymu + ysd * mean_n
+
+        if not return_var:
+            return mean
+
+        # Bayesian linear model predictive observation variance.
+        # A = Phi^T Phi + sigma^2 I
+        tmp = np.linalg.solve(A_chol, Phi_te.T)
+        var_n = sigma2_eff * (1.0 + np.sum(tmp**2, axis=0))
+        return mean, (ysd**2) * var_n
+
+    yhat = predict(Xtr)
+    resid = ytr - yhat
+
+    model = {
+        "kind": "rff_refined_mdl",
+        "D": int(D),
+        "log_ell": float(log_ell),
+        "log_sf2": float(log_sf2),
+        "log_sn2": float(log_sn2),
+        "sigma2_eff": float(sigma2_eff),
+        "base_omegas": base_omegas,
+        "biases": biases,
+        "w": w,
+        "A_chol": A_chol,
+        "predict": predict,
+        "mdl_bits": float(score_bits),
+        "score_nats": float(best_score_nats),
+        "data_nll_nats": float(best_cache["data_nll_nats"]),
+        "weight_norm": float(best_cache["weight_norm"]),
+        "complexity_nats": float(best_cache["complexity_nats"]),
+        "used_jitter": float(best_cache["used_jitter"]),
+        "pointwise_error_bits": best_cache["pointwise_error_nats"] / np.log(2.0),
+        "scalers": {"Xmu": Xmu, "Xsd": Xsd, "ymu": ymu, "ysd": ysd},
+    }
+
+    if return_residuals:
+        return model, float(score_bits), resid
+
+    return model, float(score_bits)
+
+
+def _rff_features_from_base(
+    *,
+    X: np.ndarray,
+    base_omegas: np.ndarray,
+    biases: np.ndarray,
+    log_ell: float,
+    log_sf2: float,
+) -> np.ndarray:
+    """
+    Random Fourier features for an RBF kernel.
+
+    With base_omegas ~ N(0, I), scaling by ell^{-1} gives
+    omegas ~ N(0, ell^{-2} I). Multiplying by sqrt(sf2)
+    approximates the signal variance.
+    """
+    X = np.asarray(X, float)
+    ell = float(np.exp(log_ell))
+    sf2 = float(np.exp(log_sf2))
+
+    omegas = base_omegas / (ell + 1e-12)
+    projection = X @ omegas + biases
+
+    D = base_omegas.shape[1]
+    return np.sqrt(2.0 * sf2 / D) * np.cos(projection)
+
+
+def _rff_refined_mdl_terms(
+    *,
+    X: np.ndarray,
+    y: np.ndarray,
+    base_omegas: np.ndarray,
+    biases: np.ndarray,
+    log_ell: float,
+    log_sf2: float,
+    log_sn2: float,
+    base_jitter: float,
+    norm_weight: float,
+):
+    """
+    RFF approximation of the GP refined-MDL terms in nats.
+
+    Score =
+        -log p(y | Phi w, sigma^2)
+        + norm_weight * ||w||^2
+        + 0.5 log det(I + sigma^{-2} Phi^T Phi)
+
+    where
+        w = (Phi^T Phi + sigma^2 I)^-1 Phi^T y.
+    """
+    X = np.asarray(X, float)
+    y = np.asarray(y, float).reshape(-1)
+
+    n = y.shape[0]
+    D = base_omegas.shape[1]
+
+    Phi = _rff_features_from_base(
+        X=X,
+        base_omegas=base_omegas,
+        biases=biases,
+        log_ell=log_ell,
+        log_sf2=log_sf2,
+    )
+
+    sigma2 = float(np.exp(log_sn2))
+    jitter = float(base_jitter)
+
+    PtP = Phi.T @ Phi
+    Pty = Phi.T @ y
+
+    last_error = None
+    for _ in range(8):
+        sigma2_eff = sigma2 + jitter
+        A = PtP.copy()
+        A.flat[:: D + 1] += sigma2_eff
+
+        try:
+            A_chol = np.linalg.cholesky(A)
+            w = _chol_solve(A_chol, Pty)
+            break
+        except np.linalg.LinAlgError as exc:
+            last_error = exc
+            jitter *= 10.0
+    else:
+        raise last_error if last_error is not None else np.linalg.LinAlgError("Cholesky failed.")
+
+    yhat = Phi @ w
+    resid = y - yhat
+
+    data_nll_nats = 0.5 * (np.dot(resid, resid) / sigma2_eff + n * np.log(2.0 * np.pi * sigma2_eff))
+
+    weight_norm = float(w @ w)
+
+    # complexity = 0.5 log det(I + sigma^{-2} Phi^T Phi)
+    # A = Phi^T Phi + sigma^2 I
+    # log det(I + sigma^{-2} Phi^T Phi)
+    # = log det(A) - D log(sigma^2)
+    logdet_A = 2.0 * np.sum(np.log(np.diag(A_chol)))
+    complexity_nats = 0.5 * (logdet_A - D * np.log(sigma2_eff))
+
+    pointwise_error_nats = 0.5 * ((resid**2) / sigma2_eff + np.log(2.0 * np.pi * sigma2_eff))
+
+    score_nats = data_nll_nats + norm_weight * weight_norm + complexity_nats
+
+    return float(score_nats), {
+        "log_ell": float(log_ell),
+        "log_sf2": float(log_sf2),
+        "log_sn2": float(log_sn2),
+        "sigma2_eff": float(sigma2_eff),
+        "Phi": Phi,
+        "w": w,
+        "A_chol": A_chol,
+        "data_nll_nats": float(data_nll_nats),
+        "weight_norm": float(weight_norm),
+        "complexity_nats": float(complexity_nats),
+        "pointwise_error_nats": pointwise_error_nats,
+        "used_jitter": float(jitter),
+    }
 
 
 def _standardize(X, y, eps=1e-12):

@@ -60,7 +60,7 @@ class Search(Protocol):
     ) -> DAGSearchResult: ...
 
 
-class DiscoveryEngine:
+class TabularDiscoveryEngine:
     def __init__(
         self,
         *,
@@ -72,6 +72,7 @@ class DiscoveryEngine:
         search: Search,
     ):
         self.data_mode = data_mode
+
         self.domain = domain
         self.context_preproc = context_preproc
         self.scorer = scoring
@@ -82,7 +83,7 @@ class DiscoveryEngine:
         self.contexts_: dict[Hashable, pd.DataFrame] | None = None
         self.last_aggregation_: AggregationResult | None = None
 
-    def fit(self, X: pd.DataFrame) -> DiscoveryEngine:
+    def fit(self, X: pd.DataFrame) -> TabularDiscoveryEngine:
         self.contexts_ = self.context_preproc.make_contexts(X)
         X0 = self.context_preproc.prepare_X(X)
         X0 = self.domain.prepare_X(X0)

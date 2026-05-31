@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from causalchange.config.cc_types import (
     ContextAggregation,
     DataMode,
+    GPType,
     GraphSearch,
     ScoreType,
 )
@@ -20,35 +21,55 @@ class ChangepointMode(Enum):
     DETECT = "detect"
 
 
+class ChangepointScope(Enum):
+    GLOBAL = "global"
+    PER_CONTEXT = "per-context"
+
+
+class ChangepointMethod(Enum):
+    PELT = "pelt"
+
+
+class PartitioningMethod(Enum):
+    KERNEL = "kernel"
+    NONE = "none"
+
+
 class SpaceTimeConfig(BaseModel):
     tau_max: int = 1
     changepoints: ChangepointMode = ChangepointMode.NONE
     fixed_changepoints: list[int] = Field(default_factory=list)
     d_min: int = 30
     max_iter: int = 3
+    mechanism_test_alpha: float = 0.05
 
-    detect_contexts: bool = False
-    detect_regimes: bool = False
+    detect_contexts: bool = True
+    detect_regimes: bool = True
 
-    changepoint_method: str = "pelt"
-    partitioning_method: str = "kernel"
+    changepoint_method: ChangepointMethod = ChangepointMethod.PELT
+    changepoint_scope: ChangepointScope = ChangepointScope.GLOBAL
+    partitioning_method: PartitioningMethod = PartitioningMethod.KERNEL
+    pelt_penalty: float = 3.0
 
     @model_validator(mode="after")
     def _validate_spacetime(self):
         if self.tau_max <= 0:
             raise ValueError("tau_max must be positive.")
-
         if self.d_min <= 0:
             raise ValueError("d_min must be positive.")
-
         if self.max_iter <= 0:
             raise ValueError("max_iter must be positive.")
-
+        if self.pelt_penalty <= 0:
+            raise ValueError("pelt_penalty must be positive.")
         if self.changepoints == ChangepointMode.FIXED and not self.fixed_changepoints:
             raise ValueError("fixed_changepoints must be provided when changepoints=FIXED.")
-
+        if not 0.0 < self.mechanism_test_alpha < 1.0:
+            raise ValueError("mechanism_test_alpha must be in (0, 1).")
         if self.changepoints != ChangepointMode.FIXED and self.fixed_changepoints:
             raise ValueError("fixed_changepoints is only valid when changepoints=FIXED.")
+
+        if self.changepoint_scope == ChangepointScope.PER_CONTEXT:
+            raise NotImplementedError("Per-context changepoints are not implemented yet.")
 
         return self
 
@@ -58,7 +79,7 @@ class CausalChangeConfig(BaseModel):
 
     data_mode: DataMode
     graph_search: GraphSearch
-    score_type: ScoreType
+    score_type: ScoreType | GPType
     aggregation: ContextAggregation
 
     spacetime: SpaceTimeConfig | None = None
@@ -83,4 +104,6 @@ class CausalChangeConfig(BaseModel):
             raise ValueError("spacetime config is required for temporal data.")
         if self.data_mode.is_temporal() and self.aggregation != ContextAggregation.SKIP:
             raise ValueError("aggregation must be SKIP for temporal data; SpaceTime handles contexts/regimes.")
+        if self.score_type == ScoreType.GP:
+            raise ValueError("score_type must be concrete. Use GPType.EXACT, GPType.FOURIER ")
         return self

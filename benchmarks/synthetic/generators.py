@@ -4,7 +4,12 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from causalchange.config.benchmark_config import MultiDataConfig, SingleDataConfig
+from causalchange.config.benchmark_config import (
+    MultiDataConfig,
+    MultiTemporalDataConfig,
+    SingleDataConfig,
+    SingleTemporalDataConfig,
+)
 
 
 def sample_single_continuous(config: SingleDataConfig):
@@ -45,7 +50,7 @@ def sample_multi_continuous(config: MultiDataConfig):
     )
 
 
-def sample_single_temporal(config: SingleDataConfig):
+def sample_single_temporal(config: SingleTemporalDataConfig):
     sampling_fun = sample_temporal_linear if config.nonlinearity == "lin" else sample_temporal_nonlinear
 
     return sampling_fun(
@@ -56,30 +61,38 @@ def sample_single_temporal(config: SingleDataConfig):
         seed=config.seed,
         weight_scale=config.weight_scale,
         noise_scale=config.noise_scale,
+        tau_max=config.tau_max,
     )
 
 
-def sample_multi_temporal(config: SingleDataConfig):
-    sampling_fun = (
-        sample_multicontext_temporal_linear if config.nonlinearity == "lin" else sample_multicontext_temporal_nonlinear
-    )
-    return sampling_fun(
+def sample_multi_temporal(config: MultiTemporalDataConfig):
+    common_kwargs = dict(
         n_samples_per_context=config.n_samples_per_context,
         n_nodes=config.n_nodes,
         edge_prob=config.edge_prob,
         n_contexts=config.n_contexts,
+        n_intervened_per_context=config.n_intervened_per_context,
+        intervention_type=config.intervention_type,
         seed=config.seed,
         tau_max=config.tau_max,
         context_col=config.context_col,
-        n_intervened_per_context=config.n_intervened_per_context,
-        intervention_type=config.intervention_type,
         weight_scale=config.weight_scale,
         noise_scale=config.noise_scale,
         weight_scale_intervened=config.weight_scale_intervened,
-        alt_nonlinearity=getattr(config, "alt_nonlinearity", "sin"),
         shift_scale=config.shift_scale,
         noise_scale_intervened=config.noise_scale_intervened,
+    )
+
+    if config.nonlinearity == "lin":
+        return sample_multicontext_temporal_linear(
+            nonlinearity=config.nonlinearity,
+            **common_kwargs,
+        )
+
+    return sample_multicontext_temporal_nonlinear(
         nonlinearity=config.nonlinearity,
+        alt_nonlinearity=config.alt_nonlinearity or "sin",
+        **common_kwargs,
     )
 
 

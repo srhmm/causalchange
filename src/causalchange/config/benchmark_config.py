@@ -149,14 +149,15 @@ class SpaceTimeCAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Literal["spacetime-c"] = "spacetime-c"
     context_col: str = "context"
-    # todo tau_max
     score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
+    tau_max: int | None = Field(default=None, ge=1)
 
 
 class SpaceTimeAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Literal["spacetime"] = "spacetime"
     score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
+    tau_max: int | None = Field(default=None, ge=1)
 
 
 AlgoConfig = Annotated[

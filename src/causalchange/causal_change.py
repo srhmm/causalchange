@@ -3,17 +3,19 @@ from __future__ import annotations
 import networkx as nx
 import pandas as pd
 
-from causalchange.config.cc_config import CausalChangeConfig
+from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode, SpaceTimeConfig
 from causalchange.config.cc_types import (
     ContextAggregation,
     DataMode,
+    GPType,
     GraphSearch,
     ScoreType,
 )
 from causalchange.discovery.factory import PipelineFactory
-from causalchange.discovery.pipeline import AggregationResult, DiscoveryEngine
+from causalchange.discovery.pipeline import AggregationResult, TabularDiscoveryEngine
 from causalchange.discovery.search.topic import DAGSearchResult
 from causalchange.discovery.search_time.base import SpaceTimeResult
+from causalchange.discovery.search_time.engine import SpaceTimeEngine
 
 
 class CausalChange:
@@ -23,18 +25,25 @@ class CausalChange:
         *,
         data_mode: DataMode = DataMode.SKIP,
         graph_search: GraphSearch = GraphSearch.SKIP,
-        score_type: ScoreType = ScoreType.SKIP,
+        score_type: ScoreType | GPType = ScoreType.SKIP,
         aggregation: ContextAggregation = ContextAggregation.SKIP,
         node_nms: list[str] | None = None,
         context_col: str | None = None,
         tau_max: int | None = None,
+        changepoints: ChangepointMode = ChangepointMode.NONE,
+        fixed_changepoints: list[int] | None = None,
+        d_min: int = 30,
+        max_iter: int = 3,
+        pelt_penalty: float = 3.0,
+        detect_contexts: bool = False,
+        detect_regimes: bool = False,
+        mechanism_test_alpha: float = 0.05,
         lg=None,
         vb: int = 0,
         **kwargs,
     ):
         r"""CausalChange: Causal Discovery Algorithms under Distribution Change (continuous data, multi-context
-        continuous data, multi-context data with latent confounding, continuous-valued time series,
-        or mixtures of causal mechanisms).
+        continuous data, continuous-valued time series, or mixtures of causal mechanisms).
         :param optargs: optional arguments
 
         :Arguments:
@@ -61,7 +70,15 @@ class CausalChange:
             aggregation=aggregation,
             context_col=context_col,
             tau_max=tau_max,
+            changepoints=changepoints,
+            fixed_changepoints=fixed_changepoints,
+            d_min=d_min,
             kwargs=kwargs,
+            max_iter=max_iter,
+            pelt_penalty=pelt_penalty,
+            detect_contexts=detect_contexts,
+            detect_regimes=detect_regimes,
+            mechanism_test_alpha=mechanism_test_alpha,
         )
 
         self.data_mode = self.cfg.data_mode
@@ -69,10 +86,9 @@ class CausalChange:
         self.score_type = self.cfg.score_type
         self.aggregation = self.cfg.aggregation
         self.context_col = self.cfg.context_col
-        self.tau_max = self.cfg.tau_max
 
         self.X_: pd.DataFrame | None = None
-        self.engine_: DiscoveryEngine | None = None
+        self.engine_: TabularDiscoveryEngine | SpaceTimeEngine | None = None
         self.result_: DAGSearchResult | SpaceTimeResult | None = None
         self.graph_: nx.DiGraph | None = None
 
@@ -98,7 +114,7 @@ class CausalChange:
         assert self.engine_ is not None
         return float(self.engine_.score_edge(effect, parents))
 
-    def get_result(self) -> DAGSearchResult:
+    def get_result(self) -> DAGSearchResult | SpaceTimeResult:
         return self.result
 
     @property
@@ -108,7 +124,7 @@ class CausalChange:
         return self.graph_
 
     @property
-    def result(self) -> DAGSearchResult:
+    def result(self) -> DAGSearchResult | SpaceTimeResult:
         self._require_fitted()
         assert self.result_ is not None
         return self.result_
@@ -127,9 +143,7 @@ class CausalChange:
 
     @property
     def last_aggregation_(self) -> AggregationResult | None:
-        if self.engine_ is None:
-            return None
-        return self.engine_.last_aggregation_
+        return None if self.engine_ is None else getattr(self.engine_, "last_aggregation_", None)
 
     def _require_fitted(self) -> None:
         if self.engine_ is None or self.result_ is None or self.graph_ is None:
@@ -184,6 +198,14 @@ class CausalChange:
         aggregation: ContextAggregation,
         context_col: str | None,
         tau_max: int | None,
+        changepoints: ChangepointMode,
+        fixed_changepoints: list[int] | None,
+        d_min: int,
+        max_iter: int = 3,
+        pelt_penalty: float = 3.0,
+        detect_contexts: bool = True,
+        detect_regimes: bool = True,
+        mechanism_test_alpha: float = 0.5,
         kwargs: dict,
     ) -> CausalChangeConfig:
         if cfg is not None:
@@ -194,6 +216,14 @@ class CausalChange:
                 or aggregation != ContextAggregation.SKIP
                 or context_col is not None
                 or tau_max is not None
+                or changepoints != ChangepointMode.NONE
+                or fixed_changepoints is not None
+                # or d_min != 30
+                # or max_iter != 3
+                # or pelt_penalty != 3.0
+                # or detect_contexts is not False
+                # or detect_regimes is not False
+                # or mechanism_test_alpha != 0.5
                 or kwargs
             ):
                 raise ValueError("Pass either cfg=... or individual constructor options, not both.")
@@ -204,9 +234,29 @@ class CausalChange:
             raise ValueError("graph_search is required when cfg is not provided.")
         if score_type == ScoreType.SKIP:
             raise ValueError("score_type is required when cfg is not provided.")
+        if score_type == ScoreType.GP:
+            raise ValueError("score_type must be concrete. Use GPType.EXACT or GPType.FOURIER.")
 
-        if data_mode.is_temporal() and tau_max is None:
-            raise ValueError("tau_max is required for temporal data modes.")
+        if data_mode.is_temporal():
+            if tau_max is None:
+                raise ValueError("tau_max is required for temporal data modes.")
+
+            if "spacetime" in kwargs:
+                raise ValueError(
+                    "CausalChange constructs SpaceTimeConfig internally; pass tau_max/changepoints instead."
+                )
+
+            kwargs["spacetime"] = SpaceTimeConfig(
+                tau_max=tau_max,
+                changepoints=changepoints,
+                fixed_changepoints=fixed_changepoints or [],
+                d_min=d_min,
+                max_iter=max_iter,
+                pelt_penalty=pelt_penalty,
+                detect_contexts=detect_contexts,
+                detect_regimes=detect_regimes,
+                mechanism_test_alpha=mechanism_test_alpha,
+            )
 
         if data_mode.is_context() and context_col is None:
             raise ValueError("context_col is required for context data modes.")
@@ -217,6 +267,5 @@ class CausalChange:
             score_type=score_type,
             aggregation=aggregation,
             context_col=context_col or "context",
-            tau_max=tau_max,
             **kwargs,
         )

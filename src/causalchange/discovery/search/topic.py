@@ -8,7 +8,7 @@ import networkx as nx
 import numpy as np
 
 from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabular
-from causalchange.discovery.scoring.edge_score_time import EdgeScoreTemporal
+from causalchange.discovery.scoring.edge_score_time import EdgeScoreTime
 
 ScoreFunction = Callable[[Any, tuple[Any, ...]], float]  # comes from EdgeScoreTabular|EdgeScoreTemporal.score_edge()
 AllowedEdge = Callable[[Any, Any], bool]
@@ -22,7 +22,7 @@ class DAGSearchResult:
 
 
 class TopicSearch:
-    def __init__(self, *, scoring: EdgeScoreTabular | EdgeScoreTemporal):
+    def __init__(self, *, scoring: EdgeScoreTabular | EdgeScoreTime):
         self.transition_gain = scoring.transition_gain
         self.score_significant = scoring.score_significant
         self.score_is_better = scoring.score_is_better

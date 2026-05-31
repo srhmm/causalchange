@@ -23,7 +23,7 @@ class EdgeScore:
     def __init__(
         self,
         data_mode: DataMode,
-        score_type: ScoreType,
+        score_type: ScoreType | GPType,
         **scoring_params: Any,
     ):
         self.data_mode = data_mode

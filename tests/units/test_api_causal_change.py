@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from causalchange.causal_change import CausalChange
-from causalchange.config.cc_config import CausalChangeConfig
+from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode
 from causalchange.config.cc_types import (
     ContextAggregation,
     DataMode,
@@ -113,3 +113,40 @@ def test_score_before_fit_errors():
 
     with pytest.raises(RuntimeError, match="Call fit"):
         cc.score("x0", ())
+
+
+def test_causalchange_temporal_requires_tau_max():
+    with pytest.raises(ValueError, match="tau_max"):
+        CausalChange(
+            data_mode=DataMode.TIME,
+            graph_search=GraphSearch.TOPIC,
+            score_type=ScoreType.LIN,
+            aggregation=ContextAggregation.SKIP,
+        )
+
+
+def test_causalchange_builds_spacetime_config_with_partition_args():
+    cc = CausalChange(
+        data_mode=DataMode.TIME,
+        graph_search=GraphSearch.GLOBE,
+        score_type=ScoreType.LIN,
+        aggregation=ContextAggregation.SKIP,
+        tau_max=2,
+        changepoints=ChangepointMode.DETECT,
+        d_min=10,
+        max_iter=4,
+        pelt_penalty=2.5,
+        detect_contexts=True,
+        detect_regimes=True,
+        mechanism_test_alpha=0.25,
+    )
+
+    assert cc.cfg.spacetime is not None
+    assert cc.cfg.spacetime.tau_max == 2
+    assert cc.cfg.spacetime.changepoints == ChangepointMode.DETECT
+    assert cc.cfg.spacetime.d_min == 10
+    assert cc.cfg.spacetime.max_iter == 4
+    assert cc.cfg.spacetime.pelt_penalty == 2.5
+    assert cc.cfg.spacetime.detect_contexts is True
+    assert cc.cfg.spacetime.detect_regimes is True
+    assert cc.cfg.spacetime.mechanism_test_alpha == 0.25
