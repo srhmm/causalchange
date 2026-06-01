@@ -37,3 +37,29 @@ BENCHMARK_GRID_MULTI = {
     },
     "scoring": {},
 }
+
+BENCHMARK_GRID_SPACETIME = {
+    "data": {
+        "setting": ["time", "time-contexts"],
+        "n_nodes": [3],
+        "edge_prob": [0.3],
+        "seed": [42],
+        "n_samples": [400],
+        "n_contexts": [3],
+        "n_samples_per_context": [400],
+        "n_context_clusters": [1],
+        "context_col": ["context"],
+        "tau_max": [1],
+        "n_changepoints": [0],
+        "n_regimes": [1],
+        "min_segment_length": [50],
+        "nonlinearity": ["lin"],
+        "mechanism_change_fraction": [0.0],
+        "mechanism_shift_scale": [0.0],
+        "allow_self_lag": [True],
+    },
+    "algo": {
+        "name": ["spacetime"],
+        "score_type": ["ff"],
+    },
+}

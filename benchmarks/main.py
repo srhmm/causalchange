@@ -15,14 +15,17 @@ from benchmarks.utils import (
 
 BASE_SEED = 42
 N_REPEATS = 10
-BENCHMARK_GRID = benchmarks.benchmark_grids.BENCHMARK_GRID_MULTI
+BENCHMARK_GRID = benchmarks.benchmark_grids.BENCHMARK_GRID_SPACETIME  # benchmarks.benchmark_grids.BENCHMARK_GRID_MULTI
 
 if __name__ == "__main__":
     groups = {}
     n_runs = 0
     n_valid = 0
 
+    last_cfg = None
+
     for cfg0 in iter_valid_configs(BENCHMARK_GRID):
+        last_cfg = cfg0
         n_valid += 1
         local = {}
 
@@ -40,9 +43,7 @@ if __name__ == "__main__":
             if key not in groups:
                 example = cfg.model_dump()
                 example["data"].pop("seed", None)
-                scoring_method = getattr(cfg.algo, "scoring_method", "")
                 bench = bench_name_from_cfg(cfg)
-                bench = f"{bench} | {scoring_method}" if scoring_method else bench
 
                 groups[key] = {"config_example": example, "bench": bench, "metrics": {}}
 
@@ -53,14 +54,10 @@ if __name__ == "__main__":
 
         bench = bench_name_from_cfg(cfg0)
         algo_name = cfg0.algo.name
-        scoring_method = getattr(cfg0.algo, "scoring_method", "")
         data_setting = cfg0.data.setting
         data_nonlinearity = cfg0.data.nonlinearity
 
-        header = (
-            f"[{bench}] algo={algo_name} scoring={scoring_method} data={data_setting}/{data_nonlinearity} "
-            f"n_n={cfg0.data.n_nodes}"
-        )
+        header = f"[{bench}] algo={algo_name}  data={data_setting}/{data_nonlinearity} " f"n_n={cfg0.data.n_nodes}"
         print("\n" + header + str(cfg0))
 
         for metric_name in sorted(local.keys()):
@@ -76,7 +73,13 @@ if __name__ == "__main__":
     out_dir = os.path.join("../benchmarks", "_results")
     os.makedirs(out_dir, exist_ok=True)
 
-    filenm = file_name_from_cfg(cfg0)
+    if last_cfg is None:
+        raise RuntimeError(
+            "No valid benchmark configs were generated. "
+            "Check BENCHMARK_GRID against BenchmarkConfig/DataConfig/AlgoConfig fields."
+        )
+
+    filenm = file_name_from_cfg(last_cfg)
     out_path = os.path.join(out_dir, f"{filenm}.json")
 
     with open(out_path, "w", encoding="utf-8") as fl:

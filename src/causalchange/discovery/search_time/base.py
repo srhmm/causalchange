@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import networkx as nx
@@ -24,11 +24,15 @@ class SpaceTimePartitions:
 
 @dataclass
 class SpaceTimeResult:
-    graph: nx.DiGraph
-    topological_order: list[str]
+    graph: Any
     changepoints: list[int]
     partitions: SpaceTimePartitions
-    history: list[dict[str, Any]]
+    topological_order: list[str] | None = None
+
+    # For ChangepointScope.PER_CONTEXT, changepoints is the union of changepoints_by_context
+    changepoints_by_context: dict[Any, list[int]] | None = None
+
+    changepoint_diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

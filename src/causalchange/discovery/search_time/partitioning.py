@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import networkx as nx
 import pandas as pd
 
 from causalchange.config.cc_config import PartitioningMethod, SpaceTimeConfig
@@ -127,15 +126,21 @@ class SpaceTimePartitioning:
         regimes: dict[str, dict[int, int]] = {}
         tests_list: list[dict[str, Any]] = []
 
+        regime_ids = list(range(len(intervals)))
+
         for target in panel.variables:
             parents = self._parents_for_target(graph, target)
             parent_cols = self._parent_cols(parents)
 
-            equality_graph = nx.Graph()
-            equality_graph.add_nodes_from(range(len(intervals)))
+            same_pairs: set[frozenset[Any]] = set()
+            different_pairs: set[frozenset[Any]] = set()
+            pvalues: dict[frozenset[Any], float] = {}
 
-            for r1 in range(len(intervals)):
-                for r2 in range(r1 + 1, len(intervals)):
+            for r1 in regime_ids:
+                for r2 in regime_ids:
+                    if r2 <= r1:
+                        continue
+
                     sample_1 = self._pooled_interval_sample(
                         panel=panel,
                         target=target,
@@ -156,6 +161,14 @@ class SpaceTimePartitioning:
                         parent_cols=parent_cols,
                     )
 
+                    pair = self._pair_key(r1, r2)
+                    pvalues[pair] = result.pvalue
+
+                    if result.same:
+                        same_pairs.add(pair)
+                    else:
+                        different_pairs.add(pair)
+
                     tests_list.append(
                         {
                             "kind": "regime",
@@ -168,10 +181,12 @@ class SpaceTimePartitioning:
                         }
                     )
 
-                    if result.same:
-                        equality_graph.add_edge(r1, r2)
-
-            regimes[target] = self._components_to_labels(equality_graph)
+            regimes[target] = self._cluster_from_pairwise_tests(
+                nodes=regime_ids,
+                same_pairs=same_pairs,
+                different_pairs=different_pairs,
+                pvalues=pvalues,
+            )
 
         return regimes, tests_list
 
@@ -191,12 +206,12 @@ class SpaceTimePartitioning:
             parents = self._parents_for_target(graph, target)
             parent_cols = self._parent_cols(parents)
 
-            equality_graph = nx.Graph()
-            equality_graph.add_nodes_from(dataset_ids)
+            same_pairs: set[frozenset[Any]] = set()
+            different_pairs: set[frozenset[Any]] = set()
+            pvalues: dict[frozenset[Any], float] = {}
 
             for i, ctx_a in enumerate(dataset_ids):
                 for ctx_b in dataset_ids[i + 1 :]:
-                    same_across_all_regimes = True
                     pair_results = []
 
                     for regime_id, interval in enumerate(intervals):
@@ -235,15 +250,132 @@ class SpaceTimePartitioning:
                             }
                         )
 
-                        if not result.same:
-                            same_across_all_regimes = False
+                    pair = self._pair_key(ctx_a, ctx_b)
 
-                    if same_across_all_regimes and pair_results:
-                        equality_graph.add_edge(ctx_a, ctx_b)
+                    # Contexts are merged only if they are compatible in every regime.
+                    # A single detected difference is treated as a hard cannot-link.
+                    if pair_results and all(result.same for result in pair_results):
+                        same_pairs.add(pair)
+                        pvalues[pair] = min(result.pvalue for result in pair_results)
+                    else:
+                        different_pairs.add(pair)
+                        pvalues[pair] = min(
+                            (result.pvalue for result in pair_results),
+                            default=0.0,
+                        )
 
-            contexts[target] = self._components_to_labels(equality_graph)
+            contexts[target] = self._cluster_from_pairwise_tests(
+                nodes=dataset_ids,
+                same_pairs=same_pairs,
+                different_pairs=different_pairs,
+                pvalues=pvalues,
+            )
 
         return contexts, tests
+
+    def _pair_key(self, a: Any, b: Any) -> frozenset[Any]:
+        if a == b:
+            raise ValueError("Pair keys require two distinct nodes.")
+        return frozenset((a, b))
+
+    def _cluster_from_pairwise_tests(
+        self,
+        *,
+        nodes: list[Any],
+        same_pairs: set[frozenset[Any]],
+        different_pairs: set[frozenset[Any]],
+        pvalues: dict[frozenset[Any], float],
+    ) -> dict[Any, int]:
+        """
+        Cluster nodes using complete-link equality and hard cannot-link constraints.
+
+        A merge is allowed only if every cross-pair between the two clusters was
+        judged equal, and no cross-pair was judged different.
+
+        This avoids transitive merges of the form:
+            A same B, B same C, but A different C.
+        """
+        clusters: list[set[Any]] = [{node} for node in nodes]
+
+        while True:
+            best_pair: tuple[int, int] | None = None
+            best_strength = float("-inf")
+
+            for i in range(len(clusters)):
+                for j in range(i + 1, len(clusters)):
+                    left = clusters[i]
+                    right = clusters[j]
+
+                    if not self._can_merge_clusters(
+                        left=left,
+                        right=right,
+                        same_pairs=same_pairs,
+                        different_pairs=different_pairs,
+                    ):
+                        continue
+
+                    strength = self._merge_strength(
+                        left=left,
+                        right=right,
+                        pvalues=pvalues,
+                    )
+
+                    if strength > best_strength:
+                        best_strength = strength
+                        best_pair = (i, j)
+
+            if best_pair is None:
+                break
+
+            i, j = best_pair
+            clusters[i] = clusters[i] | clusters[j]
+            del clusters[j]
+
+        labels: dict[Any, int] = {}
+
+        for label, cluster in enumerate(clusters):
+            for node in cluster:
+                labels[node] = label
+
+        return labels
+
+    def _can_merge_clusters(
+        self,
+        *,
+        left: set[Any],
+        right: set[Any],
+        same_pairs: set[frozenset[Any]],
+        different_pairs: set[frozenset[Any]],
+    ) -> bool:
+        for a in left:
+            for b in right:
+                pair = self._pair_key(a, b)
+
+                if pair in different_pairs:
+                    return False
+
+                if pair not in same_pairs:
+                    return False
+
+        return True
+
+    def _merge_strength(
+        self,
+        *,
+        left: set[Any],
+        right: set[Any],
+        pvalues: dict[frozenset[Any], float],
+    ) -> float:
+        values = []
+
+        for a in left:
+            for b in right:
+                values.append(float(pvalues.get(self._pair_key(a, b), 0.0)))
+
+        if not values:
+            return 0.0
+
+        return float(sum(values) / len(values))
 
     def _pooled_interval_sample(
         self,
@@ -318,12 +450,3 @@ class SpaceTimePartitioning:
 
     def _parent_cols(self, parents: list[Node]) -> list[str]:
         return [f"parent_{idx}" for idx, _ in enumerate(parents)]
-
-    def _components_to_labels(self, graph: nx.Graph) -> dict[Any, int]:
-        labels: dict[Any, int] = {}
-
-        for label, component in enumerate(nx.connected_components(graph)):
-            for node in component:
-                labels[node] = label
-
-        return labels

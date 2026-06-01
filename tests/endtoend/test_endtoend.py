@@ -1,7 +1,6 @@
 import networkx as nx
 import pytest
 
-from benchmarks.run_methods import run_on_config
 from causalchange.config.benchmark_config import BenchmarkConfig
 from causalchange.config.cc_types import (
     ContextAggregation,
@@ -9,6 +8,13 @@ from causalchange.config.cc_types import (
     GraphSearch,
     ScoreType,
 )
+
+run_methods = pytest.importorskip(
+    "benchmarks.run_methods",
+    reason="benchmark helpers are not installed in the package environment",
+)
+
+run_on_config = run_methods.run_on_config
 
 
 @pytest.mark.parametrize(

@@ -8,8 +8,7 @@ causal-learn
 scikit-learn
 scipy
 pygam
-#alive_progress
-#tabulate
+pydantic
 gadjid
 pgmpy
 causaldag

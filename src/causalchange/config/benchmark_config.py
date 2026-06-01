@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 MetricName = Literal[
     "shd",
@@ -93,10 +93,30 @@ class SingleTemporalDataConfig(DataConfigBase):
 
     n_samples: int = Field(..., ge=1)
     tau_max: int = Field(1, ge=1)
+
     weight_scale: float = 2.0
     noise_scale: float = 0.7
-
     nonlinearity: Nonlinearity = "tanh"
+
+    n_changepoints: int = Field(2, ge=0)
+    n_regimes: int = Field(2, ge=1)
+    min_segment_length: int = Field(30, ge=1)
+    mechanism_change_fraction: float = Field(0.5, ge=0.0, le=1.0)
+    mechanism_shift_scale: float = Field(0.75, ge=0.0)
+    burnin: int | None = Field(default=None, ge=0)
+    allow_self_lag: bool = True
+
+    @model_validator(mode="after")
+    def _validate_spacetime_temporal_config(self):
+        n_intervals = self.n_changepoints + 1
+
+        if self.n_regimes > n_intervals:
+            raise ValueError("n_regimes must be <= n_changepoints + 1.")
+
+        if self.n_samples < n_intervals * self.min_segment_length:
+            raise ValueError("n_samples is too small for n_changepoints and min_segment_length.")
+
+        return self
 
 
 class MultiTemporalDataConfig(DataConfigBase):
@@ -111,12 +131,36 @@ class MultiTemporalDataConfig(DataConfigBase):
     n_samples_per_context: int = Field(..., ge=1)
     tau_max: int = Field(1, ge=1)
 
-    n_intervened_per_context: int = Field(1, ge=0)
-    intervention_type: Literal["hard", "soft_weight", "shift", "noise"] = "hard"  # , "soft_mechanism"] = "hard"
-
     weight_scale: float = 2.0
     noise_scale: float = 0.7
     nonlinearity: Nonlinearity = "tanh"
+
+    n_datasets: int | None = None
+
+    n_changepoints: int = Field(2, ge=0)
+    n_regimes: int = Field(2, ge=1)
+    n_context_clusters: int = Field(2, ge=1)
+    min_segment_length: int = Field(30, ge=1)
+    mechanism_change_fraction: float = Field(0.5, ge=0.0, le=1.0)
+    mechanism_shift_scale: float = Field(0.75, ge=0.0)
+    burnin: int | None = Field(default=None, ge=0)
+    allow_self_lag: bool = True
+
+    @model_validator(mode="after")
+    def _validate_spacetime_temporal_context_config(self):
+        n_intervals = self.n_changepoints + 1
+        n_datasets = self.n_datasets or self.n_contexts
+
+        if self.n_regimes > n_intervals:
+            raise ValueError("n_regimes must be <= n_changepoints + 1.")
+
+        if self.n_samples_per_context < n_intervals * self.min_segment_length:
+            raise ValueError("n_samples_per_context is too small for n_changepoints and min_segment_length.")
+
+        if self.n_context_clusters > n_datasets:
+            raise ValueError("n_context_clusters must be <= number of datasets.")
+
+        return self
 
 
 DataConfig = Annotated[
@@ -145,38 +189,21 @@ class TopicAlgoConfig(BaseModel):
     score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
 
 
-class SpaceTimeCAlgoConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    name: Literal["spacetime-c"] = "spacetime-c"
-    context_col: str = "context"
-    score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
-    tau_max: int | None = Field(default=None, ge=1)
-
-
 class SpaceTimeAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Literal["spacetime"] = "spacetime"
     score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
     tau_max: int | None = Field(default=None, ge=1)
 
+    changepoint_mode: Literal["none", "detect", "oracle"] = "detect"
+    detect_contexts: bool = True
+    detect_regimes: bool = True
+
 
 AlgoConfig = Annotated[
-    LincAlgoConfig | ChainAlgoConfig | TopicAlgoConfig | SpaceTimeAlgoConfig | SpaceTimeCAlgoConfig,
+    LincAlgoConfig | ChainAlgoConfig | TopicAlgoConfig | SpaceTimeAlgoConfig,
     Field(discriminator="name"),
 ]
-
-
-class ScoringConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    metrics: set[MetricName] = Field(default_factory=lambda: {"edge_f1", "skel_f1"})
-
-    @field_validator("metrics")
-    @classmethod
-    def _non_empty(cls, v: set[MetricName]) -> set[MetricName]:
-        if not v:
-            raise ValueError("metrics must not be empty.")
-        return v
 
 
 class BenchmarkConfig(BaseModel):
@@ -184,16 +211,21 @@ class BenchmarkConfig(BaseModel):
 
     data: DataConfig
     algo: AlgoConfig
-    scoring: ScoringConfig = Field(default_factory=ScoringConfig)
 
     @model_validator(mode="after")
     def _couple_algo_and_data(self):
-        if self.algo.name == "linc" and self.data.setting != "multi":
-            raise ValueError("algo=linc is only valid with data.setting='multi'.")
-        if self.algo.name == "topic" and self.data.setting != "single":
-            raise ValueError("algo=topic is only valid with data.setting='single'.")
-        if self.algo.name == "spacetime" and self.data.setting != "time":
-            raise ValueError("algo=time is only valid with data.setting='time'.")
-        if self.algo.name == "spacetime-c" and self.data.setting != "time-contexts":
-            raise ValueError("algo=spacetime-c is only valid with data.setting='time-contexts'.")
+        allowed_settings_by_algo = {
+            "topic": {"single"},
+            "linc": {"multi"},
+            "chain": {"multi"},
+            "spacetime": {"time", "time-contexts"},
+        }
+
+        allowed = allowed_settings_by_algo.get(self.algo.name)
+        if allowed is None:
+            raise ValueError(f"Unknown benchmark algo: {self.algo.name!r}")
+
+        if self.data.setting not in allowed:
+            raise ValueError(f"algo={self.algo.name!r} is only valid with " f"data.setting in {sorted(allowed)}.")
+
         return self

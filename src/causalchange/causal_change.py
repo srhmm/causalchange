@@ -3,7 +3,7 @@ from __future__ import annotations
 import networkx as nx
 import pandas as pd
 
-from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode, SpaceTimeConfig
+from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode, ChangepointScope, SpaceTimeConfig
 from causalchange.config.cc_types import (
     ContextAggregation,
     DataMode,
@@ -27,14 +27,15 @@ class CausalChange:
         graph_search: GraphSearch = GraphSearch.SKIP,
         score_type: ScoreType | GPType = ScoreType.SKIP,
         aggregation: ContextAggregation = ContextAggregation.SKIP,
+        changepoints: ChangepointMode = ChangepointMode.NONE,
+        changepoint_scope: ChangepointScope = ChangepointScope.GLOBAL,
         node_nms: list[str] | None = None,
         context_col: str | None = None,
         tau_max: int | None = None,
-        changepoints: ChangepointMode = ChangepointMode.NONE,
         fixed_changepoints: list[int] | None = None,
         d_min: int = 30,
         max_iter: int = 3,
-        pelt_penalty: float = 3.0,
+        pelt_penalty: float | str = "auto",
         detect_contexts: bool = False,
         detect_regimes: bool = False,
         mechanism_test_alpha: float = 0.05,
@@ -48,11 +49,19 @@ class CausalChange:
 
         :Arguments:
         * *cfg* (``CausalChangeConfig``) -- config
-        * *data_mode* (``DataMode``) -- input data type, one iid dataset, multi-context data, mixed data, or TS data
-        * *graph_search* (``GraphSearch``) -- search algo for DAGs
-        * *score_type* (``MixingType``) -- regressor
-        * *mixing_type* (``MixingType``) -- for mixed data, type of mixture model inference (EM algo), ow skip
-        * *context_col* (``str``) -- for multi-context data, the column name of an indicator column for the contexts
+        * *data_mode* (``DataMode``) -- input data type, one tabular dataset (``IID``), tabular data from
+        multiple contexts (``CONTEXTS``), one time series (``TIME``)
+        or time series from multiple contexts (``TIME_CONTEXTS``).
+
+        * *graph_search* (``GraphSearch``) -- search algorithm for DAGs
+        * *score_type* (``ScoreType``) -- regression and scoring
+        * *aggregation* (``ContextAggregation``) -- for multi-context data, algorithm to combine contexts
+        * *changepoints* (``ChangepointMode``) -- for time series, algorithm to detect causal changepoints
+        * *context_col* (``str``) -- for multi-context data, the column name of an
+        indicator column for the contexts
+        * *tau_max* (``int``) -- for time series, maximum time lag to consider
+        * *fixed_changepoints* (``int``) -- for time series, optional known changepoints
+        (used when ``changepoints==ChangepointMode.FIXED``)
         * *truths* (``nx.DiGraph``) -- for mixed data, oracle versions, w entries 't_A', 't_Z', 't_n_Z'
         * *lg* (``logging``) -- logger if verbosity>0
         * *vb* (``int``) -- verbosity level
@@ -71,6 +80,7 @@ class CausalChange:
             context_col=context_col,
             tau_max=tau_max,
             changepoints=changepoints,
+            changepoint_scope=changepoint_scope,
             fixed_changepoints=fixed_changepoints,
             d_min=d_min,
             kwargs=kwargs,
@@ -199,10 +209,11 @@ class CausalChange:
         context_col: str | None,
         tau_max: int | None,
         changepoints: ChangepointMode,
+        changepoint_scope: ChangepointScope,
         fixed_changepoints: list[int] | None,
         d_min: int,
         max_iter: int = 3,
-        pelt_penalty: float = 3.0,
+        pelt_penalty: float | str = "auto",
         detect_contexts: bool = True,
         detect_regimes: bool = True,
         mechanism_test_alpha: float = 0.5,
@@ -249,6 +260,7 @@ class CausalChange:
             kwargs["spacetime"] = SpaceTimeConfig(
                 tau_max=tau_max,
                 changepoints=changepoints,
+                changepoint_scope=changepoint_scope,
                 fixed_changepoints=fixed_changepoints or [],
                 d_min=d_min,
                 max_iter=max_iter,

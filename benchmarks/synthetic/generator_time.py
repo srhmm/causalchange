@@ -10,6 +10,13 @@ import pandas as pd
 
 
 @dataclass(frozen=True)
+class BenchmarkSample:
+    df: pd.DataFrame
+    true_summary_dag: nx.DiGraph
+    spacetime: SpaceTimeSyntheticResult | None = None
+
+
+@dataclass(frozen=True)
 class SpaceTimeSyntheticResult:
     df: pd.DataFrame
     true_wcg: nx.DiGraph

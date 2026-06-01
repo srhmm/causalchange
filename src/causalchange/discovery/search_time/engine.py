@@ -4,7 +4,7 @@ from typing import Any
 
 import pandas as pd
 
-from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode
+from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode, ChangepointScope
 from causalchange.config.cc_types import DataMode
 from causalchange.discovery.search_time.base import SpaceTimeResult, SpaceTimeScoring, TimePanel
 
@@ -31,6 +31,8 @@ class SpaceTimeEngine:
 
         self.X0_: pd.DataFrame | None = None
         self.changepoints_: list[int] = []
+        self.changepoints_by_context_: dict[Any, list[int]] | None = None
+        self.changepoint_diagnostics_: dict[str, Any] = {}
         self.panel_: TimePanel | None = None
         self.partitions_ = None
         self.result_: SpaceTimeResult | None = None
@@ -105,6 +107,12 @@ class SpaceTimeEngine:
                 scorer=self.scorer,
                 variables=variables,
             )
+            if self.cfg.spacetime.changepoint_scope == ChangepointScope.PER_CONTEXT:
+                self.changepoints_by_context_ = self.changepoint_detection.changepoints_by_context_
+            else:
+                self.changepoints_by_context_ = None
+
+            self.changepoint_diagnostics_ = self.changepoint_detection.diagnostics_
             self.scorer.set_time_windows(
                 n_raw_samples=len(self.panel_.first_dataset()),
                 changepoints=self.changepoints_,
@@ -154,7 +162,8 @@ class SpaceTimeEngine:
             topological_order=final_search_result.topological_order,
             changepoints=self.changepoints_,
             partitions=self.partitions_,
-            history=all_history,
+            changepoints_by_context=self.changepoints_by_context_,
+            changepoint_diagnostics=self.changepoint_diagnostics_,
         )
 
         self.result_ = result

@@ -35,7 +35,7 @@ def test_factory_routes_contexts_to_tabular_engine():
 def test_factory_routes_time_to_spacetime_engine():
     cfg = CausalChangeConfig(
         data_mode=DataMode.TIME,
-        graph_search=GraphSearch.TOPIC,
+        graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
         aggregation=ContextAggregation.SKIP,
         spacetime=SpaceTimeConfig(
@@ -52,7 +52,7 @@ def test_factory_routes_time_to_spacetime_engine():
 def test_factory_routes_time_contexts_to_spacetime_engine():
     cfg = CausalChangeConfig(
         data_mode=DataMode.TIME_CONTEXTS,
-        graph_search=GraphSearch.TOPIC,
+        graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
         aggregation=ContextAggregation.SKIP,
         context_col="context",

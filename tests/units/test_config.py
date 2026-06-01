@@ -8,7 +8,7 @@ def test_temporal_config_requires_spacetime():
     with pytest.raises(ValueError, match="spacetime"):
         CausalChangeConfig(
             data_mode=DataMode.TIME,
-            graph_search=GraphSearch.TOPIC,
+            graph_search=GraphSearch.GLOBE,
             score_type=ScoreType.LIN,
             aggregation=ContextAggregation.SKIP,
         )
@@ -50,4 +50,24 @@ def test_fixed_changepoints_only_valid_for_fixed_mode():
         SpaceTimeConfig(
             tau_max=2,
             fixed_changepoints=[10, 20],
+        )
+
+
+def test_spacetime_config_accepts_named_pelt_penalties():
+    for penalty in ["bic", "mbic", "auto"]:
+        cfg = SpaceTimeConfig(
+            tau_max=2,
+            changepoints=ChangepointMode.DETECT,
+            pelt_penalty=penalty,
+        )
+
+        assert cfg.pelt_penalty == penalty
+
+
+def test_spacetime_config_rejects_invalid_pelt_penalty():
+    with pytest.raises(ValueError, match="pelt_penalty"):
+        SpaceTimeConfig(
+            tau_max=2,
+            changepoints=ChangepointMode.DETECT,
+            pelt_penalty="bad",
         )

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -49,7 +49,7 @@ class SpaceTimeConfig(BaseModel):
     changepoint_method: ChangepointMethod = ChangepointMethod.PELT
     changepoint_scope: ChangepointScope = ChangepointScope.GLOBAL
     partitioning_method: PartitioningMethod = PartitioningMethod.KERNEL
-    pelt_penalty: float = 3.0
+    pelt_penalty: float | Literal["bic", "mbic", "auto"] = "auto"
 
     @model_validator(mode="after")
     def _validate_spacetime(self):
@@ -59,8 +59,6 @@ class SpaceTimeConfig(BaseModel):
             raise ValueError("d_min must be positive.")
         if self.max_iter <= 0:
             raise ValueError("max_iter must be positive.")
-        if self.pelt_penalty <= 0:
-            raise ValueError("pelt_penalty must be positive.")
         if self.changepoints == ChangepointMode.FIXED and not self.fixed_changepoints:
             raise ValueError("fixed_changepoints must be provided when changepoints=FIXED.")
         if not 0.0 < self.mechanism_test_alpha < 1.0:
@@ -68,8 +66,11 @@ class SpaceTimeConfig(BaseModel):
         if self.changepoints != ChangepointMode.FIXED and self.fixed_changepoints:
             raise ValueError("fixed_changepoints is only valid when changepoints=FIXED.")
 
-        if self.changepoint_scope == ChangepointScope.PER_CONTEXT:
-            raise NotImplementedError("Per-context changepoints are not implemented yet.")
+        if isinstance(self.pelt_penalty, str):
+            if self.pelt_penalty not in {"bic", "mbic", "auto"}:
+                raise ValueError("pelt_penalty must be a positive number or one of " "{'bic', 'mbic', 'auto'}.")
+        elif self.pelt_penalty <= 0:
+            raise ValueError("pelt_penalty must be positive.")
 
         return self
 

@@ -2,9 +2,11 @@ import pandas as pd
 import pytest
 
 from causalchange.causal_change import CausalChange
-from causalchange.config.cc_config import ChangepointMode, SpaceTimeConfig
+from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode, ChangepointScope, SpaceTimeConfig
 from causalchange.config.cc_types import ContextAggregation, DataMode, GPType, GraphSearch, ScoreType
+from causalchange.discovery.scoring.edge_score_time import EdgeScoreTime
 from causalchange.discovery.search_time.base import TimePanel
+from causalchange.discovery.search_time.changepoints import SpaceTimeChangepointDetection
 from causalchange.discovery.search_time.mechanism_tests import KCIMechanismEqualityTest
 from causalchange.discovery.search_time.partitioning import SpaceTimePartitioning
 
@@ -352,3 +354,127 @@ def test_spacetime_contexts_detect_changepoints():
 
     assert "x0" in cc.result_.partitions.contexts
     assert "x1" in cc.result_.partitions.contexts
+
+
+def test_spacetime_contexts_detect_changepoints_auto_penalty_runs():
+    n = 60
+
+    x0_a = [float(i) for i in range(n)]
+    x1_a = [float(i) + 0.1 if i < 30 else float(2 * i) for i in range(n)]
+
+    x0_b = [float(i) for i in range(n)]
+    x1_b = [float(i) + 0.2 if i < 30 else float(2 * i) + 0.2 for i in range(n)]
+
+    X = pd.DataFrame(
+        {
+            "context": ["a"] * n + ["b"] * n,
+            "x0": x0_a + x0_b,
+            "x1": x1_a + x1_b,
+        }
+    )
+
+    cc = CausalChange(
+        data_mode=DataMode.TIME_CONTEXTS,
+        graph_search=GraphSearch.GLOBE,
+        score_type=ScoreType.LIN,
+        aggregation=ContextAggregation.SKIP,
+        context_col="context",
+        tau_max=2,
+        changepoints=ChangepointMode.DETECT,
+        d_min=10,
+        pelt_penalty="auto",
+    ).fit(X)
+
+    assert cc.fitted_graph
+    assert cc.graph_ is not None
+    assert cc.result_ is not None
+    assert isinstance(cc.result_.changepoints, list)
+
+    def test_spacetime_partitioning_does_not_merge_by_bad_transitivity():
+        partitioning = SpaceTimePartitioning(
+            SpaceTimeConfig(
+                tau_max=1,
+                changepoints=ChangepointMode.NONE,
+            )
+        )
+
+        labels = partitioning._cluster_from_pairwise_tests(
+            nodes=["A", "B", "C"],
+            same_pairs={
+                frozenset(("A", "B")),
+                frozenset(("B", "C")),
+            },
+            different_pairs={
+                frozenset(("A", "C")),
+            },
+            pvalues={
+                frozenset(("A", "B")): 0.9,
+                frozenset(("B", "C")): 0.8,
+                frozenset(("A", "C")): 0.01,
+            },
+        )
+
+        assert labels["A"] == labels["B"]
+        assert labels["A"] != labels["C"]
+
+
+def test_changepoint_detection_per_context_uses_union_grid():
+    X_a = pd.DataFrame(
+        {
+            "x0": [0.0] * 30 + [3.0] * 50,
+            "x1": [0.0] * 30 + [2.0] * 50,
+        }
+    )
+    X_b = pd.DataFrame(
+        {
+            "x0": [0.0] * 50 + [3.0] * 30,
+            "x1": [0.0] * 50 + [2.0] * 30,
+        }
+    )
+
+    panel = TimePanel(
+        datasets={"A": X_a, "B": X_b},
+        variables=["x0", "x1"],
+        context_col="context",
+    )
+
+    cfg = SpaceTimeConfig(
+        tau_max=1,
+        changepoints=ChangepointMode.DETECT,
+        changepoint_scope=ChangepointScope.PER_CONTEXT,
+        d_min=10,
+        pelt_penalty=1.0,
+    )
+
+    scorer = EdgeScoreTime(
+        cfg=CausalChangeConfig(
+            data_mode=DataMode.TIME_CONTEXTS,
+            graph_search=GraphSearch.GLOBE,
+            score_type=ScoreType.LIN,
+            aggregation=ContextAggregation.SKIP,
+            context_col="context",
+            spacetime=cfg,
+        )
+    )
+    scorer.fit_panel(panel)
+
+    detector = SpaceTimeChangepointDetection(cfg)
+
+    changepoints = detector.detect(
+        panel=panel,
+        graph=None,
+        scorer=scorer,
+        variables=["x0", "x1"],
+    )
+
+    assert isinstance(changepoints, list)
+    assert detector.diagnostics_["scope"] == ChangepointScope.PER_CONTEXT.value
+    assert "A" in detector.diagnostics_["by_context"]
+    assert "B" in detector.diagnostics_["by_context"]
+
+    # Exact PELT locations may shift by tau_max / signal construction,
+    # so assert approximate recovery.
+    assert any(abs(cp - 30) <= 2 for cp in detector.diagnostics_["by_context"]["A"])
+    assert any(abs(cp - 50) <= 2 for cp in detector.diagnostics_["by_context"]["B"])
+    assert any(abs(cp - 30) <= 2 for cp in changepoints)
+    assert any(abs(cp - 50) <= 2 for cp in changepoints)

@@ -70,16 +70,31 @@ def file_name_from_cfg(cfg) -> str:
         data["setting"],
         algo["name"],
         data["nonlinearity"],
-        f"nn-{data.get('n_nodes')}" f"p-{data.get('edge_prob')}",
+        f"nn-{data.get('n_nodes')}",
+        f"p-{data.get('edge_prob')}",
     ]
+
     if data["setting"] == "multi":
         parts.append(f"nc-{data.get('n_contexts')}")
         parts.append(f"iv-{data.get('intervention_type')}")
         parts.append(f"niv-{data.get('n_intervened_per_context')}")
         parts.append(f"nsc-{data.get('n_samples_per_context')}")
+    elif data["setting"] == "time-contexts":
+        parts.append(f"nd-{data.get('n_datasets') or data.get('n_contexts')}")
+        parts.append(f"nsc-{data.get('n_samples_per_context')}")
+        parts.append(f"tau-{data.get('tau_max')}")
+        parts.append(f"cp-{data.get('n_changepoints')}")
+        parts.append(f"reg-{data.get('n_regimes')}")
+        parts.append(f"ctx-{data.get('n_context_clusters')}")
+    elif data["setting"] == "time":
+        parts.append(f"ns-{data.get('n_samples')}")
+        parts.append(f"tau-{data.get('tau_max')}")
+        parts.append(f"cp-{data.get('n_changepoints')}")
+        parts.append(f"reg-{data.get('n_regimes')}")
     else:
         parts.append(f"ns-{data.get('n_samples')}")
-    return "_".join(parts)
+
+    return "_".join(str(p) for p in parts)
 
 
 def bench_name_from_cfg(cfg) -> str:
@@ -92,9 +107,14 @@ def bench_name_from_cfg(cfg) -> str:
         data["setting"],
         data["nonlinearity"],
     ]
+
     if data["setting"] == "multi":
         parts.append(f"iv-{data.get('intervention_type')}")
-    return "_".join(parts)
+    elif data["setting"] in {"time", "time-contexts"}:
+        parts.append(f"tau-{data.get('tau_max')}")
+        parts.append(f"cp-{data.get('n_changepoints')}")
+
+    return "_".join(str(p) for p in parts)
 
 
 def summarize_groups(
