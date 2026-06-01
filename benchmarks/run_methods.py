@@ -17,7 +17,8 @@ from benchmarks.synthetic.generators import (
     sample_single_temporal,
 )
 from benchmarks.synthetic.metrics import compute_metrics
-from benchmarks.synthetic.metrics_time import compute_changepoint_metrics
+from benchmarks.synthetic.metrics_time import (compute_changepoint_metrics, compute_target_partition_metrics,
+                                               compute_target_regime_partition_metrics_over_time)
 from benchmarks.utils import _pgmpy_graph_to_nx
 from causalchange.causal_change import CausalChange
 from causalchange.config.benchmark_config import (
@@ -59,6 +60,22 @@ def _node_to_summary_var(node) -> str:
         return text.split("_lag", 1)[0]
 
     return text
+
+
+def _estimated_context_labels_by_target(est: CausalChange) -> dict[str, dict[int, int]]:
+    partitions = est.result.partitions
+    return {
+        str(target): {int(dataset_id): int(label) for dataset_id, label in labels.items()}
+        for target, labels in partitions.contexts.items()
+    }
+
+
+def _estimated_regime_labels_by_target(est: CausalChange) -> dict[str, dict[int, int]]:
+    partitions = est.result.partitions
+    return {
+        str(target): {int(regime_id): int(label) for regime_id, label in labels.items()}
+        for target, labels in partitions.regimes.items()
+    }
 
 
 def _project_temporal_graph_to_summary(graph: nx.DiGraph) -> nx.DiGraph:
@@ -250,6 +267,30 @@ def run_scoring(
         )
 
         metrics.update(changepoint_metrics)
+        spacetime_cfg = est.cfg.spacetime
+
+        if spacetime_cfg.detect_contexts:
+            context_partition_metrics = compute_target_partition_metrics(
+                spacetime_sample.context_labels_by_target,
+                _estimated_context_labels_by_target(est),
+            )
+
+            metrics["context_partition_ari"] = context_partition_metrics.ari_mean
+            metrics["context_partition_ami"] = context_partition_metrics.ami_mean
+            metrics["context_partition_nmi"] = context_partition_metrics.nmi_mean
+
+        if spacetime_cfg.detect_regimes:
+            regime_partition_metrics = compute_target_regime_partition_metrics_over_time(
+                spacetime_sample.regime_labels_by_target,
+                spacetime_sample.changepoints,
+                _estimated_regime_labels_by_target(est),
+                est.result.changepoints,
+                n_samples=len(spacetime_sample.time_regime_labels),
+            )
+
+            metrics["regime_partition_ari"] = regime_partition_metrics.ari_mean
+            metrics["regime_partition_ami"] = regime_partition_metrics.ami_mean
+            metrics["regime_partition_nmi"] = regime_partition_metrics.nmi_mean
 
     if return_nx:
         return metrics, est_nx

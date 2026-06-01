@@ -27,12 +27,16 @@ class SpaceTimeResult:
     graph: Any
     changepoints: list[int]
     partitions: SpaceTimePartitions
+
     topological_order: list[str] | None = None
+    history: list[dict[str, Any]] = field(default_factory=list)
+
+    edge_strengths: dict[tuple[Any, Any], float] = field(default_factory=dict)
 
     # For ChangepointScope.PER_CONTEXT, changepoints is the union of changepoints_by_context
     changepoints_by_context: dict[Any, list[int]] | None = None
-
     changepoint_diagnostics: dict[str, Any] = field(default_factory=dict)
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

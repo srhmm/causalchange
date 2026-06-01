@@ -104,7 +104,10 @@ def sample_spacetime_synthetic(
         weight_scale=weight_scale,
         allow_self_lag=allow_self_lag,
     )
-
+    A_lags_base = _rescale_lag_weights_for_stability(
+        A_lags_base,
+        max_abs_column_sum=0.6,
+    )
     edge_keys = _edge_keys(W_inst_base, A_lags_base)
     if not edge_keys:
         u = 0
@@ -264,7 +267,19 @@ def _sample_instantaneous_graph_and_weights(
 
     return graph, W
 
+def _rescale_lag_weights_for_stability(
+    A_lags: list[np.ndarray],
+    *,
+    max_abs_column_sum: float = 0.6,
+) -> list[np.ndarray]:
+    total = sum(np.abs(A) for A in A_lags)
+    max_col_sum = float(total.sum(axis=0).max())
 
+    if max_col_sum <= max_abs_column_sum or max_col_sum == 0.0:
+        return A_lags
+
+    factor = max_abs_column_sum / max_col_sum
+    return [A * factor for A in A_lags]
 def _sample_lag_weights(
     *,
     n_nodes: int,

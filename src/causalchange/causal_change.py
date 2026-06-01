@@ -107,6 +107,15 @@ class CausalChange:
         self.feature_cols_: list[str] | None = None
         self.fitted_graph = False
 
+        self.result_ = None
+        self.graph_ = None
+        self.edge_strengths_: dict = {}
+        self.order_: list | None = None
+
+        self.changepoints_: list[int] | None = None
+        self.changepoints_by_context_: dict | None = None
+        self.partitions_ = None
+
     def fit(self, X: pd.DataFrame) -> CausalChange:
         X_checked = self._check_X(X)
 
@@ -116,6 +125,18 @@ class CausalChange:
         self.result_ = self.engine_.discover()
         self.graph_ = self.result_.graph
         self.fitted_graph = True
+
+        self.edge_strengths_ = self.result_.edge_strengths
+        self.order_ = self.result_.topological_order
+
+        if self.cfg.data_mode.is_temporal():
+            self.changepoints_ = self.result_.changepoints
+            self.changepoints_by_context_ = self.result_.changepoints_by_context
+            self.partitions_ = self.result_.partitions
+        else:
+            self.changepoints_ = None
+            self.changepoints_by_context_ = None
+            self.partitions_ = None
 
         return self
 

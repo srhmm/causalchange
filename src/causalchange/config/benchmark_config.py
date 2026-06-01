@@ -88,7 +88,7 @@ class SingleTemporalDataConfig(DataConfigBase):
     setting: Literal["time"] = "time"
 
     n_nodes: int = Field(..., ge=1)
-    edge_prob: float = Field(..., ge=0.0, le=1.0)
+    edge_prob: float = Field(..., ge=0.25, le=1.0)
     seed: int = 42
 
     n_samples: int = Field(..., ge=1)
@@ -97,6 +97,7 @@ class SingleTemporalDataConfig(DataConfigBase):
     weight_scale: float = 2.0
     noise_scale: float = 0.7
     nonlinearity: Nonlinearity = "tanh"
+
 
     n_changepoints: int = Field(2, ge=0)
     n_regimes: int = Field(2, ge=1)

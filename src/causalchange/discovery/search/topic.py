@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import networkx as nx
@@ -19,6 +19,8 @@ class DAGSearchResult:
     graph: nx.DiGraph
     topological_order: list[Any]
     history: list[dict[str, Any]]
+    edge_strengths: dict[tuple[Any, Any], float] = field(default_factory=dict)
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 class TopicSearch:

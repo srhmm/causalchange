@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from time import perf_counter
 from typing import Any
 
 import pandas as pd
@@ -36,6 +37,7 @@ class SpaceTimeEngine:
         self.panel_: TimePanel | None = None
         self.partitions_ = None
         self.result_: SpaceTimeResult | None = None
+        self._score_cache: dict[tuple, float] = {}
 
     def fit(self, X: pd.DataFrame) -> SpaceTimeEngine:
         self.panel_ = self._make_panel(X)
@@ -51,20 +53,34 @@ class SpaceTimeEngine:
         if self.panel_ is None:
             raise RuntimeError("Engine not fitted. Call fit() first.")
 
+        parents = tuple(sorted(parents, key=repr))
+        cache_key = (
+            effect,
+            parents,
+            tuple(self.changepoints_),
+            self._partition_key(),
+        )
+
+        if cache_key in self._score_cache:
+            return self._score_cache[cache_key]
+
         if self.partitions_ is not None:
-            return float(
+            value = float(
                 self.scorer.score_edge_panel(
                     panel=self.panel_,
                     effect=effect,
-                    parents=tuple(parents),
+                    parents=parents,
                     partitions=self.partitions_,
                 )
             )
+        else:
+            if self.X0_ is None:
+                raise RuntimeError("Engine not fitted. Call fit() first.")
 
-        if self.X0_ is None:
-            raise RuntimeError("Engine not fitted. Call fit() first.")
+            value = float(self.scorer.score_edge(self.X0_, effect, parents))
 
-        return float(self.scorer.score_edge(self.X0_, effect, tuple(parents)))
+        self._score_cache[cache_key] = value
+        return value
 
     def _partition_key(self) -> tuple | None:
         if self.partitions_ is None:
@@ -101,34 +117,47 @@ class SpaceTimeEngine:
         final_search_result = None
 
         for iteration in range(max_iter):
+            t0 = perf_counter()
+            t_cp0 = perf_counter()
             self.changepoints_ = self.changepoint_detection.detect(
                 panel=self.panel_,
                 graph=graph,
                 scorer=self.scorer,
                 variables=variables,
             )
+            t_cp = perf_counter() - t_cp0
             if self.cfg.spacetime.changepoint_scope == ChangepointScope.PER_CONTEXT:
                 self.changepoints_by_context_ = self.changepoint_detection.changepoints_by_context_
             else:
                 self.changepoints_by_context_ = None
 
             self.changepoint_diagnostics_ = self.changepoint_detection.diagnostics_
+
+
             self.scorer.set_time_windows(
                 n_raw_samples=len(self.panel_.first_dataset()),
                 changepoints=self.changepoints_,
             )
+
+            t_part0 = perf_counter()
+
             self.partitions_ = self.partitioning.fit_predict(
                 panel=self.panel_,
                 graph=graph,
                 changepoints=self.changepoints_,
             )
+            t_part = perf_counter() - t_part0
 
+            self._score_cache = {}
+            t_search0 = perf_counter()
             search_result = self.search.run(
                 variables=variables,
                 tau_max=self.cfg.spacetime.tau_max,
                 allowed_edge=self.domain.allowed_edge,
                 score_fun=self.score_edge,
             )
+            t_search = perf_counter() - t_search0
+            iteration_time = perf_counter() - t0
 
             final_search_result = search_result
             graph = search_result.graph
@@ -146,6 +175,13 @@ class SpaceTimeEngine:
                     "n_edges": graph.number_of_edges(),
                     "search_history": search_result.history,
                     "partition_diagnostics": self.partitions_.diagnostics,
+                    "timing": {
+                        "changepoints": t_cp,
+                        "partitioning": t_part,
+                        "search": t_search,
+                        "iteration_total": iteration_time,
+                        "score_cache_size": len(self._score_cache),
+                    },
                 }
             )
 
@@ -157,6 +193,7 @@ class SpaceTimeEngine:
         if final_search_result is None or self.partitions_ is None:
             raise RuntimeError("SpaceTime discovery failed to produce a result.")
 
+        edge_strengths = self._compute_edge_strengths(final_search_result.graph)
         result = SpaceTimeResult(
             graph=final_search_result.graph,
             topological_order=final_search_result.topological_order,
@@ -164,6 +201,12 @@ class SpaceTimeEngine:
             partitions=self.partitions_,
             changepoints_by_context=self.changepoints_by_context_,
             changepoint_diagnostics=self.changepoint_diagnostics_,
+            edge_strengths=edge_strengths,
+            diagnostics={
+                "data_mode": self.data_mode.value,
+                "graph_search": self.cfg.graph_search.value,
+                "score_type": str(self.cfg.score_type),
+            },
         )
 
         self.result_ = result
@@ -219,3 +262,20 @@ class SpaceTimeEngine:
             variables=variables,
             context_col=context_col,
         )
+
+    def _compute_edge_strengths(self, graph) -> dict[tuple[Any, Any], float]:
+        strengths: dict[tuple[Any, Any], float] = {}
+
+        for edge in graph.edges():
+            parent, effect = edge
+
+            parents = list(graph.predecessors(effect))
+            score_with = self.score_edge(effect, tuple(parents))
+
+            parents_without = [p for p in parents if p != parent]
+            score_without = self.score_edge(effect, tuple(parents_without))
+
+            # MDL scores are lower-is-better, so positive means the edge helps.
+            strengths[edge] = float(score_without - score_with)
+
+        return strengths

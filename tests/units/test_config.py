@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode, SpaceTimeConfig
 from causalchange.config.cc_types import ContextAggregation, DataMode, GraphSearch, ScoreType
@@ -70,4 +71,28 @@ def test_spacetime_config_rejects_invalid_pelt_penalty():
             tau_max=2,
             changepoints=ChangepointMode.DETECT,
             pelt_penalty="bad",
+        )
+
+
+def test_topic_is_compatible_with_tabular_modes():
+    assert GraphSearch.TOPIC.is_compatible_with(DataMode.IID)
+    assert GraphSearch.TOPIC.is_compatible_with(DataMode.CONTEXTS)
+
+
+def test_globe_is_compatible_with_temporal_modes():
+    assert GraphSearch.GLOBE.is_compatible_with(DataMode.TIME)
+    assert GraphSearch.GLOBE.is_compatible_with(DataMode.TIME_CONTEXTS)
+
+
+def test_topic_is_not_public_for_temporal_modes():
+    with pytest.raises(ValidationError):
+        CausalChangeConfig(
+            data_mode=DataMode.TIME,
+            graph_search=GraphSearch.TOPIC,
+            score_type=ScoreType.LIN,
+            aggregation=ContextAggregation.SKIP,
+            spacetime=SpaceTimeConfig(
+                tau_max=1,
+                changepoints=ChangepointMode.NONE,
+            ),
         )

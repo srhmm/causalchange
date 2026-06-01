@@ -49,7 +49,6 @@ import pandas as pd
 
 from causalchange.causal_change import CausalChange
 from causalchange.config.cc_types import (
-    ContextAggregation,
     DataMode,
     GraphSearch,
     ScoreType,
@@ -61,7 +60,6 @@ cc = CausalChange(
     data_mode=DataMode.IID,
     graph_search=GraphSearch.TOPIC,
     score_type=ScoreType.LIN,
-    aggregation=ContextAggregation.SKIP,
 )
 
 cc.fit(X)
@@ -102,12 +100,11 @@ cc = CausalChange(
     data_mode=DataMode.TIME_CONTEXTS,
     graph_search=GraphSearch.GLOBE,
     score_type=ScoreType.LIN,
-    aggregation=ContextAggregation.SKIP,
     context_col="context",
     tau_max=2,
     changepoints=ChangepointMode.DETECT,
     d_min=20,
-    pelt_penalty=1.0,
+    pelt_penalty="auto",
     detect_contexts=True,
     detect_regimes=True,
 )
@@ -125,7 +122,7 @@ SpaceTime uses temporal nodes of the form
 
 and learns directed edges into lag-0 variables. For example, `(("x0", 1), ("x1", 0))` means `x0(t-1) -> x1(t)`.
 For `ChangepointMode.DETECT` and mechanism partitioning with `detect_contexts=True` or `detect_regimes=True`, install the SpaceTime extra with `pip install "causalchange[spacetime]"`.
-
+Currently, the public SpaceTime pipeline uses `GraphSearch.GLOBE` while `GraphSearch.TOPIC` is used for tabular data.
 ---
 
 ### Tests
@@ -149,6 +146,16 @@ Before committing, the repository uses pre-commit hooks.
 pre-commit run --all-files
 ```
 
+Testing:
+
+```bash
+python -m venv .venv-pypi-smoke
+.\.venv-pypi-smoke\Scripts\activate
+python -m pip install -U pip
+pip install causalchange
+python scripts\smoke_pypi.py
+deactivate
+```
 ---
 
 ### References
