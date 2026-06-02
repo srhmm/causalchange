@@ -8,6 +8,7 @@ import pandas as pd
 from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode, ChangepointScope
 from causalchange.config.cc_types import DataMode
 from causalchange.discovery.search_time.base import SpaceTimeResult, SpaceTimeScoring, TimePanel
+from causalchange.discovery.search_time.posthoc import compute_edge_contributions, compute_mechanism_scores
 
 
 class SpaceTimeEngine:
@@ -132,7 +133,6 @@ class SpaceTimeEngine:
                 self.changepoints_by_context_ = None
 
             self.changepoint_diagnostics_ = self.changepoint_detection.diagnostics_
-
 
             self.scorer.set_time_windows(
                 n_raw_samples=len(self.panel_.first_dataset()),
@@ -279,3 +279,31 @@ class SpaceTimeEngine:
             strengths[edge] = float(score_without - score_with)
 
         return strengths
+
+    def mechanism_scores(
+        self,
+        *,
+        graph=None,
+        scope="global",
+        changepoints: list[int] | None = None,
+    ):
+        return compute_mechanism_scores(
+            self,
+            graph=graph,
+            scope=scope,
+            changepoints=changepoints,
+        )
+
+    def edge_contributions(
+        self,
+        *,
+        graph=None,
+        scope="global",
+        changepoints: list[int] | None = None,
+    ):
+        return compute_edge_contributions(
+            self,
+            graph=graph,
+            scope=scope,
+            changepoints=changepoints,
+        )

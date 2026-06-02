@@ -267,6 +267,7 @@ def _sample_instantaneous_graph_and_weights(
 
     return graph, W
 
+
 def _rescale_lag_weights_for_stability(
     A_lags: list[np.ndarray],
     *,
@@ -280,6 +281,8 @@ def _rescale_lag_weights_for_stability(
 
     factor = max_abs_column_sum / max_col_sum
     return [A * factor for A in A_lags]
+
+
 def _sample_lag_weights(
     *,
     n_nodes: int,

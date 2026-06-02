@@ -126,12 +126,12 @@ class CausalChange:
         self.graph_ = self.result_.graph
         self.fitted_graph = True
 
-        self.edge_strengths_ = self.result_.edge_strengths
+        self.edge_strengths_ = getattr(self.result_, "edge_strengths", {})
         self.order_ = self.result_.topological_order
 
         if self.cfg.data_mode.is_temporal():
             self.changepoints_ = self.result_.changepoints
-            self.changepoints_by_context_ = self.result_.changepoints_by_context
+            self.changepoints_by_context_ = getattr(self.result_, "changepoints_by_context", None)
             self.partitions_ = self.result_.partitions
         else:
             self.changepoints_ = None
@@ -301,4 +301,40 @@ class CausalChange:
             aggregation=aggregation,
             context_col=context_col or "context",
             **kwargs,
+        )
+
+    def spacetime_mechanism_scores(
+        self,
+        *,
+        graph=None,
+        scope: str = "global",
+        changepoints: list[int] | None = None,
+    ) -> pd.DataFrame:
+        self._require_fitted()
+
+        if not isinstance(self.engine_, SpaceTimeEngine):
+            raise RuntimeError("spacetime_mechanism_scores() is only available for SpaceTime models.")
+
+        return self.engine_.mechanism_scores(
+            graph=graph,
+            scope=scope,
+            changepoints=changepoints,
+        )
+
+    def spacetime_edge_contributions(
+        self,
+        *,
+        graph=None,
+        scope: str = "global",
+        changepoints: list[int] | None = None,
+    ) -> pd.DataFrame:
+        self._require_fitted()
+
+        if not isinstance(self.engine_, SpaceTimeEngine):
+            raise RuntimeError("spacetime_edge_contributions() is only available for SpaceTime models.")
+
+        return self.engine_.edge_contributions(
+            graph=graph,
+            scope=scope,
+            changepoints=changepoints,
         )

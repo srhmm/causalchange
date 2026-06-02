@@ -73,7 +73,6 @@ def compute_changepoint_metrics(
     )
 
 
-
 @dataclass(frozen=True)
 class PartitionMetrics:
     ari: float
@@ -142,16 +141,14 @@ def compute_target_partition_metrics(
         nmi_by_target=nmi_by_target,
     )
 
+
 def _changepoints_to_intervals(
     n_samples: int,
     changepoints: list[int],
 ) -> list[tuple[int, int]]:
     cps = sorted(int(cp) for cp in changepoints if 0 < int(cp) < n_samples)
     boundaries = [0, *cps, int(n_samples)]
-    return [
-        (int(boundaries[i]), int(boundaries[i + 1]))
-        for i in range(len(boundaries) - 1)
-    ]
+    return [(int(boundaries[i]), int(boundaries[i + 1])) for i in range(len(boundaries) - 1)]
 
 
 def _expand_interval_labels_to_time(

@@ -98,7 +98,6 @@ class SingleTemporalDataConfig(DataConfigBase):
     noise_scale: float = 0.7
     nonlinearity: Nonlinearity = "tanh"
 
-
     n_changepoints: int = Field(2, ge=0)
     n_regimes: int = Field(2, ge=1)
     min_segment_length: int = Field(30, ge=1)

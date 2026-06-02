@@ -17,8 +17,11 @@ from benchmarks.synthetic.generators import (
     sample_single_temporal,
 )
 from benchmarks.synthetic.metrics import compute_metrics
-from benchmarks.synthetic.metrics_time import (compute_changepoint_metrics, compute_target_partition_metrics,
-                                               compute_target_regime_partition_metrics_over_time)
+from benchmarks.synthetic.metrics_time import (
+    compute_changepoint_metrics,
+    compute_target_partition_metrics,
+    compute_target_regime_partition_metrics_over_time,
+)
 from benchmarks.utils import _pgmpy_graph_to_nx
 from causalchange.causal_change import CausalChange
 from causalchange.config.benchmark_config import (

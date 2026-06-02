@@ -8,8 +8,7 @@ def _require_matplotlib():
         import matplotlib.pyplot as plt
     except ImportError as exc:
         raise ImportError(
-            "Plotting requires matplotlib. Install it with "
-            '`pip install "causalchange[notebooks]"`.'
+            "Plotting requires matplotlib. Install it with " '`pip install "causalchange[notebooks]"`.'
         ) from exc
 
     return plt
