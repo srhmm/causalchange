@@ -1,19 +1,221 @@
 from __future__ import annotations
 
+import numpy as np
+import pandas as pd
+from typing import Literal
 from collections.abc import Callable, Hashable
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
-import pandas as pd
+from causalchange.config.causal_change_config import CausalChangeConfigTabular
+from causalchange.utils.union_find import union_find_components
 
-from causalchange.config.cc_config import CausalChangeConfig
+
+from __future__ import annotations
+
+from collections.abc import Hashable, Iterable
+
+def _util_union_find_components(
+    nodes: list[Hashable],
+    edges: Iterable[tuple[Hashable, Hashable]],
+) -> list[list[Hashable]]:
+    parent = {x: x for x in nodes}
+    rank = {x: 0 for x in nodes}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            return
+        if rank[ra] < rank[rb]:
+            parent[ra] = rb
+        elif rank[ra] > rank[rb]:
+            parent[rb] = ra
+        else:
+            parent[rb] = ra
+            rank[ra] += 1
+
+    for a, b in edges:
+        union(a, b)
+
+    comps: dict[Hashable, list[Hashable]] = {}
+    for x in nodes:
+        rx = find(x)
+        comps.setdefault(rx, []).append(x)
+
+    return list(comps.values())
+
 
 
 @dataclass(frozen=True)
-class AggregationResult:
+class ContextCombinationResult:
     total: float
     diagnostics: dict[str, Any]
+
+
+class SkipCombination:
+    """for single context"""
+
+    def aggregate(
+        self,
+        *,
+        contexts: dict[Hashable, pd.DataFrame],
+        effect: Any,
+        parents: tuple[Any, ...],
+        score_ctx: Callable[[pd.DataFrame], float],
+    ) -> ContextCombinationResult:
+        if len(contexts) != 1:
+            raise ValueError(
+                f"NoAggregation expects exactly one context, got {len(contexts)}. "
+                "Use ContextAggregation.CHAIN or ContextAggregation.LINC for multi-context data."
+            )
+
+        ctx, df = next(iter(contexts.items()))
+        score = float(score_ctx(df))
+
+        return ContextCombinationResult(
+            total=score,
+            diagnostics={
+                "mode": "none",
+                "context": ctx,
+                "effect": effect,
+                "parents": parents,
+                "score": score,
+            },
+        )
+
+
+@dataclass(frozen=True)
+class ContextCombinationParams:
+    method: Literal["components", "agglomerative"] = "components"
+    gain_threshold: float = 0.0
+
+
+class LINCContextCombination:
+    def __init__(self, *, grouping: ContextCombinationParams, higher_is_better: bool):
+        self.grouping = grouping
+        self.higher_is_better = bool(higher_is_better)
+        self.last_gain_matrix: np.ndarray | None = None
+        self.last_gain_contexts: tuple[Hashable, ...] | None = None
+
+    def transition_gain(self, old_score: float, new_score: float) -> float:
+        return (new_score - old_score) if self.higher_is_better else (old_score - new_score)
+
+    def score_significant(self, gain: float) -> bool:
+        return gain > float(self.grouping.gain_threshold)
+
+    def aggregate(
+        self,
+        *,
+        contexts: dict[Hashable, pd.DataFrame],
+        effect: Any,
+        parents: tuple,
+        score_ctx: Callable[[pd.DataFrame], float],
+    ) -> ContextCombinationResult:
+        # effect/parents are unused for LINC (scoring is encapsulated by score_ctx)
+        ctx_ids = list(contexts.keys())
+        n = len(ctx_ids)
+        if n == 0:
+            return ContextCombinationResult(total=0.0, diagnostics={})
+
+        # per-context
+        ctx_scores: dict[Hashable, float] = {c: float(score_ctx(contexts[c])) for c in ctx_ids}
+
+        if n == 1:
+            return ContextCombinationResult(
+                total=float(ctx_scores[ctx_ids[0]]),
+                diagnostics={
+                    "groups": [frozenset([ctx_ids[0]])],
+                    "ctx_scores": ctx_scores,
+                },
+            )
+
+        if self.grouping.method == "agglomerative":
+            total, diag = self._agglomerative(ctx_ids, contexts, score_ctx)
+            return ContextCombinationResult(total=float(total), diagnostics=diag)
+
+        # components method
+        gain = np.zeros((n, n), dtype=float)
+        edges: list[tuple[Hashable, Hashable]] = []
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                ci, cj = ctx_ids[i], ctx_ids[j]
+                pooled = pd.concat([contexts[ci], contexts[cj]], axis=0, ignore_index=True)
+                pooled_score = float(score_ctx(pooled))
+                g = float(self.transition_gain(ctx_scores[ci] + ctx_scores[cj], pooled_score))
+                gain[i, j] = gain[j, i] = g
+                if self.score_significant(g):
+                    edges.append((ci, cj))
+
+        self.last_gain_matrix = gain
+        self.last_gain_contexts = tuple(ctx_ids)
+
+        components = _util_union_find_components(ctx_ids, edges)
+
+        total = 0.0
+        for comp in components:
+            pooled = pd.concat([contexts[c] for c in comp], axis=0, ignore_index=True)
+            total += float(score_ctx(pooled))
+
+        diag = {
+            "method": "components",
+            "gain_matrix": gain,
+            "gain_contexts": tuple(ctx_ids),
+            "edges": edges,
+            "groups": [frozenset(c) for c in components],
+            "ctx_scores": ctx_scores,
+        }
+        return ContextCombinationResult(total=float(total), diagnostics=diag)
+
+    def _agglomerative(self, ctx_ids, contexts, score_ctx):
+        groups = [frozenset([c]) for c in ctx_ids]
+
+        def group_score(g):
+            pooled = pd.concat([contexts[c] for c in g], axis=0, ignore_index=True)
+            return float(score_ctx(pooled))
+
+        scores = {g: group_score(g) for g in groups}
+
+        while True:
+            best_gain = float("-inf")
+            best_pair = None
+            best_score = None
+
+            for i in range(len(groups)):
+                for j in range(i + 1, len(groups)):
+                    gi, gj = groups[i], groups[j]
+                    merged = gi | gj
+                    s_merged = group_score(merged)
+                    g = float(self.transition_gain(scores[gi] + scores[gj], s_merged))
+                    if g > best_gain:
+                        best_gain = g
+                        best_pair = (i, j, merged)
+                        best_score = s_merged
+
+            if best_pair is None or not self.score_significant(best_gain):
+                break
+
+            i, j, merged = best_pair
+            gi, gj = groups[i], groups[j]
+
+            groups = [g for k, g in enumerate(groups) if k not in (i, j)]
+            groups.append(merged)
+
+            scores.pop(gi)
+            scores.pop(gj)
+            scores[merged] = float(best_score)
+
+        return float(sum(scores.values())), {
+            "method": "agglomerative",
+            "groups": list(scores.keys()),
+            "scores": dict(scores),
+        }
 
 
 def _colname(node: Any) -> str:
@@ -24,16 +226,16 @@ def _colname(node: Any) -> str:
     return str(node)
 
 
-class ChainAggregator:
+class CHAINContextCombination:
     """
-    CHAIN aggregation score = sum_ctx score_ctx(df_ctx)  +/- lambda_inv * invariance_penalty
-    where penalty is MMD on pooled OLS residual distributions across contexts.
+    CHAIN idea w score = sum_ctx score_ctx(df_ctx)  +/- lambda_inv * invariance_penalty
+    where penalty is MMD on pooled OLS residual distributions across contexts
     """
 
     def __init__(
         self,
         *,
-        cfg: CausalChangeConfig,
+        cfg: CausalChangeConfigTabular,
     ):
         self.lambda_inv = 1.0
         self.mmd_max_samples = 200
@@ -53,10 +255,10 @@ class ChainAggregator:
         effect: Any,
         parents: tuple,
         score_ctx: Callable[[pd.DataFrame], float],
-    ) -> AggregationResult:
+    ) -> ContextCombinationResult:
         ctx_ids = list(contexts.keys())
         if not ctx_ids:
-            return AggregationResult(total=0.0, diagnostics={})
+            return ContextCombinationResult(total=0.0, diagnostics={})
 
         # fit term
         fit = 0.0
@@ -64,7 +266,7 @@ class ChainAggregator:
             fit += float(score_ctx(contexts[c]))
 
         if self.lambda_inv <= 0.0 or len(ctx_ids) <= 1:
-            return AggregationResult(total=float(fit), diagnostics={"fit": float(fit), "penalty": 0.0})
+            return ContextCombinationResult(total=float(fit), diagnostics={"fit": float(fit), "penalty": 0.0})
 
         pen = float(self._invariance_penalty(contexts, effect, parents))
         if self.higher_is_better:
@@ -72,7 +274,7 @@ class ChainAggregator:
         else:
             total = float(fit + self.lambda_inv * pen)
 
-        return AggregationResult(
+        return ContextCombinationResult(
             total=total,
             diagnostics={
                 "fit": float(fit),

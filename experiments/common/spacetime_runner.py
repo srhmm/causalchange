@@ -8,7 +8,7 @@ import pandas as pd
 from causalchange.causal_change import CausalChange
 from causalchange.config.cc_config import ChangepointMode
 from causalchange.config.cc_types import (
-    ContextAggregation,
+    ContextMode,
     DataMode,
     GPType,
     GraphSearch,
@@ -71,10 +71,10 @@ def make_spacetime_estimator(
         data_mode=data_mode,
         graph_search=GraphSearch.GLOBE,
         score_type=resolve_score_type(config.score_type),
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
         context_col=config.context_col if data_mode.is_context() else None,
         tau_max=config.tau_max,
-        changepoints=resolve_changepoint_mode(config.changepoints),
+        changepoint_mode=resolve_changepoint_mode(config.changepoints),
         fixed_changepoints=fixed_changepoints,
         d_min=config.d_min,
         max_iter=config.max_iter,
@@ -147,24 +147,24 @@ def compute_posthoc_tables(
     edge_contributions_windows = None
 
     if compute_global_scores:
-        mechanism_scores_global = estimator.spacetime_mechanism_scores(
+        mechanism_scores_global = estimator.get_spacetime_mechanism_scores(
             graph=graph,
             scope="global",
             changepoints=changepoints,
         )
-        edge_contributions_global = estimator.spacetime_edge_contributions(
+        edge_contributions_global = estimator.get_spacetime_edge_contributions(
             graph=graph,
             scope="global",
             changepoints=changepoints,
         )
 
     if compute_window_scores:
-        mechanism_scores_windows = estimator.spacetime_mechanism_scores(
+        mechanism_scores_windows = estimator.get_spacetime_mechanism_scores(
             graph=graph,
             scope="windows",
             changepoints=changepoints,
         )
-        edge_contributions_windows = estimator.spacetime_edge_contributions(
+        edge_contributions_windows = estimator.get_spacetime_edge_contributions(
             graph=graph,
             scope="windows",
             changepoints=changepoints,

@@ -1,45 +1,54 @@
 from __future__ import annotations
 
+import logging
+
 import networkx as nx
 import pandas as pd
 
-from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode, ChangepointScope, SpaceTimeConfig
-from causalchange.config.cc_types import (
-    ContextAggregation,
+from config.causal_change_config import CausalChangeConfigTabular, CausalChangeConfigTime
+
+from causalchange.config.types import (
+    ContextMode,
     DataMode,
     GPType,
     GraphSearch,
-    ScoreType,
+    ScoreType, ChangepointMode, ChangepointScope,
 )
-from causalchange.discovery.factory import PipelineFactory
-from causalchange.discovery.pipeline import AggregationResult, TabularDiscoveryEngine
-from causalchange.discovery.search.topic import DAGSearchResult
-from causalchange.discovery.search_time.base import SpaceTimeResult
-from causalchange.discovery.search_time.engine import SpaceTimeEngine
+from discovery.graph_tabular_topological import DAGSearchResult
+from engines.factory import EngineFactory
+from engines.protocols import AggregationResult
+from engines.tabular import TabularDiscoveryEngine
+from engines.temporal import TemporalDiscoveryEngine
+from results import TemporalResult
+
+
+
+
 
 
 class CausalChange:
     def __init__(
         self,
-        cfg: CausalChangeConfig | None = None,
-        *,
+        #cfg: CausalChangeConfig | None = None,
+        #*,
         data_mode: DataMode = DataMode.SKIP,
         graph_search: GraphSearch = GraphSearch.SKIP,
         score_type: ScoreType | GPType = ScoreType.SKIP,
-        aggregation: ContextAggregation = ContextAggregation.SKIP,
-        changepoints: ChangepointMode = ChangepointMode.NONE,
+        *,
+        context_mode: ContextMode = ContextMode.SKIP,
+        changepoint_mode: ChangepointMode = ChangepointMode.NONE,
         changepoint_scope: ChangepointScope = ChangepointScope.GLOBAL,
         node_nms: list[str] | None = None,
         context_col: str | None = None,
         tau_max: int | None = None,
-        fixed_changepoints: list[int] | None = None,
         d_min: int = 30,
         max_iter: int = 3,
         pelt_penalty: float | str = "auto",
         detect_contexts: bool = False,
         detect_regimes: bool = False,
         mechanism_test_alpha: float = 0.05,
-        lg=None,
+        fixed_changepoints: list[int] | None = None,
+        lg: logging = None,
         vb: int = 0,
         **kwargs,
     ):
@@ -50,19 +59,24 @@ class CausalChange:
         :Arguments:
         * *cfg* (``CausalChangeConfig``) -- config
         * *data_mode* (``DataMode``) -- input data type, one tabular dataset (``IID``), tabular data from
-        multiple contexts (``CONTEXTS``), one time series (``TIME``)
-        or time series from multiple contexts (``TIME_CONTEXTS``).
-
+          multiple contexts (``CONTEXTS``), one time series (``TIME``)
+          or time series from multiple contexts (``TIME_CONTEXTS``).
         * *graph_search* (``GraphSearch``) -- search algorithm for DAGs
-        * *score_type* (``ScoreType``) -- regression and scoring
-        * *aggregation* (``ContextAggregation``) -- for multi-context data, algorithm to combine contexts
-        * *changepoints* (``ChangepointMode``) -- for time series, algorithm to detect causal changepoints
+        * *score_type* (``ScoreType``) -- regressor and corresponding scoring criterion
+        * *context_mode* (``ContextMode``) -- for multi-context data, algorithm to combine contexts
+        * *changepoint_mode* (``ChangepointMode``) -- for time series, algorithm to detect causal changepoints
+        * *changepoint_scope* (``ChangepointMode``) -- for time series from multiple contexts, whether to
+          detect changepoints globally or per context
         * *context_col* (``str``) -- for multi-context data, the column name of an
-        indicator column for the contexts
+          indicator column for the contexts
         * *tau_max* (``int``) -- for time series, maximum time lag to consider
+        * *max_iter* (``int``) -- for time series, maximum number of interleaved iterations
+        * *pelt_penalty* (``int``) -- for time series, sensitivity threshold for changepoint detection in PELT,
+          a float number or one of {"auto", "mbic", "bic"}.
+        * *detect_contexts* (``int``) -- for time series, whether to perform mechanism clustering over contexts
+        * *detect_regimes* (``int``) -- for time series, whether to perform mechanism clustering over the time range
         * *fixed_changepoints* (``int``) -- for time series, optional known changepoints
-        (used when ``changepoints==ChangepointMode.FIXED``)
-        * *truths* (``nx.DiGraph``) -- for mixed data, oracle versions, w entries 't_A', 't_Z', 't_n_Z'
+          (used when ``changepoints==ChangepointMode.FIXED``)
         * *lg* (``logging``) -- logger if verbosity>0
         * *vb* (``int``) -- verbosity level
         """
@@ -72,14 +86,14 @@ class CausalChange:
         self.node_nms = node_nms
 
         self.cfg = self._make_config(
-            cfg=cfg,
+            cfg=None,#cfg,
             data_mode=data_mode,
             graph_search=graph_search,
             score_type=score_type,
-            aggregation=aggregation,
+            aggregation=context_mode,
             context_col=context_col,
             tau_max=tau_max,
-            changepoints=changepoints,
+            changepoints=changepoint_mode,
             changepoint_scope=changepoint_scope,
             fixed_changepoints=fixed_changepoints,
             d_min=d_min,
@@ -98,8 +112,8 @@ class CausalChange:
         self.context_col = self.cfg.context_col
 
         self.X_: pd.DataFrame | None = None
-        self.engine_: TabularDiscoveryEngine | SpaceTimeEngine | None = None
-        self.result_: DAGSearchResult | SpaceTimeResult | None = None
+        self.engine_: TabularDiscoveryEngine | TemporalDiscoveryEngine | None = None
+        self.result_: DAGSearchResult | TemporalResult | None = None
         self.graph_: nx.DiGraph | None = None
 
         self.N: int | None = None
@@ -119,7 +133,7 @@ class CausalChange:
     def fit(self, X: pd.DataFrame) -> CausalChange:
         X_checked = self._check_X(X)
 
-        self.engine_ = PipelineFactory.from_config(self.cfg)
+        self.engine_ = EngineFactory.from_config(self.cfg)
         self.engine_.fit(X_checked)
 
         self.result_ = self.engine_.discover()
@@ -145,7 +159,7 @@ class CausalChange:
         assert self.engine_ is not None
         return float(self.engine_.score_edge(effect, parents))
 
-    def get_result(self) -> DAGSearchResult | SpaceTimeResult:
+    def get_result(self) -> DAGSearchResult | TemporalResult:
         return self.result
 
     @property
@@ -155,7 +169,7 @@ class CausalChange:
         return self.graph_
 
     @property
-    def result(self) -> DAGSearchResult | SpaceTimeResult:
+    def result(self) -> DAGSearchResult | TemporalResult:
         self._require_fitted()
         assert self.result_ is not None
         return self.result_
@@ -172,6 +186,42 @@ class CausalChange:
         assert self.result_ is not None
         return self.result_.history
 
+    def get_spacetime_mechanism_scores(
+        self,
+        *,
+        graph=None,
+        scope: str = "global",
+        changepoints: list[int] | None = None,
+    ) -> pd.DataFrame:
+        self._require_fitted()
+
+        if not isinstance(self.engine_, TemporalDiscoveryEngine):
+            raise RuntimeError("spacetime_mechanism_scores() is only available for SpaceTime models.")
+
+        return self.engine_.mechanism_scores(
+            graph=graph,
+            scope=scope,
+            changepoints=changepoints,
+        )
+
+    def get_spacetime_edge_contributions(
+        self,
+        *,
+        graph=None,
+        scope: str = "global",
+        changepoints: list[int] | None = None,
+    ) -> pd.DataFrame:
+        self._require_fitted()
+
+        if not isinstance(self.engine_, TemporalDiscoveryEngine):
+            raise RuntimeError("spacetime_edge_contributions() is only available for SpaceTime models.")
+
+        return self.engine_.edge_contributions(
+            graph=graph,
+            scope=scope,
+            changepoints=changepoints,
+        )
+
     @property
     def last_aggregation_(self) -> AggregationResult | None:
         return None if self.engine_ is None else getattr(self.engine_, "last_aggregation_", None)
@@ -181,40 +231,26 @@ class CausalChange:
             raise RuntimeError("Call fit(X) before accessing fitted results.")
 
     def _check_X(self, X: pd.DataFrame) -> pd.DataFrame:
-        """Validate input data and record basic fitted metadata."""
-        if not isinstance(X, pd.DataFrame):
-            X = pd.DataFrame(X)
-
-        if X.empty:
-            raise ValueError("X must contain at least one row and one column.")
+        """ some data checks """
+        if not isinstance(X, pd.DataFrame): X = pd.DataFrame(X)
+        if X.empty: raise ValueError("X must contain at least one row and one column.")
 
         if self.data_mode.is_context():
-            if self.context_col not in X.columns:
-                raise ValueError(
-                    f"data_mode={self.data_mode.value} requires context column "
-                    f"{self.context_col!r}, but it was not found in X.columns."
-                )
-            if X[self.context_col].isna().any():
-                raise ValueError(f"context_col {self.context_col!r} contains NaNs.")
+            assert self.context_col in X.columns
+            assert not X[self.context_col].isna().any()
 
-            feature_cols = [c for c in X.columns if c != self.context_col]
-        else:
-            feature_cols = list(X.columns)
-
+        feature_cols = [c for c in X.columns if c != self.context_col] if self.data_mode.is_context() else (
+            list(X.columns))
         if not feature_cols:
             raise ValueError("No feature columns found after excluding context_col.")
 
         if self.node_nms is not None and len(self.node_nms) != len(feature_cols):
-            raise ValueError(
-                f"node_nms has length {len(self.node_nms)}, " f"but X has {len(feature_cols)} feature columns."
-            )
+            raise ValueError(f"node_nms has length {len(self.node_nms)}, " f"but X has {len(feature_cols)} columns.")
 
         self.N = int(X.shape[0])
         self.D = int(len(feature_cols))
         self.feature_cols_ = list(feature_cols)
-
-        if self.node_nms is None:
-            self.node_nms = [str(c) for c in feature_cols]
+        if self.node_nms is None: self.node_nms = [str(c) for c in feature_cols]
 
         self.X_ = X
         return X
@@ -222,11 +258,11 @@ class CausalChange:
     def _make_config(
         self,
         *,
-        cfg: CausalChangeConfig | None,
+        cfg: CausalChangeConfigTabular | None,
         data_mode: DataMode,
         graph_search: GraphSearch,
         score_type: ScoreType,
-        aggregation: ContextAggregation,
+        aggregation: ContextMode,
         context_col: str | None,
         tau_max: int | None,
         changepoints: ChangepointMode,
@@ -239,27 +275,8 @@ class CausalChange:
         detect_regimes: bool = True,
         mechanism_test_alpha: float = 0.5,
         kwargs: dict,
-    ) -> CausalChangeConfig:
-        if cfg is not None:
-            if (
-                data_mode != DataMode.SKIP
-                or graph_search != GraphSearch.SKIP
-                or score_type != ScoreType.SKIP
-                or aggregation != ContextAggregation.SKIP
-                or context_col is not None
-                or tau_max is not None
-                or changepoints != ChangepointMode.NONE
-                or fixed_changepoints is not None
-                # or d_min != 30
-                # or max_iter != 3
-                # or pelt_penalty != 3.0
-                # or detect_contexts is not False
-                # or detect_regimes is not False
-                # or mechanism_test_alpha != 0.5
-                or kwargs
-            ):
-                raise ValueError("Pass either cfg=... or individual constructor options, not both.")
-            return cfg
+    ) -> CausalChangeConfigTabular | CausalChangeConfigTime:
+        if cfg is not None: return cfg
         if data_mode == DataMode.SKIP:
             raise ValueError("data_mode is required when cfg is not provided.")
         if graph_search == GraphSearch.SKIP:
@@ -273,12 +290,7 @@ class CausalChange:
             if tau_max is None:
                 raise ValueError("tau_max is required for temporal data modes.")
 
-            if "spacetime" in kwargs:
-                raise ValueError(
-                    "CausalChange constructs SpaceTimeConfig internally; pass tau_max/changepoints instead."
-                )
-
-            kwargs["spacetime"] = SpaceTimeConfig(
+            kwargs["spacetime"] = CausalChangeConfigTime(
                 tau_max=tau_max,
                 changepoints=changepoints,
                 changepoint_scope=changepoint_scope,
@@ -294,47 +306,11 @@ class CausalChange:
         if data_mode.is_context() and context_col is None:
             raise ValueError("context_col is required for context data modes.")
 
-        return CausalChangeConfig(
+        return CausalChangeConfigTabular(
             data_mode=data_mode,
             graph_search=graph_search,
             score_type=score_type,
             aggregation=aggregation,
             context_col=context_col or "context",
             **kwargs,
-        )
-
-    def spacetime_mechanism_scores(
-        self,
-        *,
-        graph=None,
-        scope: str = "global",
-        changepoints: list[int] | None = None,
-    ) -> pd.DataFrame:
-        self._require_fitted()
-
-        if not isinstance(self.engine_, SpaceTimeEngine):
-            raise RuntimeError("spacetime_mechanism_scores() is only available for SpaceTime models.")
-
-        return self.engine_.mechanism_scores(
-            graph=graph,
-            scope=scope,
-            changepoints=changepoints,
-        )
-
-    def spacetime_edge_contributions(
-        self,
-        *,
-        graph=None,
-        scope: str = "global",
-        changepoints: list[int] | None = None,
-    ) -> pd.DataFrame:
-        self._require_fitted()
-
-        if not isinstance(self.engine_, SpaceTimeEngine):
-            raise RuntimeError("spacetime_edge_contributions() is only available for SpaceTime models.")
-
-        return self.engine_.edge_contributions(
-            graph=graph,
-            scope=scope,
-            changepoints=changepoints,
         )

@@ -1,67 +1,67 @@
-from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode, SpaceTimeConfig
-from causalchange.config.cc_types import ContextAggregation, DataMode, GraphSearch, ScoreType
-from causalchange.discovery.factory import PipelineFactory
-from causalchange.discovery.pipeline import TabularDiscoveryEngine
-from causalchange.discovery.search_time.engine import SpaceTimeEngine
+from causalchange.config.cc_config import CausalChangeConfigTabular, ChangepointMode, CausalChangeConfigTime
+from causalchange.config.cc_types import ContextMode, DataMode, GraphSearch, ScoreType
+from engines.factory import EngineFactory
+from engines.pipeline import TabularDiscoveryEngine
+from engines.engine import TemporalDiscoveryEngine
 
 
 def test_factory_routes_iid_to_tabular_engine():
-    cfg = CausalChangeConfig(
+    cfg = CausalChangeConfigTabular(
         data_mode=DataMode.IID,
         graph_search=GraphSearch.TOPIC,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        aggregation=ContextMode.SKIP,
     )
 
-    engine = PipelineFactory.from_config(cfg)
+    engine = EngineFactory.from_config(cfg)
 
     assert isinstance(engine, TabularDiscoveryEngine)
 
 
 def test_factory_routes_contexts_to_tabular_engine():
-    cfg = CausalChangeConfig(
+    cfg = CausalChangeConfigTabular(
         data_mode=DataMode.CONTEXTS,
         graph_search=GraphSearch.TOPIC,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.CHAIN,
+        aggregation=ContextMode.CHAIN,
         context_col="context",
     )
 
-    engine = PipelineFactory.from_config(cfg)
+    engine = EngineFactory.from_config(cfg)
 
     assert isinstance(engine, TabularDiscoveryEngine)
 
 
 def test_factory_routes_time_to_spacetime_engine():
-    cfg = CausalChangeConfig(
+    cfg = CausalChangeConfigTabular(
         data_mode=DataMode.TIME,
         graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
-        spacetime=SpaceTimeConfig(
+        aggregation=ContextMode.SKIP,
+        spacetime=CausalChangeConfigTime(
             tau_max=2,
             changepoints=ChangepointMode.NONE,
         ),
     )
 
-    engine = PipelineFactory.from_config(cfg)
+    engine = EngineFactory.from_config(cfg)
 
-    assert isinstance(engine, SpaceTimeEngine)
+    assert isinstance(engine, TemporalDiscoveryEngine)
 
 
 def test_factory_routes_time_contexts_to_spacetime_engine():
-    cfg = CausalChangeConfig(
+    cfg = CausalChangeConfigTabular(
         data_mode=DataMode.TIME_CONTEXTS,
         graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        aggregation=ContextMode.SKIP,
         context_col="context",
-        spacetime=SpaceTimeConfig(
+        spacetime=CausalChangeConfigTime(
             tau_max=2,
             changepoints=ChangepointMode.NONE,
         ),
     )
 
-    engine = PipelineFactory.from_config(cfg)
+    engine = EngineFactory.from_config(cfg)
 
-    assert isinstance(engine, SpaceTimeEngine)
+    assert isinstance(engine, TemporalDiscoveryEngine)

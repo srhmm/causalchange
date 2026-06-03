@@ -3,14 +3,6 @@ from enum import Enum, EnumMeta
 import numpy as np
 
 
-class MDLScoreMixin:
-    def higher_is_better(self) -> bool:
-        return False
-
-    def get_gain_threshold(self, n: int) -> float:
-        return 0.5 * np.log(max(n, 2))
-
-
 class DataMode(Enum):
     SKIP = "skip"
     IID = "single"
@@ -56,14 +48,33 @@ class GraphSearch(Enum):
     def is_compatible_with(self, data_mode: DataMode) -> bool:
         return data_mode in self.compatible_modes()
 
+class ChangepointMode(Enum):
+    NONE = "none"
+    FIXED = "fixed"
+    DETECT = "detect"
 
-class ContextAggregation(Enum):
+
+class ChangepointScope(Enum):
+    GLOBAL = "global"
+    PER_CONTEXT = "per-context"
+
+
+class ChangepointMethod(Enum):
+    PELT = "pelt"
+
+
+class PartitioningMethod(Enum):
+    KERNEL = "kernel"
+    NONE = "none"
+
+
+class ContextMode(Enum):
     SKIP = "skip"
     CHAIN = "chain"
     LINC = "linc"
 
     def compatible_modes(self) -> list[DataMode]:
-        if self == ContextAggregation.SKIP:
+        if self == ContextMode.SKIP:
             return [
                 DataMode.IID,
                 DataMode.MIXED,
@@ -71,13 +82,21 @@ class ContextAggregation(Enum):
                 DataMode.TIME_CONTEXTS,
             ]
 
-        if self in (ContextAggregation.CHAIN, ContextAggregation.LINC):
+        if self in (ContextMode.CHAIN, ContextMode.LINC):
             return [DataMode.CONTEXTS]
 
         return []
 
     def is_compatible_with(self, data_mode):
         return data_mode in self.compatible_modes()
+
+class MDLScoreMixin:
+    def higher_is_better(self) -> bool:
+        return False
+
+    def get_gain_threshold(self, n: int) -> float:
+        return 0.5 * np.log(max(n, 2))
+
 
 
 class GPType(MDLScoreMixin, Enum):

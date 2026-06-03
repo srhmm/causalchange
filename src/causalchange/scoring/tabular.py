@@ -5,9 +5,9 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from causalchange.config.cc_config import CausalChangeConfig
-from causalchange.config.cc_types import DataMode
-from causalchange.discovery.scoring.edge_score import EdgeScore
+from config.causal_change_config import CausalChangeConfigTabular
+from config.types import DataMode
+from scoring.base import SCMScore
 
 
 @dataclass(frozen=True)
@@ -25,8 +25,8 @@ class GainPolicy:
         return gain > float(self.gain_threshold_fn(n_samples))
 
 
-class EdgeScoreTabular:
-    def __init__(self, cfg: CausalChangeConfig):
+class SCMScoreTabular:
+    def __init__(self, cfg: CausalChangeConfigTabular):
         if cfg.data_mode not in (
             DataMode.IID,
             DataMode.CONTEXTS,
@@ -45,7 +45,7 @@ class EdgeScoreTabular:
         )
         self._global_n_samples: int | None = None
 
-        self._edges: EdgeScore | None = None
+        self._edges: SCMScore | None = None
         self._col_index: dict[str, int] = {}
         self._bound_key: tuple[int, tuple[str, ...], int] | None = None
 
@@ -58,7 +58,7 @@ class EdgeScoreTabular:
 
     def _bind(self, df: pd.DataFrame) -> None:
         X_np = df.to_numpy(dtype=float)
-        edges = EdgeScore(data_mode=self.data_mode, score_type=self.score_type, **self.score_params)
+        edges = SCMScore(data_mode=self.data_mode, score_type=self.score_type, **self.score_params)
         edges.fit(X_np)
 
         self._edges = edges

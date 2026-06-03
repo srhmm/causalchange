@@ -7,13 +7,19 @@ from typing import Any
 import networkx as nx
 import numpy as np
 
-from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabular
-from causalchange.discovery.scoring.edge_score_time import EdgeScoreTime
+from causalchange.scoring.tabular import SCMScoreTabular
+from causalchange.scoring.temporal import SCMScoreTemporal
 
 ScoreFunction = Callable[[Any, tuple[Any, ...]], float]  # comes from EdgeScoreTabular|EdgeScoreTemporal.score_edge()
 AllowedEdge = Callable[[Any, Any], bool]
 
+@dataclass
+class GlobeSearchResult:
+    graph: nx.DiGraph
+    history: list[dict[str, Any]]
 
+
+class GlobeSearch: ...
 @dataclass
 class DAGSearchResult:
     graph: nx.DiGraph
@@ -24,7 +30,7 @@ class DAGSearchResult:
 
 
 class TopicSearch:
-    def __init__(self, *, scoring: EdgeScoreTabular | EdgeScoreTime):
+    def __init__(self, *, scoring: SCMScoreTabular | SCMScoreTemporal):
         self.transition_gain = scoring.transition_gain
         self.score_significant = scoring.score_significant
         self.score_is_better = scoring.score_is_better
@@ -229,3 +235,4 @@ class TopicSearch:
             return False, None, float("inf"), candidate_stats
 
         return True, best_parent, float(best_gain), candidate_stats
+

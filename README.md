@@ -1,13 +1,16 @@
 ## CausalChange
 
-Implementations of causal discovery algorithms for settings in which causal mechanisms may change across contexts, regimes, or time.
+causalchange provides causal discovery algorithms for various settings, with focus on addressing different forms of
+distribution shifts, here modeled as changes in structural causal mechanisms under a causal model. 
+Examples include multi-context tabular data across heterogenous populations, or time series with regime shifts over time.
 
 ---
 
 ### Setup
 
- Install the core package with `pip install causalchange`. For SpaceTime changepoint detection and mechanism testing, use
- `pip install causalchange[spacetime]`.
+ causalchange is available on PyPi. Install the core package with `pip install causalchange`, with additional 
+ dependencies needed for the SpaceTime algorithm using `pip install causalchange[spacetime]`, resp. notebooks using 
+ `pip install causalchange[notebooks]`.
 
 **Dev Install** To use with conda and install from source,
 ```bash
@@ -18,7 +21,7 @@ conda activate causalchange
 pip install -e ".[dev,spacetime,notebooks]"
 ```
 
-**Notebooks** To run the notebooks, use `pip install "causalchange[spacetime]` or
+**Notebooks** To run the notebooks,
 
 ```bash
 pip install ipykernel
@@ -27,7 +30,7 @@ python -m ipykernel install --user --name causalchange --display-name "Python (c
 
 ---
 
-### Quick Start
+### Quickstart
 
 The demos under `notebooks/` show basic usage on small synthetic examples,
 *   [TOPIC](notebooks/02_topic_tutorial.ipynb), for score-based causal DAG discovery from tabular data in topological order [2],
@@ -37,12 +40,9 @@ The demos under `notebooks/` show basic usage on small synthetic examples,
 
 ---
 
-### Algorithms
+### Examples
 
-#### Tabular causal discovery with TOPIC
-
-TOPIC [2] is a score-based causal discovery method for tabular data that searches over topological orders.
-In this library it is implemented as a modular graph search backend and can be combined with different local MDL scores.
+#### Tabular causal discovery with TOPIC [2]
 
 ```python
 import pandas as pd
@@ -67,11 +67,7 @@ cc.fit(X)
 print(cc.graph_.edges())
 ```
 
-#### Multi-context tabular data with LINC
-
-For tabular data from multiple contexts, the library supports an extension of TOPIC to multiple contexts
-using the ideas described in the LINC paper [1].
-For tabular data with multiple contexts, the context column is specified through `context_col`.
+#### Multi-context tabular data with LINC [1]
 
 ```python
 cc = CausalChange(
@@ -84,14 +80,10 @@ cc = CausalChange(
 
 cc.fit(X)
 ```
+Above, X contains a column `context_col` encoding the context. 
 
-Temporal multi-context data is handled separately through SpaceTime.
+#### Time series causal discovery with SpaceTime [3]
 
-#### Time series causal discovery with SpaceTime
-
-SpaceTime is a score-based causal discovery method for time series, optionally with multiple contexts and changepoints.
-The current implementation supports both single time series as well as multi-context time series.
-For this, use `DataMode.TIME` or `DataMode.TIME_CONTEXTS`.
 
 ```python
 from causalchange.config.cc_config import ChangepointMode
@@ -112,26 +104,15 @@ cc = CausalChange(
 cc.fit(X)
 ```
 
-SpaceTime uses temporal nodes of the form
-
-```python
-("x0", 0)  # current time
-("x0", 1)  # lag 1
-("x0", 2)  # lag 2
-```
-
-and learns directed edges into lag-0 variables. For example, `(("x0", 1), ("x1", 0))` means `x0(t-1) -> x1(t)`.
-For `ChangepointMode.DETECT` and mechanism partitioning with `detect_contexts=True` or `detect_regimes=True`, install the SpaceTime extra with `pip install "causalchange[spacetime]"`.
-Currently, the public SpaceTime pipeline uses `GraphSearch.GLOBE` while `GraphSearch.TOPIC` is used for tabular data.
+SpaceTime uses temporal nodes of the form `("x0", 0)` (current time), `("x0", 1)` (lag 1), `("x0", 2)` (lag 2) and 
+learns directed edges of the form `(("x0", 1), ("x1", 0))` meaning `x0(t-1) -> x1(t)`.
+For `ChangepointMode.DETECT` and mechanism partitioning with `detect_contexts=True` or `detect_regimes=True`,
+install the SpaceTime extra with `pip install "causalchange[spacetime]"`. 
 ---
 
-### Tests
+### Notes
 
-Run the full test suite with
-
-```bash
-pytest
-```
+Run the full test suite with `pytest`.
 
 Run linting and formatting with
 
@@ -146,16 +127,6 @@ Before committing, the repository uses pre-commit hooks.
 pre-commit run --all-files
 ```
 
-Testing:
-
-```bash
-python -m venv .venv-pypi-smoke
-.\.venv-pypi-smoke\Scripts\activate
-python -m pip install -U pip
-pip install causalchange
-python scripts\smoke_pypi.py
-deactivate
-```
 ---
 
 ### References

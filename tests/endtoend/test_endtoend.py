@@ -3,7 +3,7 @@ import pytest
 
 from causalchange.config.benchmark_config import BenchmarkConfig
 from causalchange.config.cc_types import (
-    ContextAggregation,
+    ContextMode,
     DataMode,
     GraphSearch,
     ScoreType,
@@ -28,7 +28,7 @@ run_on_config = run_methods.run_on_config
     ],
 )
 @pytest.mark.parametrize("graph_search", [GraphSearch.TOPIC])
-@pytest.mark.parametrize("context_aggregation", [ContextAggregation.CHAIN, ContextAggregation.SKIP])
+@pytest.mark.parametrize("context_aggregation", [ContextMode.CHAIN, ContextMode.SKIP])
 @pytest.mark.parametrize("score_type", [ScoreType.LIN])
 def test_end_to_end(data_mode, graph_search, score_type, context_aggregation):
     if not graph_search.is_compatible_with(data_mode) or not context_aggregation.is_compatible_with(data_mode):
@@ -110,7 +110,7 @@ def _get_config_for_data_and_algo(
     data_mode: DataMode,
     graph_search: GraphSearch,
     score_type: ScoreType,
-    context_aggregation=ContextAggregation.SKIP,
+    context_aggregation=ContextMode.SKIP,
 ) -> BenchmarkConfig:
     assert graph_search.is_compatible_with(data_mode), f"{graph_search} not compatible with {data_mode}"
 
@@ -123,9 +123,9 @@ def _get_config_for_data_and_algo(
     elif data_mode == DataMode.CONTEXTS:
         algo_name = (
             "linc"
-            if context_aggregation == ContextAggregation.LINC
+            if context_aggregation == ContextMode.LINC
             else "chain"
-            if context_aggregation == ContextAggregation.CHAIN
+            if context_aggregation == ContextMode.CHAIN
             else None
         )
     else:

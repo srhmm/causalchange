@@ -7,15 +7,17 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from causalchange.config.cc_config import CausalChangeConfig
-from causalchange.config.cc_types import DataMode, GPType
-from causalchange.discovery.scoring.edge_score_tabular import EdgeScoreTabular
-from causalchange.discovery.scoring.fit import (
+from causalchange.config.causal_change_config import CausalChangeConfigTabular
+from causalchange.config.types import DataMode, GPType
+from causalchange.scoring.tabular import SCMScoreTabular
+from causalchange.scoring.regression import (
     fit_score_functional_model,
     fit_score_gp,
     fit_score_rff,
 )
-from causalchange.discovery.search_time.base import SpaceTimePartitions, TimePanel
+from causalchange.domain.temporal import TimeGrid
+from causalchange.results import SpaceTimePartitions
+
 
 Node = tuple[str, int]
 
@@ -29,19 +31,19 @@ class TimeLocalScoreResult:
     design: pd.DataFrame
 
 
-class EdgeScoreTime:
+class SCMScoreTemporal:
     """
     Temporal scoring via a lagged design matrix.
 
     Nodes are represented as (variable, lag), where lag=0 is the current
     time point and lag>0 is a past value.
 
-    For non-GP score types, this delegates to EdgeScoreTabular on the lagged
+    For non-GP score types, this delegates to SCMScoreTabular on the lagged
     design matrix. For ScoreType.GP, it dispatches each temporal local
     mechanism directly to fit_score_gp.
     """
 
-    def __init__(self, *, cfg: CausalChangeConfig):
+    def __init__(self, *, cfg: CausalChangeConfigTabular):
         if cfg.data_mode not in (DataMode.TIME, DataMode.TIME_CONTEXTS):
             raise ValueError(f"EdgeScoreTime expects temporal data, got {cfg.data_mode=}")
 
@@ -60,7 +62,7 @@ class EdgeScoreTime:
         self._global_n_samples: int | None = None
 
         # Used for fast/debug non-GP scores.
-        self._tab = EdgeScoreTabular(cfg)
+        self._tab = SCMScoreTabular(cfg)
 
         self._node_to_col: dict[Node, str] = {}
         self._Z: pd.DataFrame | None = None
@@ -127,7 +129,7 @@ class EdgeScoreTime:
         The lagged design matrix drops the first tau_max rows, so an original
         interval [a, b) maps to design rows [max(a, tau_max)-tau_max, b-tau_max).
         """
-        from causalchange.discovery.search_time.changepoints import changepoints_to_intervals
+        from discovery.changepoints import changepoints_to_intervals
 
         raw_windows = changepoints_to_intervals(n_raw_samples, changepoints)
 
@@ -289,7 +291,7 @@ class EdgeScoreTime:
             design=Z[cols].copy(),
         )
 
-    def residual_signal(
+    def residual(
         self,
         X: pd.DataFrame,
         *,
@@ -391,9 +393,9 @@ class EdgeScoreTime:
         finally:
             self._time_windows = previous_windows
 
-    def residual_signal_panel(
+    def residual_time_grid(
         self,
-        panel: TimePanel,
+        time_grid: TimeGrid,
         *,
         graph,
         variables: list[str],
@@ -406,7 +408,7 @@ class EdgeScoreTime:
 
         Assumes aligned contexts of equal length for now.
         """
-        lengths = {dataset_id: len(X) for dataset_id, X in panel.datasets.items()}
+        lengths = {dataset_id: len(X) for dataset_id, X in time_grid.datasets.items()}
         unique_lengths = set(lengths.values())
 
         if len(unique_lengths) != 1:
@@ -420,9 +422,9 @@ class EdgeScoreTime:
         try:
             signals = []
 
-            for dataset_id in panel.dataset_ids:
-                X_context = panel.datasets[dataset_id]
-                signal = self.residual_signal(
+            for dataset_id in time_grid.dataset_ids:
+                X_context = time_grid.datasets[dataset_id]
+                signal = self.residual(
                     X_context,
                     graph=graph,
                     variables=variables,
@@ -440,7 +442,7 @@ class EdgeScoreTime:
         finally:
             self._global_n_samples = previous_global_n
 
-    def fit_panel(self, panel: TimePanel) -> None:
+    def fit_panel(self, panel: TimeGrid) -> None:
         first = panel.first_dataset()
         self.fit(first)
 
@@ -451,7 +453,7 @@ class EdgeScoreTime:
     def score_edge_panel(
         self,
         *,
-        panel: TimePanel,
+        panel: TimeGrid,
         effect: Node,
         parents: Sequence[Node],
         partitions: SpaceTimePartitions,
@@ -538,7 +540,7 @@ class EdgeScoreTime:
 
     def _intervals_from_partitions(
         self,
-        panel: TimePanel,
+        panel: TimeGrid,
         partitions: SpaceTimePartitions,
     ) -> list[tuple[int, int]]:
         intervals_raw = partitions.diagnostics.get("intervals")

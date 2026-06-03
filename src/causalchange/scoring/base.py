@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
 
-import numpy as np
-
-from causalchange.config.cc_types import DataMode, GPType, ScoreType
-from causalchange.discovery.scoring.fit import (
+from causalchange.config.types import DataMode, GPType, ScoreType
+from scoring.regression import (
     fit_score_functional_model,
     fit_score_gam,
     fit_score_gp,
@@ -17,7 +14,7 @@ from causalchange.discovery.scoring.fit import (
 )
 
 
-class EdgeScore:
+class SCMScore:
     higher_is_better = True
 
     def __init__(
@@ -103,3 +100,70 @@ class EdgeScore:
             self.res_cache[key] = res
 
         return (float(score), res) if ret_full_result else float(score)
+
+
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Protocol
+
+import networkx as nx
+import numpy as np
+import pandas as pd
+
+
+
+
+# todo consider removing this
+class TemporalScoring(Protocol):
+    tau_max: int
+
+    def fit(self, X: pd.DataFrame) -> None: ...
+
+    def set_time_windows(
+        self,
+        *,
+        n_raw_samples: int,
+        changepoints: list[int],
+    ) -> None: ...
+
+    def score_edge(
+        self,
+        X: pd.DataFrame,
+        effect: Any,
+        parents: tuple[Any, ...],
+    ) -> float: ...
+
+    def residual_signal(
+        self,
+        X: pd.DataFrame,
+        *,
+        graph: nx.DiGraph | None,
+        variables: list[str],
+    ) -> np.ndarray: ...
+
+    def fit_panel(self, panel: TimePanel) -> None: ...
+
+    def residual_signal_panel(
+        self,
+        panel: TimePanel,
+        *,
+        graph: nx.DiGraph | None,
+        variables: list[str],
+    ) -> np.ndarray: ...
+
+    def score_edge_panel(
+        self,
+        *,
+        panel: TimePanel,
+        effect: Any,
+        parents: tuple[Any, ...],
+        partitions: SpaceTimePartitions,
+    ) -> float: ...
+
+    def transition_gain(self, old_score: float, new_score: float) -> float: ...
+
+    def score_significant(self, gain: float) -> bool: ...
+
+    def score_is_better(self, a: float, b: float) -> bool: ...

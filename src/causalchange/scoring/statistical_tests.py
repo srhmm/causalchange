@@ -13,7 +13,7 @@ class MechanismTestResult:
     method: str
 
 
-class KCIMechanismEqualityTest:
+class SCMEqualityTestKCI:
     """
     Test whether two subsamples share the same target mechanism.
 

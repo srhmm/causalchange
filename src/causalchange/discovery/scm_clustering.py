@@ -4,13 +4,16 @@ from typing import Any
 
 import pandas as pd
 
-from causalchange.config.cc_config import PartitioningMethod, SpaceTimeConfig
-from causalchange.discovery.search_time.base import Node, SpaceTimePartitions, TimePanel
-from causalchange.discovery.search_time.changepoints import changepoints_to_intervals
-from causalchange.discovery.search_time.mechanism_tests import KCIMechanismEqualityTest
+from causalchange.config.causal_change_config import CausalChangeConfigTime
+from causalchange.config.types import PartitioningMethod
+from causalchange.domain.temporal import TimeGrid
+from causalchange.posthoc.temporal import changepoints_to_intervals
+from causalchange.results import Node, SpaceTimePartitions
+from causalchange.scoring.conditional_tests import SCMEqualityTestKCI
 
+class SCMClustering: ... #for causal mixtures
 
-class SpaceTimePartitioning:
+class SpaceTimeClustering:
     """
     Partition contexts and time regimes for SPACETIME
 
@@ -18,9 +21,9 @@ class SpaceTimePartitioning:
         regimes[target][regime_id] = regime_cluster_id
     """
 
-    def __init__(self, cfg: SpaceTimeConfig):
+    def __init__(self, cfg: CausalChangeConfigTime):
         self.cfg = cfg
-        self.equality_test = KCIMechanismEqualityTest(
+        self.equality_test = SCMEqualityTestKCI(
             alpha=cfg.mechanism_test_alpha,
             min_samples=max(5, min(cfg.d_min, 10)),
         )
@@ -29,7 +32,7 @@ class SpaceTimePartitioning:
         self,
         X: pd.DataFrame | None = None,
         *,
-        panel: TimePanel | None = None,
+        panel: TimeGrid | None = None,
         graph=None,
         changepoints: list[int] | None = None,
     ) -> SpaceTimePartitions:
@@ -37,7 +40,7 @@ class SpaceTimePartitioning:
             if X is None:
                 raise ValueError("Either X or panel must be provided.")
 
-            panel = TimePanel(
+            panel = TimeGrid(
                 datasets={0: X},
                 variables=[str(c) for c in X.columns],
                 context_col=None,
@@ -98,7 +101,7 @@ class SpaceTimePartitioning:
 
     def _initial_context_partitions(
         self,
-        panel: TimePanel,
+        panel: TimeGrid,
     ) -> dict[str, dict[Any, int]]:
         if not self.cfg.detect_contexts:
             return {target: {dataset_id: 0 for dataset_id in panel.dataset_ids} for target in panel.variables}
@@ -119,7 +122,7 @@ class SpaceTimePartitioning:
     def _partition_regimes(
         self,
         *,
-        panel: TimePanel,
+        panel: TimeGrid,
         graph,
         intervals: list[tuple[int, int]],
     ) -> tuple[dict[str, dict[int, int]], list[dict[str, Any]]]:
@@ -193,7 +196,7 @@ class SpaceTimePartitioning:
     def _partition_contexts(
         self,
         *,
-        panel: TimePanel,
+        panel: TimeGrid,
         graph,
         intervals: list[tuple[int, int]],
     ) -> tuple[dict[str, dict[Any, int]], list[dict[str, Any]]]:
@@ -380,7 +383,7 @@ class SpaceTimePartitioning:
     def _pooled_interval_sample(
         self,
         *,
-        panel: TimePanel,
+        panel: TimeGrid,
         target: str,
         parents: list[Node],
         interval: tuple[int, int],

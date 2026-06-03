@@ -5,7 +5,7 @@ import pandas as pd
 
 from causalchange.causal_change import CausalChange
 from causalchange.config.cc_config import ChangepointMode
-from causalchange.config.cc_types import ContextAggregation, DataMode, GraphSearch, ScoreType
+from causalchange.config.cc_types import ContextMode, DataMode, GraphSearch, ScoreType
 
 
 def smoke_topic() -> None:
@@ -26,7 +26,7 @@ def smoke_topic() -> None:
         data_mode=DataMode.IID,
         graph_search=GraphSearch.TOPIC,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
     ).fit(X)
 
     assert cc.graph_ is not None
@@ -64,9 +64,9 @@ def smoke_spacetime() -> None:
         data_mode=DataMode.TIME,
         graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
         tau_max=1,
-        changepoints=ChangepointMode.FIXED,
+        changepoint_mode=ChangepointMode.FIXED,
         fixed_changepoints=[cp],
         detect_contexts=False,
         detect_regimes=False,

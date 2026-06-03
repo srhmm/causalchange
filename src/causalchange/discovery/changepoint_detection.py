@@ -6,12 +6,15 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from causalchange.config.cc_config import ChangepointMethod, ChangepointMode, ChangepointScope, SpaceTimeConfig
-from causalchange.discovery.search_time.base import TimePanel
+from causalchange.config.causal_change_config import (
+    ChangepointMethod, ChangepointMode, ChangepointScope, CausalChangeConfigTime
+)
+from causalchange.domain.temporal import TimeGrid
 
 
-class SpaceTimeChangepointDetection:
-    def __init__(self, cfg: SpaceTimeConfig):
+
+class ChangepointDetection:
+    def __init__(self, cfg: CausalChangeConfigTime):
         self.cfg = cfg
         self.changepoints_by_context_: dict[Any, list[int]] | None = None
         self.diagnostics_: dict[str, Any] = {}
@@ -20,7 +23,7 @@ class SpaceTimeChangepointDetection:
         self,
         X: pd.DataFrame | None = None,
         *,
-        panel: TimePanel | None = None,
+        time_grid: TimeGrid | None = None,
         graph: nx.DiGraph | None = None,
         scorer=None,
         variables: list[str] | None = None,
@@ -57,7 +60,7 @@ class SpaceTimeChangepointDetection:
         if self.cfg.changepoint_scope == ChangepointScope.GLOBAL:
             return self._detect_global(
                 X=X,
-                panel=panel,
+                panel=time_grid,
                 graph=graph,
                 scorer=scorer,
                 variables=variables,
@@ -66,7 +69,7 @@ class SpaceTimeChangepointDetection:
         if self.cfg.changepoint_scope == ChangepointScope.PER_CONTEXT:
             return self._detect_per_context(
                 X=X,
-                panel=panel,
+                panel=time_grid,
                 graph=graph,
                 scorer=scorer,
                 variables=variables,
@@ -78,13 +81,13 @@ class SpaceTimeChangepointDetection:
         self,
         *,
         X: pd.DataFrame | None,
-        panel: TimePanel | None,
+        panel: TimeGrid | None,
         graph: nx.DiGraph | None,
         scorer,
         variables: list[str],
     ) -> list[int]:
         if panel is not None:
-            signal = scorer.residual_signal_panel(
+            signal = scorer.residual_time_grid(
                 panel,
                 graph=graph,
                 variables=variables,
@@ -94,7 +97,7 @@ class SpaceTimeChangepointDetection:
             if X is None:
                 raise ValueError("Either X or panel must be provided.")
 
-            signal = scorer.residual_signal(
+            signal = scorer.residual(
                 X,
                 graph=graph,
                 variables=variables,
@@ -120,7 +123,7 @@ class SpaceTimeChangepointDetection:
         self,
         *,
         X: pd.DataFrame | None,
-        panel: TimePanel | None,
+        panel: TimeGrid | None,
         graph: nx.DiGraph | None,
         scorer,
         variables: list[str],
@@ -129,7 +132,7 @@ class SpaceTimeChangepointDetection:
             if X is None:
                 raise ValueError("Either X or panel must be provided.")
 
-            panel = TimePanel(
+            panel = TimeGrid(
                 datasets={0: X},
                 variables=[str(c) for c in X.columns],
                 context_col=None,
@@ -141,7 +144,7 @@ class SpaceTimeChangepointDetection:
         for dataset_id in panel.dataset_ids:
             X_context = panel.datasets[dataset_id]
 
-            signal = scorer.residual_signal(
+            signal = scorer.residual(
                 X_context,
                 graph=graph,
                 variables=variables,

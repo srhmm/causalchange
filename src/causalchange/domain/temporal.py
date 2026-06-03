@@ -2,14 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-
 import pandas as pd
 
 Node = tuple[str, int]
 
 
 @dataclass
-class TimeDomain:
+class TemporalDomain:
     tau_max: int = 1
     allow_instantaneous: bool = True
 
@@ -53,3 +52,34 @@ class TimeDomain:
             return cause_var != effect_var
 
         return cause_lag > 0
+
+
+
+
+
+@dataclass(frozen=True)
+class TimeGrid:
+    """
+    Collection of one or more aligned time-series datasets.
+
+    For DataMode.TIME:
+        datasets = {0: X}
+
+    For DataMode.TIME_CONTEXTS:
+        datasets = {context_id: X_context_without_context_col}
+    """
+
+    datasets: dict[Any, pd.DataFrame]
+    variables: list[str]
+    context_col: str | None = None
+
+    @property
+    def dataset_ids(self) -> list[Any]:
+        return list(self.datasets.keys())
+
+    @property
+    def n_contexts(self) -> int:
+        return len(self.datasets)
+
+    def first_dataset(self) -> pd.DataFrame:
+        return self.datasets[self.dataset_ids[0]]

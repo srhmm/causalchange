@@ -7,11 +7,12 @@ from typing import TYPE_CHECKING, Any, Literal
 import networkx as nx
 import pandas as pd
 
-from causalchange.discovery.search_time.base import Node, SpaceTimePartitions
+from results import Node, SpaceTimePartitions
+ 
+
 
 if TYPE_CHECKING:
-    from causalchange.discovery.search_time.engine import SpaceTimeEngine
-
+    from engines.temporal import TemporalDiscoveryEngine
 
 ScoreScope = Literal["global", "windows"]
 
@@ -51,7 +52,7 @@ class EdgeContributionRecord:
 
 
 def compute_mechanism_scores(
-    engine: SpaceTimeEngine,
+    engine: TemporalDiscoveryEngine,
     *,
     graph: nx.DiGraph | None = None,
     scope: ScoreScope = "global",
@@ -70,7 +71,7 @@ def compute_mechanism_scores(
 
 
 def compute_edge_contributions(
-    engine: SpaceTimeEngine,
+    engine: TemporalDiscoveryEngine,
     *,
     graph: nx.DiGraph | None = None,
     scope: ScoreScope = "global",
@@ -120,7 +121,7 @@ def changepoints_to_intervals(
 
 
 def _resolve_graph(
-    engine: SpaceTimeEngine,
+    engine: TemporalDiscoveryEngine,
     graph: nx.DiGraph | None,
 ) -> nx.DiGraph:
     if graph is not None:
@@ -161,7 +162,7 @@ def _is_temporal_node(node: Any) -> bool:
 
 
 def _mechanism_scores_global(
-    engine: SpaceTimeEngine,
+    engine: TemporalDiscoveryEngine,
     graph: nx.DiGraph,
 ) -> list[MechanismScoreRecord]:
     records: list[MechanismScoreRecord] = []
@@ -185,7 +186,7 @@ def _mechanism_scores_global(
 
 
 def _edge_contributions_global(
-    engine: SpaceTimeEngine,
+    engine: TemporalDiscoveryEngine,
     graph: nx.DiGraph,
 ) -> list[EdgeContributionRecord]:
     records: list[EdgeContributionRecord] = []
@@ -218,7 +219,7 @@ def _edge_contributions_global(
 
 
 def _mechanism_scores_windows(
-    engine: SpaceTimeEngine,
+    engine: TemporalDiscoveryEngine,
     graph: nx.DiGraph,
     *,
     changepoints: list[int] | None,
@@ -263,7 +264,7 @@ def _mechanism_scores_windows(
 
 
 def _edge_contributions_windows(
-    engine: SpaceTimeEngine,
+    engine: TemporalDiscoveryEngine,
     graph: nx.DiGraph,
     *,
     changepoints: list[int] | None,
@@ -321,7 +322,7 @@ def _edge_contributions_windows(
     return records
 
 
-def _require_panel(engine: SpaceTimeEngine):
+def _require_panel(engine: TemporalDiscoveryEngine):
     if engine.panel_ is None:
         raise RuntimeError("Engine has no panel_. Call fit(X) first.")
     return engine.panel_
@@ -351,7 +352,7 @@ def _effective_n_samples(
 
 
 def _score_gain(
-    engine: SpaceTimeEngine,
+    engine: TemporalDiscoveryEngine,
     *,
     reduced_score: float,
     full_score: float,

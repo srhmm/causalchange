@@ -1,46 +1,47 @@
 from __future__ import annotations
 
+import pandas as pd
 from time import perf_counter
 from typing import Any
 
-import pandas as pd
+from causalchange.config.causal_change_config import CausalChangeConfigTabular, ChangepointMode, ChangepointScope, DataMode
+from causalchange.results import TemporalResult
+from causalchange.domain.temporal import TimeGrid
+from causalchange.posthoc.temporal import compute_edge_contributions, compute_mechanism_scores
+from causalchange.scoring.temporal import SCMScoreTemporal
 
-from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode, ChangepointScope
-from causalchange.config.cc_types import DataMode
-from causalchange.discovery.search_time.base import SpaceTimeResult, SpaceTimeScoring, TimePanel
-from causalchange.discovery.search_time.posthoc import compute_edge_contributions, compute_mechanism_scores
 
-
-class SpaceTimeEngine:
+class TemporalDiscoveryEngine:
+    """ shows lower-level control flow for temporal causal discovery. """
     def __init__(
         self,
         *,
         data_mode: DataMode,
         domain,
-        scoring: SpaceTimeScoring,
+        scoring: SCMScoreTemporal,
         search,
         changepoint_detection,
-        partitioning,
-        cfg: CausalChangeConfig,
+        scm_clustering,
+        cfg: CausalChangeConfigTabular,
     ):
         self.data_mode = data_mode
         self.domain = domain
         self.scorer = scoring
         self.search = search
         self.changepoint_detection = changepoint_detection
-        self.partitioning = partitioning
+        self.partitioning = scm_clustering
         self.cfg = cfg
 
         self.X0_: pd.DataFrame | None = None
         self.changepoints_: list[int] = []
         self.changepoints_by_context_: dict[Any, list[int]] | None = None
         self.changepoint_diagnostics_: dict[str, Any] = {}
-        self.panel_: TimePanel | None = None
+        self.panel_: TimeGrid | None = None
         self.partitions_ = None
-        self.result_: SpaceTimeResult | None = None
+        self.result_: TemporalResult | None = None
         self._score_cache: dict[tuple, float] = {}
 
-    def fit(self, X: pd.DataFrame) -> SpaceTimeEngine:
+    def fit(self, X: pd.DataFrame) -> TemporalDiscoveryEngine:
         self.panel_ = self._make_panel(X)
 
         self.scorer.fit_panel(self.panel_)
@@ -97,7 +98,7 @@ class SpaceTimeEngine:
 
         return context_key, regime_key
 
-    def discover(self) -> SpaceTimeResult:
+    def discover(self) -> TemporalResult:
         if self.X0_ is None:
             raise RuntimeError("Engine not fitted. Call fit() first.")
 
@@ -121,7 +122,7 @@ class SpaceTimeEngine:
             t0 = perf_counter()
             t_cp0 = perf_counter()
             self.changepoints_ = self.changepoint_detection.detect(
-                panel=self.panel_,
+                time_grid=self.panel_,
                 graph=graph,
                 scorer=self.scorer,
                 variables=variables,
@@ -194,7 +195,7 @@ class SpaceTimeEngine:
             raise RuntimeError("SpaceTime discovery failed to produce a result.")
 
         edge_strengths = self._compute_edge_strengths(final_search_result.graph)
-        result = SpaceTimeResult(
+        result = TemporalResult(
             graph=final_search_result.graph,
             topological_order=final_search_result.topological_order,
             changepoints=self.changepoints_,
@@ -212,10 +213,10 @@ class SpaceTimeEngine:
         self.result_ = result
         return result
 
-    def _make_panel(self, X: pd.DataFrame) -> TimePanel:
+    def _make_panel(self, X: pd.DataFrame) -> TimeGrid:
         if self.data_mode == DataMode.TIME:
             X0 = self.domain.prepare_X(X)
-            return TimePanel(
+            return TimeGrid(
                 datasets={0: X0},
                 variables=self.domain.variables(X0),
                 context_col=None,
@@ -224,9 +225,9 @@ class SpaceTimeEngine:
         if self.data_mode == DataMode.TIME_CONTEXTS:
             return self._make_context_panel(X)
 
-        raise ValueError(f"SpaceTimeEngine expects temporal data, got {self.data_mode=}")
+        raise ValueError(f"TemporalDiscoveryEngine expects temporal data, got {self.data_mode=}")
 
-    def _make_context_panel(self, X: pd.DataFrame) -> TimePanel:
+    def _make_context_panel(self, X: pd.DataFrame) -> TimeGrid:
         context_col = self.cfg.context_col
 
         if context_col not in X.columns:
@@ -257,7 +258,7 @@ class SpaceTimeEngine:
                     f"Expected {variables}, got {current_variables} for context {context_id!r}."
                 )
 
-        return TimePanel(
+        return TimeGrid(
             datasets=datasets,
             variables=variables,
             context_col=context_col,

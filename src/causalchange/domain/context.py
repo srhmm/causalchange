@@ -1,15 +1,21 @@
 from __future__ import annotations
 
-from collections.abc import Hashable
 
 import pandas as pd
+from collections.abc import Hashable
+
+
+
+class SingleContextDomain:
+    def make_contexts(self, X0: pd.DataFrame) -> dict[Hashable, pd.DataFrame]:
+        return {0: X0}
+
+    def prepare_X(self, X: pd.DataFrame) -> pd.DataFrame:
+        return X
 
 
 class MultiContextDomain:
-    """
-    Splits X into contexts using a context column, and drops that column.
-    Equivalent to  ContextScoreMixin._init_contexts.
-    """
+    """ splits X into contexts using a context column, and drops that column """
 
     def __init__(self, *, context_col: str = "context"):
         self.context_col = str(context_col)

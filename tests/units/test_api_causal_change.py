@@ -2,9 +2,9 @@ import pandas as pd
 import pytest
 
 from causalchange.causal_change import CausalChange
-from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode
+from causalchange.config.cc_config import CausalChangeConfigTabular, ChangepointMode
 from causalchange.config.cc_types import (
-    ContextAggregation,
+    ContextMode,
     DataMode,
     GraphSearch,
     ScoreType,
@@ -30,9 +30,9 @@ def make_context_df():
 @pytest.mark.parametrize(
     "data_mode, aggregation, X",
     [
-        (DataMode.IID, ContextAggregation.SKIP, make_iid_df()),
-        (DataMode.CONTEXTS, ContextAggregation.CHAIN, make_context_df()),
-        (DataMode.CONTEXTS, ContextAggregation.LINC, make_context_df()),
+        (DataMode.IID, ContextMode.SKIP, make_iid_df()),
+        (DataMode.CONTEXTS, ContextMode.CHAIN, make_context_df()),
+        (DataMode.CONTEXTS, ContextMode.LINC, make_context_df()),
     ],
 )
 def test_causalchange_public_api_smoke(data_mode, aggregation, X):
@@ -40,7 +40,7 @@ def test_causalchange_public_api_smoke(data_mode, aggregation, X):
         data_mode=data_mode,
         graph_search=GraphSearch.TOPIC,
         score_type=ScoreType.LIN,
-        aggregation=aggregation,
+        context_mode=aggregation,
         context_col="context" if data_mode.is_context() else None,
     )
 
@@ -67,11 +67,11 @@ def test_causalchange_public_api_smoke(data_mode, aggregation, X):
 
 
 def test_causalchange_rejects_cfg_and_individual_args():
-    cfg = CausalChangeConfig(
+    cfg = CausalChangeConfigTabular(
         data_mode=DataMode.IID,
         graph_search=GraphSearch.TOPIC,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        aggregation=ContextMode.SKIP,
     )
 
     with pytest.raises(ValueError, match="Pass either cfg"):
@@ -87,7 +87,7 @@ def test_context_mode_requires_context_col():
             data_mode=DataMode.CONTEXTS,
             graph_search=GraphSearch.TOPIC,
             score_type=ScoreType.LIN,
-            aggregation=ContextAggregation.CHAIN,
+            context_mode=ContextMode.CHAIN,
         )
 
 
@@ -96,7 +96,7 @@ def test_missing_context_column_errors_at_fit():
         data_mode=DataMode.CONTEXTS,
         graph_search=GraphSearch.TOPIC,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.CHAIN,
+        context_mode=ContextMode.CHAIN,
         context_col="context",
     )
 
@@ -121,7 +121,7 @@ def test_causalchange_temporal_requires_tau_max():
             data_mode=DataMode.TIME,
             graph_search=GraphSearch.TOPIC,
             score_type=ScoreType.LIN,
-            aggregation=ContextAggregation.SKIP,
+            context_mode=ContextMode.SKIP,
         )
 
 
@@ -130,9 +130,9 @@ def test_causalchange_builds_spacetime_config_with_partition_args():
         data_mode=DataMode.TIME,
         graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
         tau_max=2,
-        changepoints=ChangepointMode.DETECT,
+        changepoint_mode=ChangepointMode.DETECT,
         d_min=10,
         max_iter=4,
         pelt_penalty=2.5,

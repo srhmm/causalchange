@@ -39,7 +39,7 @@ from causalchange.config.benchmark_config import (
     TopicAlgoConfig,
 )
 from causalchange.config.cc_config import ChangepointMode
-from causalchange.config.cc_types import ContextAggregation, GPType, ScoreType
+from causalchange.config.cc_types import ContextMode, GPType, ScoreType
 
 TemporalDataConfig = SingleTemporalDataConfig | MultiTemporalDataConfig
 ContextDataConfig = MultiDataConfig | MultiTemporalDataConfig | MixedDataConfig
@@ -173,9 +173,9 @@ def run_algo(sample: BenchmarkSample, data_cfg: DataConfig, algo_cfg: AlgoConfig
         raise ValueError(f"invalid: {algo_cfg.name}")
 
     aggregation = (
-        ContextAggregation.LINC
+        ContextMode.LINC
         if algo_cfg.name == "linc"
-        else (ContextAggregation.CHAIN if algo_cfg.name == "chain" else ContextAggregation.SKIP)
+        else (ContextMode.CHAIN if algo_cfg.name == "chain" else ContextMode.SKIP)
     )
 
     score_type = _resolve_score_type(algo_cfg.score_type)
@@ -221,10 +221,10 @@ def run_algo(sample: BenchmarkSample, data_cfg: DataConfig, algo_cfg: AlgoConfig
         data_mode=data_mode,
         graph_search=graph_search,
         score_type=score_type,
-        aggregation=aggregation,
+        context_mode=aggregation,
         context_col=context_col,
         tau_max=tau_max,
-        changepoints=changepoints,
+        changepoint_mode=changepoints,
         d_min=d_min,
         fixed_changepoints=fixed_changepoints,
         detect_contexts=detect_contexts,

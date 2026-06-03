@@ -2,13 +2,13 @@ import pandas as pd
 import pytest
 
 from causalchange.causal_change import CausalChange
-from causalchange.config.cc_config import CausalChangeConfig, ChangepointMode, ChangepointScope, SpaceTimeConfig
-from causalchange.config.cc_types import ContextAggregation, DataMode, GPType, GraphSearch, ScoreType
-from causalchange.discovery.scoring.edge_score_time import EdgeScoreTime
-from causalchange.discovery.search_time.base import TimePanel
-from causalchange.discovery.search_time.changepoints import SpaceTimeChangepointDetection
-from causalchange.discovery.search_time.mechanism_tests import KCIMechanismEqualityTest
-from causalchange.discovery.search_time.partitioning import SpaceTimePartitioning
+from causalchange.config.cc_config import CausalChangeConfigTabular, ChangepointMode, ChangepointScope, CausalChangeConfigTime
+from causalchange.config.cc_types import ContextMode, DataMode, GPType, GraphSearch, ScoreType
+from scoring import EdgeScoreTime
+from discovery.base import TimePanel
+from discovery.changepoints import SpaceTimeChangepointDetection
+from scoring.mechanism_tests import KCIMechanismEqualityTest
+from discovery.partitioning import SpaceTimePartitioning
 
 
 def test_spacetime_globe_stationary():
@@ -25,7 +25,7 @@ def test_spacetime_globe_stationary():
         data_mode=DataMode.TIME,
         graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
         tau_max=2,
     ).fit(X)
 
@@ -50,9 +50,9 @@ def test_spacetime_fixed_changepoints():
         data_mode=DataMode.TIME,
         graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
         tau_max=2,
-        changepoints=ChangepointMode.FIXED,
+        changepoint_mode=ChangepointMode.FIXED,
         fixed_changepoints=[20],
     ).fit(X)
 
@@ -76,9 +76,9 @@ def test_spacetime_detect_changepoints():
         data_mode=DataMode.TIME,
         graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
         tau_max=2,
-        changepoints=ChangepointMode.DETECT,
+        changepoint_mode=ChangepointMode.DETECT,
         d_min=10,
     ).fit(X)
 
@@ -101,7 +101,7 @@ def test_spacetime_globe_gp():
         data_mode=DataMode.TIME,
         graph_search=GraphSearch.GLOBE,
         score_type=GPType.EXACT,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
         tau_max=2,
         score_kwargs={
             "restarts": 2,
@@ -130,7 +130,7 @@ def test_spacetime_globe_rff():
         data_mode=DataMode.TIME,
         graph_search=GraphSearch.GLOBE,
         score_type=GPType.FOURIER,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
         tau_max=2,
         score_kwargs={
             "D": 64,
@@ -158,7 +158,7 @@ def test_spacetime_contexts_globe_stationary():
         data_mode=DataMode.TIME_CONTEXTS,
         graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
         context_col="context",
         tau_max=2,
     ).fit(X)
@@ -185,9 +185,9 @@ def test_spacetime_partitions_target_specific():
         data_mode=DataMode.TIME,
         graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
         tau_max=2,
-        changepoints=ChangepointMode.FIXED,
+        changepoint_mode=ChangepointMode.FIXED,
         fixed_changepoints=[15],
     ).fit(X)
 
@@ -252,7 +252,7 @@ def test_spacetime_partitioning_detect_regimes_merges_identical_regimes():
         context_col=None,
     )
 
-    cfg = SpaceTimeConfig(
+    cfg = CausalChangeConfigTime(
         tau_max=2,
         changepoints=ChangepointMode.FIXED,
         fixed_changepoints=[20],
@@ -295,7 +295,7 @@ def test_spacetime_partitioning_detect_contexts_merges_identical_contexts():
         context_col="context",
     )
 
-    cfg = SpaceTimeConfig(
+    cfg = CausalChangeConfigTime(
         tau_max=2,
         changepoints=ChangepointMode.NONE,
         detect_contexts=True,
@@ -340,10 +340,10 @@ def test_spacetime_contexts_detect_changepoints():
         data_mode=DataMode.TIME_CONTEXTS,
         graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
         context_col="context",
         tau_max=2,
-        changepoints=ChangepointMode.DETECT,
+        changepoint_mode=ChangepointMode.DETECT,
         d_min=10,
     ).fit(X)
 
@@ -377,10 +377,10 @@ def test_spacetime_contexts_detect_changepoints_auto_penalty_runs():
         data_mode=DataMode.TIME_CONTEXTS,
         graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
         context_col="context",
         tau_max=2,
-        changepoints=ChangepointMode.DETECT,
+        changepoint_mode=ChangepointMode.DETECT,
         d_min=10,
         pelt_penalty="auto",
     ).fit(X)
@@ -392,7 +392,7 @@ def test_spacetime_contexts_detect_changepoints_auto_penalty_runs():
 
     def test_spacetime_partitioning_does_not_merge_by_bad_transitivity():
         partitioning = SpaceTimePartitioning(
-            SpaceTimeConfig(
+            CausalChangeConfigTime(
                 tau_max=1,
                 changepoints=ChangepointMode.NONE,
             )
@@ -438,7 +438,7 @@ def test_changepoint_detection_per_context_uses_union_grid():
         context_col="context",
     )
 
-    cfg = SpaceTimeConfig(
+    cfg = CausalChangeConfigTime(
         tau_max=1,
         changepoints=ChangepointMode.DETECT,
         changepoint_scope=ChangepointScope.PER_CONTEXT,
@@ -447,11 +447,11 @@ def test_changepoint_detection_per_context_uses_union_grid():
     )
 
     scorer = EdgeScoreTime(
-        cfg=CausalChangeConfig(
+        cfg=CausalChangeConfigTabular(
             data_mode=DataMode.TIME_CONTEXTS,
             graph_search=GraphSearch.GLOBE,
             score_type=ScoreType.LIN,
-            aggregation=ContextAggregation.SKIP,
+            aggregation=ContextMode.SKIP,
             context_col="context",
             spacetime=cfg,
         )
@@ -461,7 +461,7 @@ def test_changepoint_detection_per_context_uses_union_grid():
     detector = SpaceTimeChangepointDetection(cfg)
 
     changepoints = detector.detect(
-        panel=panel,
+        time_grid=panel,
         graph=None,
         scorer=scorer,
         variables=["x0", "x1"],

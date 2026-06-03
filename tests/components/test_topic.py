@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from causalchange.causal_change import CausalChange
-from causalchange.config.cc_types import ContextAggregation, DataMode, GPType, GraphSearch, ScoreType
+from causalchange.config.cc_types import ContextMode, DataMode, GPType, GraphSearch, ScoreType
 
 
 def test_topic_iid_smoke():
@@ -21,7 +21,7 @@ def test_topic_iid_smoke():
         data_mode=DataMode.IID,
         graph_search=GraphSearch.TOPIC,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
     ).fit(X)
 
     assert cc.fitted_graph
@@ -44,7 +44,7 @@ def test_topic_result_has_edge_strengths():
         data_mode=DataMode.IID,
         graph_search=GraphSearch.TOPIC,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
     ).fit(X)
 
     assert cc.result_ is not None
@@ -67,7 +67,7 @@ def test_topic_linc_contexts_smoke():
         data_mode=DataMode.CONTEXTS,
         graph_search=GraphSearch.TOPIC,
         score_type=ScoreType.LIN,
-        aggregation=ContextAggregation.LINC,
+        context_mode=ContextMode.LINC,
         context_col="context",
     ).fit(X)
 
@@ -96,7 +96,7 @@ def test_topic_rff_smoke():
         data_mode=DataMode.IID,
         graph_search=GraphSearch.TOPIC,
         score_type=GPType.FOURIER,
-        aggregation=ContextAggregation.SKIP,
+        context_mode=ContextMode.SKIP,
         score_kwargs={
             "D": 32,
             "restarts": 1,
