@@ -1,18 +1,26 @@
+"""Temporal discovery engine, coordinates changepoints, scm clustering, graph search, and scoring."""
+
 from __future__ import annotations
 
-import pandas as pd
 from time import perf_counter
 from typing import Any
 
-from causalchange.config.causal_change_config import CausalChangeConfigTabular, ChangepointMode, ChangepointScope, DataMode
-from causalchange.results import TemporalResult
+import pandas as pd
+
+from causalchange.config.causal_change_config import (
+    ChangepointMode,
+    ChangepointScope,
+    DataMode,
+)
+from causalchange.core.results import TemporalResult
 from causalchange.domain.temporal import TimeGrid
 from causalchange.posthoc.temporal import compute_edge_contributions, compute_mechanism_scores
 from causalchange.scoring.temporal import SCMScoreTemporal
 
 
 class TemporalDiscoveryEngine:
-    """ shows lower-level control flow for temporal causal discovery. """
+    """shows lower-level control flow for temporal causal discovery."""
+
     def __init__(
         self,
         *,
@@ -22,7 +30,14 @@ class TemporalDiscoveryEngine:
         search,
         changepoint_detection,
         scm_clustering,
-        cfg: CausalChangeConfigTabular,
+        context_col: str,
+        tau_max: int,
+        changepoint_mode: ChangepointMode,
+        changepoint_scope: ChangepointScope,
+        max_iter: int,
+        detect_contexts: bool,
+        detect_regimes: bool,
+        diagnostics: dict[str, Any] | None = None,
     ):
         self.data_mode = data_mode
         self.domain = domain
@@ -30,7 +45,15 @@ class TemporalDiscoveryEngine:
         self.search = search
         self.changepoint_detection = changepoint_detection
         self.partitioning = scm_clustering
-        self.cfg = cfg
+
+        self.context_col = context_col
+        self.tau_max = tau_max
+        self.changepoint_mode = changepoint_mode
+        self.changepoint_scope = changepoint_scope
+        self.max_iter = max_iter
+        self.detect_contexts = detect_contexts
+        self.detect_regimes = detect_regimes
+        self.diagnostics = dict(diagnostics or {})
 
         self.X0_: pd.DataFrame | None = None
         self.changepoints_: list[int] = []
@@ -102,16 +125,10 @@ class TemporalDiscoveryEngine:
         if self.X0_ is None:
             raise RuntimeError("Engine not fitted. Call fit() first.")
 
-        assert self.cfg.spacetime is not None
-
         variables = self.domain.variables(self.X0_)
-        needs_iteration = (
-            self.cfg.spacetime.changepoints == ChangepointMode.DETECT
-            or self.cfg.spacetime.detect_contexts
-            or self.cfg.spacetime.detect_regimes
-        )
+        needs_iteration = self.changepoint_mode == ChangepointMode.DETECT or self.detect_contexts or self.detect_regimes
 
-        max_iter = self.cfg.spacetime.max_iter if needs_iteration else 1
+        max_iter = self.max_iter if needs_iteration else 1
         graph = None
         previous_key = None
         all_history: list[dict[str, Any]] = []
@@ -120,6 +137,7 @@ class TemporalDiscoveryEngine:
 
         for iteration in range(max_iter):
             t0 = perf_counter()
+
             t_cp0 = perf_counter()
             self.changepoints_ = self.changepoint_detection.detect(
                 time_grid=self.panel_,
@@ -128,7 +146,8 @@ class TemporalDiscoveryEngine:
                 variables=variables,
             )
             t_cp = perf_counter() - t_cp0
-            if self.cfg.spacetime.changepoint_scope == ChangepointScope.PER_CONTEXT:
+
+            if self.changepoint_scope == ChangepointScope.PER_CONTEXT:
                 self.changepoints_by_context_ = self.changepoint_detection.changepoints_by_context_
             else:
                 self.changepoints_by_context_ = None
@@ -141,7 +160,6 @@ class TemporalDiscoveryEngine:
             )
 
             t_part0 = perf_counter()
-
             self.partitions_ = self.partitioning.fit_predict(
                 panel=self.panel_,
                 graph=graph,
@@ -150,14 +168,16 @@ class TemporalDiscoveryEngine:
             t_part = perf_counter() - t_part0
 
             self._score_cache = {}
+
             t_search0 = perf_counter()
             search_result = self.search.run(
                 variables=variables,
-                tau_max=self.cfg.spacetime.tau_max,
+                tau_max=self.tau_max,
                 allowed_edge=self.domain.allowed_edge,
                 score_fun=self.score_edge,
             )
             t_search = perf_counter() - t_search0
+
             iteration_time = perf_counter() - t0
 
             final_search_result = search_result
@@ -192,21 +212,22 @@ class TemporalDiscoveryEngine:
             previous_key = key
 
         if final_search_result is None or self.partitions_ is None:
-            raise RuntimeError("SpaceTime discovery failed to produce a result.")
+            raise RuntimeError("Temporal discovery failed to produce a result.")
 
         edge_strengths = self._compute_edge_strengths(final_search_result.graph)
+
         result = TemporalResult(
             graph=final_search_result.graph,
             topological_order=final_search_result.topological_order,
             changepoints=self.changepoints_,
-            partitions=self.partitions_,
+            grid_clusters=self.partitions_,
             changepoints_by_context=self.changepoints_by_context_,
             changepoint_diagnostics=self.changepoint_diagnostics_,
             edge_strengths=edge_strengths,
+            history=all_history,
             diagnostics={
                 "data_mode": self.data_mode.value,
-                "graph_search": self.cfg.graph_search.value,
-                "score_type": str(self.cfg.score_type),
+                **self.diagnostics,
             },
         )
 
@@ -228,7 +249,7 @@ class TemporalDiscoveryEngine:
         raise ValueError(f"TemporalDiscoveryEngine expects temporal data, got {self.data_mode=}")
 
     def _make_context_panel(self, X: pd.DataFrame) -> TimeGrid:
-        context_col = self.cfg.context_col
+        context_col = self.context_col
 
         if context_col not in X.columns:
             raise ValueError(

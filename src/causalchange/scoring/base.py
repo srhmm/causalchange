@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any, Protocol
 
-from causalchange.config.types import DataMode, GPType, ScoreType
-from scoring.regression import (
+import networkx as nx
+import numpy as np
+import pandas as pd
+
+from causalchange.core.results import SpaceTimeGridClusters
+from causalchange.core.types import DataMode, GPType, ScoreType
+from causalchange.domain.temporal import TimeGrid
+from causalchange.scoring.regression import (
     fit_score_functional_model,
     fit_score_gam,
     fit_score_gp,
@@ -102,19 +109,6 @@ class SCMScore:
         return (float(score), res) if ret_full_result else float(score)
 
 
-
-from __future__ import annotations
-
-from dataclasses import dataclass, field
-from typing import Any, Protocol
-
-import networkx as nx
-import numpy as np
-import pandas as pd
-
-
-
-
 # todo consider removing this
 class TemporalScoring(Protocol):
     tau_max: int
@@ -143,11 +137,11 @@ class TemporalScoring(Protocol):
         variables: list[str],
     ) -> np.ndarray: ...
 
-    def fit_panel(self, panel: TimePanel) -> None: ...
+    def fit_panel(self, panel: TimeGrid) -> None: ...
 
     def residual_signal_panel(
         self,
-        panel: TimePanel,
+        panel: TimeGrid,
         *,
         graph: nx.DiGraph | None,
         variables: list[str],
@@ -156,10 +150,10 @@ class TemporalScoring(Protocol):
     def score_edge_panel(
         self,
         *,
-        panel: TimePanel,
+        panel: TimeGrid,
         effect: Any,
         parents: tuple[Any, ...],
-        partitions: SpaceTimePartitions,
+        partitions: SpaceTimeGridClusters,
     ) -> float: ...
 
     def transition_gain(self, old_score: float, new_score: float) -> float: ...

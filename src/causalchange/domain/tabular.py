@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import pandas as pd
 
+TabularNode = str
+TabularEdge = tuple[TabularNode, TabularNode]
+TabularScoreFunction = Callable[[TabularNode, tuple[TabularNode, ...]], float]  # EdgeScoreTabular.score_edge()
+TabularAllowedEdge = Callable[[TabularNode, TabularNode], bool]
+
 
 class TabularDomain:
+    """tabular "preprocessing" """
+
     def prepare_X(self, X: pd.DataFrame) -> pd.DataFrame:
         return X
 

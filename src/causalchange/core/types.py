@@ -1,4 +1,6 @@
+from dataclasses import dataclass
 from enum import Enum, EnumMeta
+from typing import Literal
 
 import numpy as np
 
@@ -48,6 +50,7 @@ class GraphSearch(Enum):
     def is_compatible_with(self, data_mode: DataMode) -> bool:
         return data_mode in self.compatible_modes()
 
+
 class ChangepointMode(Enum):
     NONE = "none"
     FIXED = "fixed"
@@ -63,7 +66,7 @@ class ChangepointMethod(Enum):
     PELT = "pelt"
 
 
-class PartitioningMethod(Enum):
+class StatisticalTestingMethod(Enum):
     KERNEL = "kernel"
     NONE = "none"
 
@@ -90,21 +93,21 @@ class ContextMode(Enum):
     def is_compatible_with(self, data_mode):
         return data_mode in self.compatible_modes()
 
-class MDLScoreMixin:
+
+class LowerIsBetterScoreMixin:
     def higher_is_better(self) -> bool:
         return False
 
-    def get_gain_threshold(self, n: int) -> float:
+    def gain_threshold(self, n: int) -> float:
         return 0.5 * np.log(max(n, 2))
 
 
-
-class GPType(MDLScoreMixin, Enum):
+class GPType(LowerIsBetterScoreMixin, Enum):
     EXACT = "gp"
     FOURIER = "ff"
 
 
-class MixingType(MDLScoreMixin, Enum):
+class MixingType(LowerIsBetterScoreMixin, Enum):
     MIX_LIN = "mixLin"
     MIX_QUAD = "mixQuad"
     MIX_CUB = "mixCub"
@@ -117,7 +120,7 @@ class MixingType(MDLScoreMixin, Enum):
         return str(self.value)
 
 
-class ScoreType(MDLScoreMixin, Enum):
+class ScoreType(LowerIsBetterScoreMixin, Enum):
     LIN = "lin"
     GAM = "gam"
     SPLINE = "spline"
@@ -125,6 +128,12 @@ class ScoreType(MDLScoreMixin, Enum):
     GP = GPType
     MIX = MixingType
     SKIP = "skip"
+
+
+@dataclass(frozen=True)
+class ContextCombinationParams:
+    method: Literal["components", "agglomerative"] = "components"
+    gain_threshold: float = 0.0
 
 
 def util_score_type_get_all():

@@ -1,14 +1,19 @@
 import pandas as pd
 import pytest
+from discovery.base import TimeGrid
+from discovery.changepoints import SpaceTimeChangepointDetection
+from discovery.partitioning import SpaceTimePartitioning
+from scoring import EdgeScoreTime
+from scoring.mechanism_tests import KCIMechanismEqualityTest
 
 from causalchange.causal_change import CausalChange
-from causalchange.config.cc_config import CausalChangeConfigTabular, ChangepointMode, ChangepointScope, CausalChangeConfigTime
+from causalchange.config.cc_config import (
+    CausalChangeConfigTabular,
+    CausalChangeConfigTime,
+    ChangepointMode,
+    ChangepointScope,
+)
 from causalchange.config.cc_types import ContextMode, DataMode, GPType, GraphSearch, ScoreType
-from scoring import EdgeScoreTime
-from discovery.base import TimePanel
-from discovery.changepoints import SpaceTimeChangepointDetection
-from scoring.mechanism_tests import KCIMechanismEqualityTest
-from discovery.partitioning import SpaceTimePartitioning
 
 
 def test_spacetime_globe_stationary():
@@ -57,8 +62,8 @@ def test_spacetime_fixed_changepoints():
     ).fit(X)
 
     assert cc.result_.changepoints == [20]
-    assert cc.cfg.spacetime is not None
-    assert cc.cfg.spacetime.fixed_changepoints == [20]
+    assert cc.cfg is not None
+    assert cc.cfg.fixed_changepoints == [20]
     assert cc.graph_ is not None
 
 
@@ -168,8 +173,8 @@ def test_spacetime_contexts_globe_stationary():
     assert cc.result_ is not None
     assert cc.result_.changepoints == []
 
-    assert cc.result_.partitions.contexts["x0"] == {"a": 0, "b": 0}
-    assert cc.result_.partitions.contexts["x1"] == {"a": 0, "b": 0}
+    assert cc.result_.grid_clusters.contexts["x0"] == {"a": 0, "b": 0}
+    assert cc.result_.grid_clusters.contexts["x1"] == {"a": 0, "b": 0}
 
 
 def test_spacetime_partitions_target_specific():
@@ -191,7 +196,7 @@ def test_spacetime_partitions_target_specific():
         fixed_changepoints=[15],
     ).fit(X)
 
-    partitions = cc.result_.partitions
+    partitions = cc.result_.grid_clusters
 
     assert set(partitions.contexts) == {"x0", "x1"}
     assert set(partitions.regimes) == {"x0", "x1"}
@@ -246,7 +251,7 @@ def test_spacetime_partitioning_detect_regimes_merges_identical_regimes():
         }
     )
 
-    panel = TimePanel(
+    panel = TimeGrid(
         datasets={0: X},
         variables=["x0", "x1"],
         context_col=None,
@@ -289,7 +294,7 @@ def test_spacetime_partitioning_detect_contexts_merges_identical_contexts():
     )
     X_b = X_a.copy()
 
-    panel = TimePanel(
+    panel = TimeGrid(
         datasets={"a": X_a, "b": X_b},
         variables=["x0", "x1"],
         context_col="context",
@@ -352,8 +357,8 @@ def test_spacetime_contexts_detect_changepoints():
     assert cc.result_ is not None
     assert isinstance(cc.result_.changepoints, list)
 
-    assert "x0" in cc.result_.partitions.contexts
-    assert "x1" in cc.result_.partitions.contexts
+    assert "x0" in cc.result_.grid_clusters.contexts
+    assert "x1" in cc.result_.grid_clusters.contexts
 
 
 def test_spacetime_contexts_detect_changepoints_auto_penalty_runs():
@@ -432,7 +437,7 @@ def test_changepoint_detection_per_context_uses_union_grid():
         }
     )
 
-    panel = TimePanel(
+    panel = TimeGrid(
         datasets={"A": X_a, "B": X_b},
         variables=["x0", "x1"],
         context_col="context",

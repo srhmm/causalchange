@@ -1,8 +1,9 @@
-from causalchange.config.cc_config import CausalChangeConfigTabular, ChangepointMode, CausalChangeConfigTime
-from causalchange.config.cc_types import ContextMode, DataMode, GraphSearch, ScoreType
+from engines.engine import TemporalDiscoveryEngine
 from engines.factory import EngineFactory
 from engines.pipeline import TabularDiscoveryEngine
-from engines.engine import TemporalDiscoveryEngine
+
+from causalchange.config.cc_config import CausalChangeConfigTabular, CausalChangeConfigTime, ChangepointMode
+from causalchange.config.cc_types import ContextMode, DataMode, GraphSearch, ScoreType
 
 
 def test_factory_routes_iid_to_tabular_engine():

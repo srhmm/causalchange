@@ -2,7 +2,7 @@ import networkx as nx
 import pytest
 
 from causalchange.config.benchmark_config import BenchmarkConfig
-from causalchange.config.cc_types import (
+from causalchange.core.types import (
     ContextMode,
     DataMode,
     GraphSearch,

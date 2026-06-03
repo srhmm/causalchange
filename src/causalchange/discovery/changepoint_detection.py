@@ -6,15 +6,18 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from causalchange.config.causal_change_config import (
-    ChangepointMethod, ChangepointMode, ChangepointScope, CausalChangeConfigTime
+from causalchange.config.causal_change_config import CausalChangeConfigTemporal
+from causalchange.core.require import _require_rpt
+from causalchange.core.types import (
+    ChangepointMethod,
+    ChangepointMode,
+    ChangepointScope,
 )
 from causalchange.domain.temporal import TimeGrid
 
 
-
 class ChangepointDetection:
-    def __init__(self, cfg: CausalChangeConfigTime):
+    def __init__(self, cfg: CausalChangeConfigTemporal):
         self.cfg = cfg
         self.changepoints_by_context_: dict[Any, list[int]] | None = None
         self.diagnostics_: dict[str, Any] = {}
@@ -218,14 +221,7 @@ class ChangepointDetection:
         ruptures returns segment endpoints and includes the final endpoint.
         We return only internal changepoints in signal/design coordinates.
         """
-        try:
-            import ruptures as rpt
-        except ImportError as exc:
-            raise ImportError(
-                "ChangepointMethod.PELT requires the optional dependency 'ruptures'. "
-                "Install it with `pip install ruptures`."
-            ) from exc
-
+        rpt = _require_rpt()
         data = self._as_2d_signal(signal)
 
         algo = rpt.Pelt(
@@ -327,26 +323,3 @@ class ChangepointDetection:
                 best_penalty = float(penalty)
 
         return float(best_penalty)
-
-
-def changepoints_to_intervals(
-    n_samples: int,
-    changepoints: list[int],
-) -> list[tuple[int, int]]:
-    """
-    Convert changepoints into half-open intervals.
-
-    Example:
-        n_samples=100, changepoints=[30, 70]
-        -> [(0, 30), (30, 70), (70, 100)]
-    """
-    cps = sorted(int(cp) for cp in changepoints)
-
-    if any(cp <= 0 or cp >= n_samples for cp in cps):
-        raise ValueError(f"changepoints must lie strictly inside [0, {n_samples}), got {changepoints}")
-
-    if len(set(cps)) != len(cps):
-        raise ValueError(f"changepoints must be unique, got {changepoints}")
-
-    bounds = [0, *cps, int(n_samples)]
-    return list(zip(bounds[:-1], bounds[1:], strict=False))

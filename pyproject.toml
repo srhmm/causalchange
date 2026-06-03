@@ -23,23 +23,44 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
 ]
-
 [project.optional-dependencies]
 spacetime = [
   "ruptures",
   "hyppo",
   "causal-learn",
 ]
+
+plotting = [
+  "matplotlib",
+]
+
+notebooks = [
+  "jupyter",
+  "ipykernel",
+  "matplotlib",
+]
+
+docs = [
+  "sphinx",
+  "myst-parser",
+  "numpydoc",
+  "sphinx-rtd-theme",
+  "nbsphinx",
+]
+
 dev = [
   "pytest",
+  "pytest-cov",
   "pre-commit",
   "ruff",
   "build",
   "twine",
 ]
-notebooks = [
-  "jupyter",
-  "ipykernel",
+
+all = [
+  "ruptures",
+  "hyppo",
+  "causal-learn",
   "matplotlib",
 ]
 

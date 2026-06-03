@@ -1,25 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Sequence
 from typing import Any
 
 import networkx as nx
 import numpy as np
 
-Node = tuple[str, int]
-ScoreFunction = Callable[[Node, tuple[Node, ...]], float]
-AllowedEdge = Callable[[Node, Node], bool]
+from causalchange.core.results import GraphSearchTemporalResult
+from causalchange.domain.temporal import TemporalAllowedEdge, TemporalNode, TemporalScoreFunction
 
 
-
-@dataclass
-class TemporalDAGSearchResult:
-    graph: nx.DiGraph
-    topological_order: list[str]
-    history: list[dict[str, Any]]
-
-class TemporalGlobeSearch:
+class GraphSearchTemporalGreedy:
     """
     Edge-greedy search for a window causal graph.
 
@@ -37,9 +28,9 @@ class TemporalGlobeSearch:
         *,
         variables: Sequence[str],
         tau_max: int,
-        allowed_edge: AllowedEdge,
-        score_fun: ScoreFunction,
-    ) -> TemporalDAGSearchResult:
+        allowed_edge: TemporalAllowedEdge,
+        score_fun: TemporalScoreFunction,
+    ) -> GraphSearchTemporalResult:
         variables = list(map(str, variables))
 
         graph = nx.DiGraph()
@@ -66,7 +57,7 @@ class TemporalGlobeSearch:
 
         topological_order = self._instantaneous_topological_order(graph, variables)
 
-        return TemporalDAGSearchResult(
+        return GraphSearchTemporalResult(
             graph=graph,
             topological_order=topological_order,
             history=history,
@@ -77,9 +68,9 @@ class TemporalGlobeSearch:
         *,
         variables: Sequence[str],
         tau_max: int,
-        allowed_edge: AllowedEdge,
-    ) -> list[tuple[Node, Node]]:
-        edges: list[tuple[Node, Node]] = []
+        allowed_edge: TemporalAllowedEdge,
+    ) -> list[tuple[TemporalNode, TemporalNode]]:
+        edges: list[tuple[TemporalNode, TemporalNode]] = []
 
         # Lagged candidate edges: X(t-lag) -> Y(t)
         for effect_var in variables:
@@ -108,8 +99,8 @@ class TemporalGlobeSearch:
         graph: nx.DiGraph,
         variables: Sequence[str],
         tau_max: int,
-        allowed_edge: AllowedEdge,
-        score_fun: ScoreFunction,
+        allowed_edge: TemporalAllowedEdge,
+        score_fun: TemporalScoreFunction,
     ) -> list[dict[str, Any]]:
         history: list[dict[str, Any]] = []
         candidates = self._candidate_edges(
@@ -178,7 +169,7 @@ class TemporalGlobeSearch:
         self,
         *,
         graph: nx.DiGraph,
-        score_fun: ScoreFunction,
+        score_fun: TemporalScoreFunction,
     ) -> list[dict[str, Any]]:
         history: list[dict[str, Any]] = []
 
@@ -234,10 +225,10 @@ class TemporalGlobeSearch:
 
     def _addition_gain(
         self,
-        cause: Node,
-        effect: Node,
+        cause: TemporalNode,
+        effect: TemporalNode,
         graph: nx.DiGraph,
-        score_fun: ScoreFunction,
+        score_fun: TemporalScoreFunction,
     ) -> float:
         parents = tuple(graph.predecessors(effect))
         old_score = float(score_fun(effect, parents))
@@ -246,10 +237,10 @@ class TemporalGlobeSearch:
 
     def _removal_gain(
         self,
-        cause: Node,
-        effect: Node,
+        cause: TemporalNode,
+        effect: TemporalNode,
         graph: nx.DiGraph,
-        score_fun: ScoreFunction,
+        score_fun: TemporalScoreFunction,
     ) -> float:
         parents = tuple(graph.predecessors(effect))
         if cause not in parents:
@@ -260,7 +251,7 @@ class TemporalGlobeSearch:
         new_score = float(score_fun(effect, new_parents))
         return float(self.transition_gain(old_score, new_score))
 
-    def _can_add_edge(self, graph: nx.DiGraph, cause: Node, effect: Node) -> bool:
+    def _can_add_edge(self, graph: nx.DiGraph, cause: TemporalNode, effect: TemporalNode) -> bool:
         if cause == effect:
             return False
 
@@ -298,10 +289,7 @@ class TemporalGlobeSearch:
         return [v for v, lag in nx.topological_sort(sub) if lag == 0]
 
 
-
-
-
-class TemporalTopicSearch:
+class GraphSearchTemporalTopological:
     def __init__(self, *, scoring):
         self.transition_gain = scoring.transition_gain
         self.score_significant = scoring.score_significant
@@ -312,9 +300,9 @@ class TemporalTopicSearch:
         *,
         variables: Sequence[str],
         tau_max: int,
-        allowed_edge: AllowedEdge,
-        score_fun: ScoreFunction,
-    ) -> TemporalDAGSearchResult:
+        allowed_edge: TemporalAllowedEdge,
+        score_fun: TemporalScoreFunction,
+    ) -> GraphSearchTemporalResult:
         variables = list(map(str, variables))
 
         g = nx.DiGraph()
@@ -377,14 +365,14 @@ class TemporalTopicSearch:
             it += 1
 
         history.insert(0, {"phase": "lagged_edges", "added_edges": lagged_added})
-        return TemporalDAGSearchResult(graph=g, topological_order=order, history=history)
+        return GraphSearchTemporalResult(graph=g, topological_order=order, history=history)
 
     def _addition_gain(
         self,
-        cause: Node,
-        effect: Node,
+        cause: TemporalNode,
+        effect: TemporalNode,
         graph: nx.DiGraph,
-        score_fun: ScoreFunction,
+        score_fun: TemporalScoreFunction,
     ) -> float:
         parents = tuple(graph.predecessors(effect))
         old_score = float(score_fun(effect, parents))
@@ -397,8 +385,8 @@ class TemporalTopicSearch:
         graph: nx.DiGraph,
         variables: Sequence[str],
         tau_max: int,
-        allowed_edge: AllowedEdge,
-        score_fun: ScoreFunction,
+        allowed_edge: TemporalAllowedEdge,
+        score_fun: TemporalScoreFunction,
     ) -> list[dict[str, Any]]:
         added = []
 
@@ -430,8 +418,8 @@ class TemporalTopicSearch:
         *,
         remaining: Sequence[str],
         graph: nx.DiGraph,
-        allowed_edge: AllowedEdge,
-        score_fun: ScoreFunction,
+        allowed_edge: TemporalAllowedEdge,
+        score_fun: TemporalScoreFunction,
     ) -> np.ndarray:
         n = len(remaining)
         imp = np.zeros((n, n), dtype=float)
@@ -458,8 +446,8 @@ class TemporalTopicSearch:
         *,
         remaining: Sequence[str],
         graph: nx.DiGraph,
-        allowed_edge: AllowedEdge,
-        score_fun: ScoreFunction,
+        allowed_edge: TemporalAllowedEdge,
+        score_fun: TemporalScoreFunction,
     ):
         improvement = self._improvement_matrix(
             remaining=remaining,
@@ -490,8 +478,8 @@ class TemporalTopicSearch:
         source: str,
         remaining: Sequence[str],
         graph: nx.DiGraph,
-        allowed_edge: AllowedEdge,
-        score_fun: ScoreFunction,
+        allowed_edge: TemporalAllowedEdge,
+        score_fun: TemporalScoreFunction,
     ):
         added_edges = []
         meta = []
@@ -528,7 +516,7 @@ class TemporalTopicSearch:
 
         return added_edges, meta
 
-    def _remove_ingoing_edges(self, *, source: Node, graph: nx.DiGraph, score_fun: ScoreFunction):
+    def _remove_ingoing_edges(self, *, source: TemporalNode, graph: nx.DiGraph, score_fun: TemporalScoreFunction):
         pruned_edges = []
         meta = []
 
@@ -558,7 +546,9 @@ class TemporalTopicSearch:
 
         return pruned_edges, meta
 
-    def _find_removable_edge(self, *, parents: list[Node], child: Node, score_fun: ScoreFunction):
+    def _find_removable_edge(
+        self, *, parents: list[TemporalNode], child: TemporalNode, score_fun: TemporalScoreFunction
+    ):
         old_score = float(score_fun(child, tuple(parents)))
 
         best_parent = None
@@ -578,4 +568,3 @@ class TemporalTopicSearch:
                 best_gain = float(gain_remove)
 
         return best_parent, best_gain, candidate_stats
-

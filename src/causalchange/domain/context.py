@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-
-import pandas as pd
 from collections.abc import Hashable
 
+import pandas as pd
 
 
 class SingleContextDomain:
+    """placeholder to skip multi-context preprocessing"""
+
     def make_contexts(self, X0: pd.DataFrame) -> dict[Hashable, pd.DataFrame]:
         return {0: X0}
 
@@ -15,7 +16,7 @@ class SingleContextDomain:
 
 
 class MultiContextDomain:
-    """ splits X into contexts using a context column, and drops that column """
+    """multi-context preprocessing, splits X into contexts using a context column and drops that column"""
 
     def __init__(self, *, context_col: str = "context"):
         self.context_col = str(context_col)

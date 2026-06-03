@@ -1,54 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 import networkx as nx
 import pandas as pd
 
-from results import Node, SpaceTimePartitions
- 
-
+from causalchange.core.results import EdgeContributionRecord, MechanismScoreRecord, SpaceTimeGridClusters
+from causalchange.domain.temporal import TemporalNode, util_changepoints_to_intervals
 
 if TYPE_CHECKING:
-    from engines.temporal import TemporalDiscoveryEngine
+    from causalchange.engines.temporal import TemporalDiscoveryEngine
 
-ScoreScope = Literal["global", "windows"]
-
-
-@dataclass(frozen=True)
-class MechanismScoreRecord:
-    scope: str
-    target: str
-    effect: Node
-    parents: tuple[Node, ...]
-    n_parents: int
-    score: float
-    dataset_id: Any | None = None
-    interval_id: int | None = None
-    interval_start: int | None = None
-    interval_stop: int | None = None
-    n_samples: int | None = None
-
-
-@dataclass(frozen=True)
-class EdgeContributionRecord:
-    scope: str
-    parent: Node
-    target: str
-    effect: Node
-    full_parent_set: tuple[Node, ...]
-    n_parents: int
-    full_score: float
-    reduced_score: float
-    raw_gain: float
-    positive_gain: float
-    dataset_id: Any | None = None
-    interval_id: int | None = None
-    interval_start: int | None = None
-    interval_stop: int | None = None
-    n_samples: int | None = None
+ScoreScope = Literal["global", "windows"]  # todo (re)move
 
 
 def compute_mechanism_scores(
@@ -94,7 +58,7 @@ def fixed_partition_for_graph(
     graph: nx.DiGraph,
     dataset_ids: Iterable[Any],
     n_intervals: int,
-) -> SpaceTimePartitions:
+) -> SpaceTimeGridClusters:
     """Create singleton/no-change partitions for a fixed graph.
 
     Useful for post-hoc scoring from saved graph/changepoints when you do not want
@@ -102,22 +66,11 @@ def fixed_partition_for_graph(
     """
     targets = sorted({str(effect[0]) for effect in _effect_nodes(graph)})
 
-    return SpaceTimePartitions(
+    return SpaceTimeGridClusters(
         contexts={target: {dataset_id: 0 for dataset_id in dataset_ids} for target in targets},
         regimes={target: {interval_id: interval_id for interval_id in range(n_intervals)} for target in targets},
         diagnostics={"mode": "fixed_posthoc"},
     )
-
-
-def changepoints_to_intervals(
-    *,
-    n_samples: int,
-    changepoints: list[int],
-) -> list[tuple[int, int]]:
-    cps = sorted(int(cp) for cp in changepoints if 0 < int(cp) < n_samples)
-    boundaries = [0, *cps, int(n_samples)]
-
-    return [(int(boundaries[i]), int(boundaries[i + 1])) for i in range(len(boundaries) - 1)]
 
 
 def _resolve_graph(
@@ -133,8 +86,8 @@ def _resolve_graph(
     raise RuntimeError("No graph provided and engine has no result_. Fit/discover first or pass graph=...")
 
 
-def _effect_nodes(graph: nx.DiGraph) -> list[Node]:
-    nodes: list[Node] = []
+def _effect_nodes(graph: nx.DiGraph) -> list[TemporalNode]:
+    nodes: list[TemporalNode] = []
 
     for node in graph.nodes():
         if _is_temporal_node(node) and int(node[1]) == 0:
@@ -145,9 +98,9 @@ def _effect_nodes(graph: nx.DiGraph) -> list[Node]:
 
 def _parents_for_effect(
     graph: nx.DiGraph,
-    effect: Node,
-) -> tuple[Node, ...]:
-    parents: list[Node] = []
+    effect: TemporalNode,
+) -> tuple[TemporalNode, ...]:
+    parents: list[TemporalNode] = []
 
     for parent in graph.predecessors(effect):
         if not _is_temporal_node(parent):
@@ -227,7 +180,7 @@ def _mechanism_scores_windows(
     panel = _require_panel(engine)
     cps = list(engine.changepoints_ if changepoints is None else changepoints)
     n_samples = len(panel.first_dataset())
-    intervals = changepoints_to_intervals(n_samples=n_samples, changepoints=cps)
+    intervals = util_changepoints_to_intervals(n_samples=n_samples, changepoints=cps)
 
     records: list[MechanismScoreRecord] = []
 
@@ -237,7 +190,7 @@ def _mechanism_scores_windows(
                 X_context,
                 start=start,
                 stop=stop,
-                tau_max=engine.cfg.spacetime.tau_max,
+                tau_max=engine.cfg.tau_max,
             )
 
             for effect in _effect_nodes(graph):
@@ -251,7 +204,7 @@ def _mechanism_scores_windows(
                         interval_id=interval_id,
                         interval_start=start,
                         interval_stop=stop,
-                        n_samples=_effective_n_samples(X_window, engine.cfg.spacetime.tau_max),
+                        n_samples=_effective_n_samples(X_window, engine.cfge.tau_max),
                         target=str(effect[0]),
                         effect=effect,
                         parents=parents,
@@ -272,7 +225,7 @@ def _edge_contributions_windows(
     panel = _require_panel(engine)
     cps = list(engine.changepoints_ if changepoints is None else changepoints)
     n_samples = len(panel.first_dataset())
-    intervals = changepoints_to_intervals(n_samples=n_samples, changepoints=cps)
+    intervals = util_changepoints_to_intervals(n_samples=n_samples, changepoints=cps)
 
     records: list[EdgeContributionRecord] = []
 
@@ -282,9 +235,9 @@ def _edge_contributions_windows(
                 X_context,
                 start=start,
                 stop=stop,
-                tau_max=engine.cfg.spacetime.tau_max,
+                tau_max=engine.cfg.tau_max,
             )
-            n_eff = _effective_n_samples(X_window, engine.cfg.spacetime.tau_max)
+            n_eff = _effective_n_samples(X_window, engine.cfg.tau_max)
 
             for effect in _effect_nodes(graph):
                 parents = _parents_for_effect(graph, effect)

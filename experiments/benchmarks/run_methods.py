@@ -66,7 +66,7 @@ def _node_to_summary_var(node) -> str:
 
 
 def _estimated_context_labels_by_target(est: CausalChange) -> dict[str, dict[int, int]]:
-    partitions = est.result.partitions
+    partitions = est.result.grid_clusters
     return {
         str(target): {int(dataset_id): int(label) for dataset_id, label in labels.items()}
         for target, labels in partitions.contexts.items()
@@ -74,7 +74,7 @@ def _estimated_context_labels_by_target(est: CausalChange) -> dict[str, dict[int
 
 
 def _estimated_regime_labels_by_target(est: CausalChange) -> dict[str, dict[int, int]]:
-    partitions = est.result.partitions
+    partitions = est.result.grid_clusters
     return {
         str(target): {int(regime_id): int(label) for regime_id, label in labels.items()}
         for target, labels in partitions.regimes.items()
@@ -270,7 +270,7 @@ def run_scoring(
         )
 
         metrics.update(changepoint_metrics)
-        spacetime_cfg = est.cfg.spacetime
+        spacetime_cfg = est.cfg
 
         if spacetime_cfg.detect_contexts:
             context_partition_metrics = compute_target_partition_metrics(

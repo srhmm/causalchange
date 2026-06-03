@@ -7,19 +7,16 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from causalchange.config.causal_change_config import CausalChangeConfigTabular
-from causalchange.config.types import DataMode, GPType
-from causalchange.scoring.tabular import SCMScoreTabular
+from causalchange.config.causal_change_config import CausalChangeConfigTemporal
+from causalchange.core.results import SpaceTimeGridClusters
+from causalchange.core.types import DataMode, GPType
+from causalchange.domain.temporal import TemporalNode, TimeGrid, util_changepoints_to_intervals
 from causalchange.scoring.regression import (
     fit_score_functional_model,
     fit_score_gp,
     fit_score_rff,
 )
-from causalchange.domain.temporal import TimeGrid
-from causalchange.results import SpaceTimePartitions
-
-
-Node = tuple[str, int]
+from causalchange.scoring.tabular import SCMScoreTabular
 
 
 @dataclass(frozen=True)
@@ -43,20 +40,17 @@ class SCMScoreTemporal:
     mechanism directly to fit_score_gp.
     """
 
-    def __init__(self, *, cfg: CausalChangeConfigTabular):
+    def __init__(self, *, cfg: CausalChangeConfigTemporal):
         if cfg.data_mode not in (DataMode.TIME, DataMode.TIME_CONTEXTS):
             raise ValueError(f"EdgeScoreTime expects temporal data, got {cfg.data_mode=}")
 
-        if cfg.spacetime is None:
-            raise ValueError("EdgeScoreTime requires cfg.spacetime.")
-
-        if cfg.spacetime.tau_max <= 0:
+        if cfg.tau_max <= 0:
             raise ValueError("SpaceTimeConfig.tau_max must be positive.")
 
         self.data_mode = cfg.data_mode
         self.score_type = cfg.score_type
         self.score_kwargs = dict(cfg.score_kwargs or {})
-        self.tau_max = int(cfg.spacetime.tau_max)
+        self.tau_max = int(cfg.tau_max)
 
         self._time_windows: list[tuple[int, int]] | None = None
         self._global_n_samples: int | None = None
@@ -64,7 +58,7 @@ class SCMScoreTemporal:
         # Used for fast/debug non-GP scores.
         self._tab = SCMScoreTabular(cfg)
 
-        self._node_to_col: dict[Node, str] = {}
+        self._node_to_col: dict[TemporalNode, str] = {}
         self._Z: pd.DataFrame | None = None
         self._bound_key: tuple[int, tuple[str, ...], tuple[int, int]] | None = None
 
@@ -77,7 +71,7 @@ class SCMScoreTemporal:
     def _is_gp_score(self) -> bool:
         return self.score_type in (GPType.EXACT, GPType.FOURIER)
 
-    def _ar_col(self, node: Node) -> str:
+    def _ar_col(self, node: TemporalNode) -> str:
         variable, lag = node
         return f"{variable}_lag{lag}"
 
@@ -129,9 +123,8 @@ class SCMScoreTemporal:
         The lagged design matrix drops the first tau_max rows, so an original
         interval [a, b) maps to design rows [max(a, tau_max)-tau_max, b-tau_max).
         """
-        from discovery.changepoints import changepoints_to_intervals
 
-        raw_windows = changepoints_to_intervals(n_raw_samples, changepoints)
+        raw_windows = util_changepoints_to_intervals(n_raw_samples, changepoints)
 
         design_windows: list[tuple[int, int]] = []
         for start, stop in raw_windows:
@@ -152,8 +145,8 @@ class SCMScoreTemporal:
     def score_edge(
         self,
         X: pd.DataFrame,
-        effect: Node,
-        parents: Sequence[Node],
+        effect: TemporalNode,
+        parents: Sequence[TemporalNode],
         *,
         ret_full_result: bool = False,
         ret_residuals: bool = False,
@@ -194,8 +187,8 @@ class SCMScoreTemporal:
         self,
         *,
         Z: pd.DataFrame,
-        effect: Node,
-        parents: Sequence[Node],
+        effect: TemporalNode,
+        parents: Sequence[TemporalNode],
         ret_full_result: bool,
         ret_residuals: bool,
     ) -> float | TimeLocalScoreResult:
@@ -320,7 +313,7 @@ class SCMScoreTemporal:
                 effect = (str(variable), 0)
 
                 if graph is None or effect not in graph:
-                    parents: tuple[Node, ...] = tuple()
+                    parents: tuple[TemporalNode, ...] = tuple()
                 else:
                     parents = tuple(graph.predecessors(effect))
 
@@ -454,9 +447,9 @@ class SCMScoreTemporal:
         self,
         *,
         panel: TimeGrid,
-        effect: Node,
-        parents: Sequence[Node],
-        partitions: SpaceTimePartitions,
+        effect: TemporalNode,
+        parents: Sequence[TemporalNode],
+        partitions: SpaceTimeGridClusters,
     ) -> float:
         """
         Score one temporal local mechanism over context/regime partitions.
@@ -541,7 +534,7 @@ class SCMScoreTemporal:
     def _intervals_from_partitions(
         self,
         panel: TimeGrid,
-        partitions: SpaceTimePartitions,
+        partitions: SpaceTimeGridClusters,
     ) -> list[tuple[int, int]]:
         intervals_raw = partitions.diagnostics.get("intervals")
 
@@ -555,8 +548,8 @@ class SCMScoreTemporal:
         self,
         *,
         X: pd.DataFrame,
-        effect: Node,
-        parents: Sequence[Node],
+        effect: TemporalNode,
+        parents: Sequence[TemporalNode],
         interval: tuple[int, int],
     ) -> pd.DataFrame:
         target = str(effect[0])
@@ -594,5 +587,5 @@ class SCMScoreTemporal:
         if self._global_n_samples is None:
             raise RuntimeError("Call fit(X) before score_significant().")
 
-        threshold = float(self.score_type.get_gain_threshold(self._global_n_samples))
+        threshold = float(self.score_type.gain_threshold(self._global_n_samples))
         return bool(gain > threshold)

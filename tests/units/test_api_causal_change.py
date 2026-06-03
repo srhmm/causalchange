@@ -2,8 +2,8 @@ import pandas as pd
 import pytest
 
 from causalchange.causal_change import CausalChange
-from causalchange.config.cc_config import CausalChangeConfigTabular, ChangepointMode
-from causalchange.config.cc_types import (
+from causalchange.config.causal_change_config import CausalChangeConfigTabular, ChangepointMode
+from causalchange.core.types import (
     ContextMode,
     DataMode,
     GraphSearch,
@@ -47,7 +47,7 @@ def test_causalchange_public_api_smoke(data_mode, aggregation, X):
     assert cc.data_mode == data_mode
     assert cc.graph_search == GraphSearch.TOPIC
     assert cc.score_type == ScoreType.LIN
-    assert cc.aggregation == aggregation
+    assert cc.context_combination == aggregation
     assert not cc.fitted_graph
 
     fitted = cc.fit(X)
@@ -141,12 +141,12 @@ def test_causalchange_builds_spacetime_config_with_partition_args():
         mechanism_test_alpha=0.25,
     )
 
-    assert cc.cfg.spacetime is not None
-    assert cc.cfg.spacetime.tau_max == 2
-    assert cc.cfg.spacetime.changepoints == ChangepointMode.DETECT
-    assert cc.cfg.spacetime.d_min == 10
-    assert cc.cfg.spacetime.max_iter == 4
-    assert cc.cfg.spacetime.pelt_penalty == 2.5
-    assert cc.cfg.spacetime.detect_contexts is True
-    assert cc.cfg.spacetime.detect_regimes is True
-    assert cc.cfg.spacetime.mechanism_test_alpha == 0.25
+    assert cc.cfg is not None
+    assert cc.cfg.tau_max == 2
+    assert cc.cfg.changepoints == ChangepointMode.DETECT
+    assert cc.cfg.d_min == 10
+    assert cc.cfg.max_iter == 4
+    assert cc.cfg.pelt_penalty == 2.5
+    assert cc.cfg.detect_contexts is True
+    assert cc.cfg.detect_regimes is True
+    assert cc.cfg.mechanism_test_alpha == 0.25

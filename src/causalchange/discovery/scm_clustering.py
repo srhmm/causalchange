@@ -4,14 +4,15 @@ from typing import Any
 
 import pandas as pd
 
-from causalchange.config.causal_change_config import CausalChangeConfigTime
-from causalchange.config.types import PartitioningMethod
-from causalchange.domain.temporal import TimeGrid
-from causalchange.posthoc.temporal import changepoints_to_intervals
-from causalchange.results import Node, SpaceTimePartitions
-from causalchange.scoring.conditional_tests import SCMEqualityTestKCI
+from causalchange.config.causal_change_config import CausalChangeConfigTemporal
+from causalchange.core.results import SpaceTimeGridClusters
+from causalchange.core.types import StatisticalTestingMethod
+from causalchange.domain.temporal import TemporalNode, TimeGrid, util_changepoints_to_intervals
+from causalchange.scoring.statistical_tests import SCMEqualityTestKCI
 
-class SCMClustering: ... #for causal mixtures
+
+class SCMClustering: ...  # for causal mixtures
+
 
 class SpaceTimeClustering:
     """
@@ -21,7 +22,7 @@ class SpaceTimeClustering:
         regimes[target][regime_id] = regime_cluster_id
     """
 
-    def __init__(self, cfg: CausalChangeConfigTime):
+    def __init__(self, cfg: CausalChangeConfigTemporal):
         self.cfg = cfg
         self.equality_test = SCMEqualityTestKCI(
             alpha=cfg.mechanism_test_alpha,
@@ -35,7 +36,7 @@ class SpaceTimeClustering:
         panel: TimeGrid | None = None,
         graph=None,
         changepoints: list[int] | None = None,
-    ) -> SpaceTimePartitions:
+    ) -> SpaceTimeGridClusters:
         if panel is None:
             if X is None:
                 raise ValueError("Either X or panel must be provided.")
@@ -48,7 +49,7 @@ class SpaceTimeClustering:
 
         changepoints = list(changepoints or [])
         n_samples = len(panel.first_dataset())
-        intervals = changepoints_to_intervals(n_samples, changepoints)
+        intervals = util_changepoints_to_intervals(n_samples, changepoints)
 
         contexts = self._initial_context_partitions(panel)
         regimes = self._initial_regime_partitions(
@@ -67,9 +68,9 @@ class SpaceTimeClustering:
             "tests": [],
         }
 
-        if self.cfg.partitioning_method == PartitioningMethod.NONE:
+        if self.cfg.partitioning_method == StatisticalTestingMethod.NONE:
             diagnostics["mode"] = "none"
-            return SpaceTimePartitions(
+            return SpaceTimeGridClusters(
                 contexts=contexts,
                 regimes=regimes,
                 diagnostics=diagnostics,
@@ -93,7 +94,7 @@ class SpaceTimeClustering:
 
         diagnostics["mode"] = "kernel" if diagnostics["tests"] else "initial"
 
-        return SpaceTimePartitions(
+        return SpaceTimeGridClusters(
             contexts=contexts,
             regimes=regimes,
             diagnostics=diagnostics,
@@ -385,7 +386,7 @@ class SpaceTimeClustering:
         *,
         panel: TimeGrid,
         target: str,
-        parents: list[Node],
+        parents: list[TemporalNode],
         interval: tuple[int, int],
     ) -> pd.DataFrame:
         samples = [
@@ -410,7 +411,7 @@ class SpaceTimeClustering:
         *,
         X: pd.DataFrame,
         target: str,
-        parents: list[Node],
+        parents: list[TemporalNode],
         interval: tuple[int, int],
     ) -> pd.DataFrame:
         start, stop = interval
@@ -431,7 +432,7 @@ class SpaceTimeClustering:
         columns = [*self._parent_cols(parents), "target"]
         return pd.DataFrame(rows, columns=columns)
 
-    def _parents_for_target(self, graph, target: str) -> list[Node]:
+    def _parents_for_target(self, graph, target: str) -> list[TemporalNode]:
         if graph is None:
             return []
 
@@ -451,5 +452,5 @@ class SpaceTimeClustering:
 
         return parents
 
-    def _parent_cols(self, parents: list[Node]) -> list[str]:
+    def _parent_cols(self, parents: list[TemporalNode]) -> list[str]:
         return [f"parent_{idx}" for idx, _ in enumerate(parents)]

@@ -1,61 +1,13 @@
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-from typing import Literal
-from collections.abc import Callable, Hashable
-from dataclasses import dataclass
+from collections.abc import Callable, Hashable, Iterable
 from typing import Any
 
-from causalchange.config.causal_change_config import CausalChangeConfigTabular
-from causalchange.utils.union_find import union_find_components
+import numpy as np
+import pandas as pd
 
-
-from __future__ import annotations
-
-from collections.abc import Hashable, Iterable
-
-def _util_union_find_components(
-    nodes: list[Hashable],
-    edges: Iterable[tuple[Hashable, Hashable]],
-) -> list[list[Hashable]]:
-    parent = {x: x for x in nodes}
-    rank = {x: 0 for x in nodes}
-
-    def find(x):
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def union(a, b):
-        ra, rb = find(a), find(b)
-        if ra == rb:
-            return
-        if rank[ra] < rank[rb]:
-            parent[ra] = rb
-        elif rank[ra] > rank[rb]:
-            parent[rb] = ra
-        else:
-            parent[rb] = ra
-            rank[ra] += 1
-
-    for a, b in edges:
-        union(a, b)
-
-    comps: dict[Hashable, list[Hashable]] = {}
-    for x in nodes:
-        rx = find(x)
-        comps.setdefault(rx, []).append(x)
-
-    return list(comps.values())
-
-
-
-@dataclass(frozen=True)
-class ContextCombinationResult:
-    total: float
-    diagnostics: dict[str, Any]
+from causalchange.core.results import ContextCombinationResult
+from causalchange.core.types import ContextCombinationParams
 
 
 class SkipCombination:
@@ -88,12 +40,6 @@ class SkipCombination:
                 "score": score,
             },
         )
-
-
-@dataclass(frozen=True)
-class ContextCombinationParams:
-    method: Literal["components", "agglomerative"] = "components"
-    gain_threshold: float = 0.0
 
 
 class LINCContextCombination:
@@ -235,16 +181,18 @@ class CHAINContextCombination:
     def __init__(
         self,
         *,
-        cfg: CausalChangeConfigTabular,
+        higher_is_better: bool,
+        seed: int = 42,
+        lambda_inv: float = 1.0,
     ):
-        self.lambda_inv = 1.0
+        self.lambda_inv = lambda_inv
+        self.higher_is_better = higher_is_better
+        self._rng = np.random.default_rng(seed)
         self.mmd_max_samples = 200
         self.mmd_gamma = None
         self.mmd_compare_to = "pooled"  # pairwise
-        self.higher_is_better = bool(cfg.score_type.higher_is_better())
 
-        seed = 42
-        self._rng = np.random.default_rng(seed)
+        self.seed = seed
         self._pooled_cache: dict[tuple[str, tuple[str, ...]], tuple[dict[Hashable, np.ndarray], np.ndarray]] = {}
         self._mmd_cache: dict[tuple[Any, ...], float] = {}
 
@@ -430,3 +378,39 @@ class CHAINContextCombination:
         if sd < 1e-8:
             return r - mu
         return (r - mu) / sd
+
+
+def _util_union_find_components(
+    nodes: list[Hashable],
+    edges: Iterable[tuple[Hashable, Hashable]],
+) -> list[list[Hashable]]:
+    parent = {x: x for x in nodes}
+    rank = {x: 0 for x in nodes}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            return
+        if rank[ra] < rank[rb]:
+            parent[ra] = rb
+        elif rank[ra] > rank[rb]:
+            parent[rb] = ra
+        else:
+            parent[rb] = ra
+            rank[ra] += 1
+
+    for a, b in edges:
+        union(a, b)
+
+    comps: dict[Hashable, list[Hashable]] = {}
+    for x in nodes:
+        rx = find(x)
+        comps.setdefault(rx, []).append(x)
+
+    return list(comps.values())

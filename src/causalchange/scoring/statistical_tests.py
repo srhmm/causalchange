@@ -5,6 +5,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from causalchange.core.require import _require_cit, _require_hyppo
+
 
 @dataclass(frozen=True)
 class MechanismTestResult:
@@ -106,13 +108,7 @@ class SCMEqualityTestKCI:
         target_col: str,
         parent_cols: list[str],
     ) -> float:
-        try:
-            from causallearn.utils.cit import CIT
-        except ImportError as exc:
-            raise ImportError(
-                "KCI mechanism testing requires the optional dependency "
-                "`causal-learn`. Install it with `pip install causal-learn`."
-            ) from exc
+        CIT = _require_cit()
 
         Xa = sample_a[parent_cols].to_numpy(dtype=float)
         Xb = sample_b[parent_cols].to_numpy(dtype=float)
@@ -140,19 +136,20 @@ class SCMEqualityTestKCI:
         return float(pvalue)
 
     def _mmd_or_ks_pvalue(self, ya: np.ndarray, yb: np.ndarray) -> float:
-        if self._has_hyppo():
-            from hyppo.ksample import MMD
+        _require_hyppo()
+        from hyppo.ksample import MMD
 
-            _, pvalue = MMD().test(
-                ya.reshape(-1, 1),
-                yb.reshape(-1, 1),
-            )
-            return float(pvalue)
-
-        from scipy.stats import ks_2samp
-
-        _, pvalue = ks_2samp(ya, yb)
+        _, pvalue = MMD().test(
+            ya.reshape(-1, 1),
+            yb.reshape(-1, 1),
+        )
         return float(pvalue)
+
+        # fallback: from scipy.stats import ks_2samp
+
+        # _, pvalue = ks_2samp(ya, yb)
+
+    # return float(pvalue)
 
     def _has_hyppo(self) -> bool:
         try:

@@ -1,48 +1,53 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable, Iterable
-from dataclasses import dataclass
-from typing import Any, Protocol
+from collections.abc import Hashable, Iterable
+from typing import Any
 
 import pandas as pd
 
-from causalchange.config.types import DataMode
-from causalchange.discovery.graphsearch_tabular import DAGSearchResult
-from causalchange.engines.protocols import Domain, ContextPreproc, BaseScoring, BaseAggregation, Search, \
-    AggregationResult
+from causalchange.core.results import ContextCombinationResult, GraphSearchTabularResult
+from causalchange.core.types import DataMode
+from causalchange.engines.protocols import (
+    BaseContextCombination,
+    BaseScoring,
+    ContextPreproc,
+    Domain,
+    Search,
+)
 
 
 class TabularDiscoveryEngine:
-    """ shows lower-level control flow for tabular causal discovery. """
+    """shows lower-level control flow for tabular causal discovery."""
+
     def __init__(
         self,
         *,
         data_mode: DataMode,
         domain: Domain,
-        context_preprocessing: ContextPreproc,
+        context_preproc: ContextPreproc,
         scoring: BaseScoring,
-        context_combination: BaseAggregation,
+        context_comb: BaseContextCombination,
         search: Search,
     ):
         self.data_mode = data_mode
 
         self.domain = domain
-        self.context_preproc = context_preprocessing
-        self.scorer = scoring
-        self.aggregator = context_combination
+        self.context_preproc = context_preproc
+        self.scoring = scoring
+        self.context_comb = context_comb
         self.search = search
 
         self.X0_: pd.DataFrame | None = None
         self.contexts_: dict[Hashable, pd.DataFrame] | None = None
-        self.last_aggregation_: AggregationResult | None = None
+        self.last_context_combo_: ContextCombinationResult | None = None
 
-        self._score_cache: dict[tuple[Any, tuple[Any, ...]], AggregationResult] = {}
+        self._score_cache: dict[tuple[Any, tuple[Any, ...]], ContextCombinationResult] = {}
 
     def fit(self, X: pd.DataFrame) -> TabularDiscoveryEngine:
         self.contexts_ = self.context_preproc.make_contexts(X)
         X0 = self.context_preproc.prepare_X(X)
         X0 = self.domain.prepare_X(X0)
-        self.scorer.fit(X0)
+        self.scoring.fit(X0)
         self.X0_ = X0
         self._score_cache = {}
         return self
@@ -56,13 +61,13 @@ class TabularDiscoveryEngine:
 
         if cache_key in self._score_cache:
             res = self._score_cache[cache_key]
-            self.last_aggregation_ = res
+            self.last_context_combo_ = res
             return float(res.total)
 
         def score_ctx(df: pd.DataFrame) -> float:
-            return float(self.scorer.score_edge(df, effect, parents_t))
+            return float(self.scoring.score_edge(df, effect, parents_t))
 
-        res = self.aggregator.aggregate(
+        res = self.context_comb.combine_contexts(
             contexts=self.contexts_,
             effect=effect,
             parents=parents_t,
@@ -70,10 +75,10 @@ class TabularDiscoveryEngine:
         )
 
         self._score_cache[cache_key] = res
-        self.last_aggregation_ = res
+        self.last_context_combo_ = res
         return float(res.total)
 
-    def discover(self) -> DAGSearchResult:
+    def discover(self) -> GraphSearchTabularResult:
         if self.X0_ is None:
             raise RuntimeError("Engine not fitted. Call fit() first.")
 
@@ -107,6 +112,6 @@ class TabularDiscoveryEngine:
             score_without = self.score_edge(effect, parents_without)
 
             # MDL scores are lower-is-better, so positive means the edge helps.
-            strengths[edge] = float(score_without - score_with)
+            strengths[edge] = float(score_without - score_with)  # todo use higher is better mixin.
 
         return strengths

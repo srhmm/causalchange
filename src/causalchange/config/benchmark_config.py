@@ -53,14 +53,11 @@ class MultiDataConfig(DataConfigBase):
     intervention_type: InterventionNonlinear = "soft_weight"
     alt_nonlinearity: Nonlinearity | None = None
 
-
     @model_validator(mode="after")
     def _alt_required_for_soft_mechanism(self):
         if self.intervention_type == "soft_mechanism" and self.alt_nonlinearity is None:
             raise ValueError("alt_nonlinearity is required when intervention_type='soft_mechanism'.")
         return self
-
-
 
 
 class MixedDataConfig(DataConfigBase):

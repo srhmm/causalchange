@@ -2,16 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-
-def _require_matplotlib():
-    try:
-        import matplotlib.pyplot as plt
-    except ImportError as exc:
-        raise ImportError(
-            "Plotting requires matplotlib. Install it with " '`pip install "causalchange[notebooks]"`.'
-        ) from exc
-
-    return plt
+from causalchange.core.require import _require_matplotlib
 
 
 def plot_changepoints(

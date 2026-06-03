@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from causalchange.config.cc_config import CausalChangeConfigTabular, ChangepointMode, CausalChangeConfigTime
+from causalchange.config.cc_config import CausalChangeConfigTabular, CausalChangeConfigTime, ChangepointMode
 from causalchange.config.cc_types import ContextMode, DataMode, GraphSearch, ScoreType
 
 

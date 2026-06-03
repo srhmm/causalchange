@@ -15,7 +15,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import SplineTransformer, StandardScaler
 
-from causalchange.config.cc_types import MixingType
+from causalchange.core.types import MixingType
 
 
 def fit_score_functional_model(

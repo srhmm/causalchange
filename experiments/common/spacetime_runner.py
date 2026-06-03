@@ -128,7 +128,7 @@ def fit_spacetime(
         estimator=estimator,
         graph=estimator.graph,
         changepoints=list(estimator.result.changepoints),
-        partitions=estimator.result.partitions,
+        partitions=estimator.result.grid_clusters,
         posthoc=posthoc,
     )
 

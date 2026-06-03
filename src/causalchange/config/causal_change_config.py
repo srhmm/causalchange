@@ -4,67 +4,68 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from causalchange.config.types import (
+from causalchange.core.types import (
+    ChangepointMethod,
+    ChangepointMode,
+    ChangepointScope,
+    ContextCombinationParams,
     ContextMode,
     DataMode,
     GPType,
     GraphSearch,
-    ScoreType, ChangepointMode, ChangepointMethod, PartitioningMethod, ChangepointScope,
+    ScoreType,
+    StatisticalTestingMethod,
 )
-from causalchange.discovery.context_combination import ContextCombinationParams
 
 
-
-class CausalChangeConfigTabular(BaseModel):
-    model_config = ConfigDict()  # extra="forbid")
+class CausalChangeConfigBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # needed?
 
     data_mode: DataMode
     graph_search: GraphSearch
     score_type: ScoreType | GPType
-    aggregation: ContextMode
-
-    spacetime: CausalChangeConfigTime | None = None #todo remove
-
-    context_col: str = "context"
-    grouping: ContextCombinationParams = Field(default_factory=ContextCombinationParams)
-
     score_kwargs: dict[str, Any] = Field(default_factory=dict)
     seed: int = 42
+
+
+class CausalChangeConfigTabular(CausalChangeConfigBase):
+    context_mode: ContextMode = ContextMode.SKIP
+    context_col: str = "context"
+    grouping: ContextCombinationParams = Field(default_factory=ContextCombinationParams)
 
     @model_validator(mode="after")
     def _validate_combo(self):
         if self.data_mode not in self.graph_search.compatible_modes():
             raise ValueError(f"{self.graph_search=} is not compatible with {self.data_mode=}.")
-        if self.data_mode not in self.aggregation.compatible_modes():
-            raise ValueError(f"{self.aggregation=} is not compatible with {self.data_mode=}.")
+        if self.data_mode not in self.context_mode.compatible_modes():
+            raise ValueError(f"{self.context_mode=} is not compatible with {self.data_mode=}.")
         if self.data_mode.is_context() and self.context_col is None:
             raise ValueError("context_col required for multi context data")
-        if not self.data_mode.is_temporal() and self.spacetime is not None:
+        if not self.data_mode.is_temporal():
             raise ValueError("spacetime config  only valid for temporal data.")
-        if self.data_mode.is_temporal() and self.spacetime is None:
+        if self.data_mode.is_temporal():
             raise ValueError("spacetime config is required for temporal data.")
-        if self.data_mode.is_temporal() and self.aggregation != ContextMode.SKIP:
+        if self.data_mode.is_temporal() and self.context_mode != ContextMode.SKIP:
             raise ValueError("aggregation must be SKIP for temporal data; SpaceTime handles contexts/regimes.")
         if self.score_type == ScoreType.GP:
             raise ValueError("score_type must be concrete. Use GPType.EXACT, GPType.FOURIER ")
         return self
 
 
+class CausalChangeConfigTemporal(CausalChangeConfigBase):
+    context_col: str = "context"
 
-class CausalChangeConfigTime(BaseModel):
     tau_max: int = 1
     changepoints: ChangepointMode = ChangepointMode.NONE
     fixed_changepoints: list[int] = Field(default_factory=list)
     d_min: int = 30
     max_iter: int = 3
     mechanism_test_alpha: float = 0.05
-
     detect_contexts: bool = True
     detect_regimes: bool = True
-
     changepoint_method: ChangepointMethod = ChangepointMethod.PELT
     changepoint_scope: ChangepointScope = ChangepointScope.GLOBAL
-    partitioning_method: PartitioningMethod = PartitioningMethod.KERNEL
+    partitioning_method: StatisticalTestingMethod = StatisticalTestingMethod.KERNEL
     pelt_penalty: float | Literal["bic", "mbic", "auto"] = "auto"
 
     @model_validator(mode="after")
@@ -90,3 +91,5 @@ class CausalChangeConfigTime(BaseModel):
 
         return self
 
+
+CausalChangeConfig = CausalChangeConfigTabular | CausalChangeConfigTemporal

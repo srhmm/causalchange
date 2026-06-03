@@ -5,9 +5,9 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from config.causal_change_config import CausalChangeConfigTabular
-from config.types import DataMode
-from scoring.base import SCMScore
+from causalchange.config.causal_change_config import CausalChangeConfigTabular
+from causalchange.core.types import DataMode
+from causalchange.scoring.base import SCMScore
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ class SCMScoreTabular:
 
         self.policy = GainPolicy(
             higher_is_better=bool(self.score_type.higher_is_better()),
-            gain_threshold_fn=self.score_type.get_gain_threshold,
+            gain_threshold_fn=self.score_type.gain_threshold,
         )
         self._global_n_samples: int | None = None
 
