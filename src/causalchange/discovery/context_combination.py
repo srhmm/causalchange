@@ -13,7 +13,7 @@ from causalchange.core.types import ContextCombinationParams
 class SkipCombination:
     """for single context"""
 
-    def aggregate(
+    def combine_contexts(
         self,
         *,
         contexts: dict[Hashable, pd.DataFrame],
@@ -23,8 +23,8 @@ class SkipCombination:
     ) -> ContextCombinationResult:
         if len(contexts) != 1:
             raise ValueError(
-                f"NoAggregation expects exactly one context, got {len(contexts)}. "
-                "Use ContextAggregation.CHAIN or ContextAggregation.LINC for multi-context data."
+                f"SkipCombination expects exactly one context, got {len(contexts)}. "
+                "Use ContextMode.LINC for multi-context data."
             )
 
         ctx, df = next(iter(contexts.items()))
@@ -196,7 +196,7 @@ class CHAINContextCombination:
         self._pooled_cache: dict[tuple[str, tuple[str, ...]], tuple[dict[Hashable, np.ndarray], np.ndarray]] = {}
         self._mmd_cache: dict[tuple[Any, ...], float] = {}
 
-    def aggregate(
+    def combine_contexts(
         self,
         *,
         contexts: dict[Hashable, pd.DataFrame],

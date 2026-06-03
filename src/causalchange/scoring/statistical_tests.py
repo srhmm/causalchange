@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from causalchange.core.require import _require_cit, _require_hyppo
+from causalchange.core.require import require_cit, require_hyppo
 
 
 @dataclass(frozen=True)
@@ -108,7 +108,7 @@ class SCMEqualityTestKCI:
         target_col: str,
         parent_cols: list[str],
     ) -> float:
-        CIT = _require_cit()
+        CIT = require_cit()
 
         Xa = sample_a[parent_cols].to_numpy(dtype=float)
         Xb = sample_b[parent_cols].to_numpy(dtype=float)
@@ -136,8 +136,7 @@ class SCMEqualityTestKCI:
         return float(pvalue)
 
     def _mmd_or_ks_pvalue(self, ya: np.ndarray, yb: np.ndarray) -> float:
-        _require_hyppo()
-        from hyppo.ksample import MMD
+        MMD = require_hyppo()
 
         _, pvalue = MMD().test(
             ya.reshape(-1, 1),

@@ -27,7 +27,7 @@ def require_optional(
         raise ImportError(msg) from exc
 
 
-def _require_matplotlib():
+def require_matplotlib():
     plt = require_optional(
         "matplotlib.pyplot",
         package_name="matplotlib",
@@ -37,7 +37,7 @@ def _require_matplotlib():
     return plt
 
 
-def _require_rpt():
+def require_rpt():
     rpt = require_optional(
         "ruptures",
         extra="spacetime",
@@ -46,7 +46,7 @@ def _require_rpt():
     return rpt
 
 
-def _require_cit():
+def require_cit():
     cit_module = require_optional(
         "causallearn.utils.cit",
         package_name="causal-learn",
@@ -57,7 +57,7 @@ def _require_cit():
     return CIT
 
 
-def _require_hyppo():
+def require_hyppo():
     hyppo_mmd = require_optional(
         "hyppo.ksample",
         package_name="hyppo",

@@ -5,15 +5,15 @@ from typing import Any
 
 import pandas as pd
 
-from causalchange.core.results import ContextCombinationResult, GraphSearchTabularResult
-from causalchange.core.types import DataMode
-from causalchange.engines.protocols import (
+from causalchange.core.protocols import (
     BaseContextCombination,
     BaseScoring,
     ContextPreproc,
     Domain,
     Search,
 )
+from causalchange.core.results import ContextCombinationResult, GraphSearchTabularResult
+from causalchange.core.types import DataMode
 
 
 class TabularDiscoveryEngine:

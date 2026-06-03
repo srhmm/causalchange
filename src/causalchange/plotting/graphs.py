@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from causalchange.core.require import _require_matplotlib
+from causalchange.core.require import require_matplotlib
 
 
 def _temporal_node_label(node: Any) -> str:
@@ -16,7 +16,7 @@ def _temporal_node_label(node: Any) -> str:
 def plot_graph(graph, *, title: str | None = None, ax=None, seed: int = 42):
     import networkx as nx
 
-    plt = _require_matplotlib()
+    plt = require_matplotlib()
 
     if ax is None:
         _, ax = plt.subplots(figsize=(7, 5))
@@ -42,7 +42,7 @@ def plot_graph(graph, *, title: str | None = None, ax=None, seed: int = 42):
 def plot_temporal_graph(graph, *, title: str | None = None, ax=None, seed: int = 42):
     import networkx as nx
 
-    plt = _require_matplotlib()
+    plt = require_matplotlib()
 
     if ax is None:
         _, ax = plt.subplots(figsize=(8, 5))

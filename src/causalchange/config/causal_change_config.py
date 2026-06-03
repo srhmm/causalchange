@@ -41,10 +41,8 @@ class CausalChangeConfigTabular(CausalChangeConfigBase):
             raise ValueError(f"{self.context_mode=} is not compatible with {self.data_mode=}.")
         if self.data_mode.is_context() and self.context_col is None:
             raise ValueError("context_col required for multi context data")
-        if not self.data_mode.is_temporal():
-            raise ValueError("spacetime config  only valid for temporal data.")
         if self.data_mode.is_temporal():
-            raise ValueError("spacetime config is required for temporal data.")
+            raise ValueError("not valid for temporal data.")
         if self.data_mode.is_temporal() and self.context_mode != ContextMode.SKIP:
             raise ValueError("aggregation must be SKIP for temporal data; SpaceTime handles contexts/regimes.")
         if self.score_type == ScoreType.GP:
@@ -70,6 +68,8 @@ class CausalChangeConfigTemporal(CausalChangeConfigBase):
 
     @model_validator(mode="after")
     def _validate_spacetime(self):
+        if not self.data_mode.is_temporal():
+            raise ValueError("Use CausalChangeConfigTabular for non-temporal data.")
         if self.tau_max <= 0:
             raise ValueError("tau_max must be positive.")
         if self.d_min <= 0:

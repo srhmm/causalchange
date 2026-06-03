@@ -7,7 +7,15 @@ from causalchange.config.causal_change_config import (
     CausalChangeConfigTabular,
     CausalChangeConfigTemporal,
 )
-from causalchange.core.types import ChangepointMode, ChangepointScope, ContextMode, DataMode, GraphSearch, ScoreType
+from causalchange.core.types import (
+    ChangepointMode,
+    ChangepointScope,
+    ContextMode,
+    DataMode,
+    GPType,
+    GraphSearch,
+    ScoreType,
+)
 
 
 class ConfigFactory:
@@ -16,10 +24,10 @@ class ConfigFactory:
     @staticmethod
     def make_causal_change_config(
         *,
-        cfg: CausalChangeConfigTabular | None,
+        cfg: CausalChangeConfig | None,
         data_mode: DataMode,
         graph_search: GraphSearch,
-        score_type: ScoreType,
+        score_type: ScoreType | GPType,
         context_mode: ContextMode,
         context_col: str | None,
         tau_max: int | None,
@@ -31,7 +39,7 @@ class ConfigFactory:
         pelt_penalty: float | str = "auto",
         detect_contexts: bool = True,
         detect_regimes: bool = True,
-        mechanism_test_alpha: float = 0.5,
+        mechanism_test_alpha: float = 0.05,
     ) -> CausalChangeConfig:
         if cfg is not None:
             return cfg

@@ -6,7 +6,7 @@
 ```python
 import pandas as pd
 
-from causalchange import CausalChange
+from causalchange.causal_change import CausalChange
 from causalchange.core.types import DataMode, GraphSearch, ScoreType
 
 X = pd.DataFrame(...)

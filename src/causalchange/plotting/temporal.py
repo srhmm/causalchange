@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from causalchange.core.require import _require_matplotlib
+from causalchange.core.require import require_matplotlib
 
 
 def plot_changepoints(
@@ -12,7 +12,7 @@ def plot_changepoints(
     context_col: str | None = None,
     title: str | None = None,
 ):
-    plt = _require_matplotlib()
+    plt = require_matplotlib()
 
     changepoints = list(changepoints or [])
 
@@ -59,7 +59,7 @@ def plot_changepoints(
 
 
 def plot_partitions(partitions, *, title: str | None = None):
-    plt = _require_matplotlib()
+    plt = require_matplotlib()
 
     rows = []
 

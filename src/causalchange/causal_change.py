@@ -107,7 +107,7 @@ class CausalChange:
         self.data_mode = self.cfg.data_mode
         self.graph_search = self.cfg.graph_search
         self.score_type = self.cfg.score_type
-        self.context_mode = self.cfg.context_mode
+        self.context_mode = getattr(self.cfg, "context_mode", ContextMode.SKIP)
         self.context_col = self.cfg.context_col
 
         self.X_: pd.DataFrame | None = None

@@ -16,7 +16,7 @@ distribution shifts.
 ### Quick Example
 
 ```python
-from causalchange import CausalChange
+from causalchange.causal_change import CausalChange
 from causalchange.core.types import DataMode, GraphSearch, ScoreType
 
 cc = CausalChange(

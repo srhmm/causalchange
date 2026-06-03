@@ -40,7 +40,7 @@ class EngineFactory:
         search = (
             GraphSearchTabularTopological(scoring=scoring)
             if cfg.graph_search == GraphSearch.TOPIC
-            else GraphSearchTabularGreedy()
+            else GraphSearchTabularGreedy(scoring=scoring)
         )
 
         context_preprocessing = (
@@ -52,7 +52,14 @@ class EngineFactory:
                 higher_is_better=scoring.higher_is_better,
             )
             if cfg.context_mode == ContextMode.LINC
-            else (CHAINContextCombination() if cfg.context_mode == ContextMode.CHAIN else SkipCombination())
+            else (
+                CHAINContextCombination(
+                    higher_is_better=scoring.higher_is_better,
+                    seed=cfg.seed,
+                )
+                if cfg.context_mode == ContextMode.CHAIN
+                else SkipCombination()
+            )
         )
 
         return TabularDiscoveryEngine(
