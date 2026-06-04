@@ -101,6 +101,7 @@ def default_flux_spacetime_config(
     context_col: str = "context",
     detect_contexts: bool = True,
     detect_regimes: bool = True,
+    mechanism_clustering: str = "edge-strengths",
 ) -> SpaceTimeExperimentConfig:
     return SpaceTimeExperimentConfig(
         score_type=score_type,
@@ -111,6 +112,7 @@ def default_flux_spacetime_config(
         max_iter=1,
         detect_contexts=detect_contexts,
         detect_regimes=detect_regimes,
+        mechanism_clustering=mechanism_clustering,
         standardize="per_context",
         fill_method="ffill_bfill",
     )

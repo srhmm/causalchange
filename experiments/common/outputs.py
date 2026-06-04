@@ -67,12 +67,24 @@ def edge_frame_to_graph(frame: pd.DataFrame) -> nx.DiGraph:
 
 
 def partitions_to_frame(partitions) -> pd.DataFrame:
+    """Flatten a context-regime grid partition to one row per target/cell."""
+    if partitions is None:
+        return pd.DataFrame(
+            columns=[
+                "target",
+                "dataset_id",
+                "interval_id",
+                "interval_start",
+                "interval_stop",
+                "mechanism_cluster",
+            ]
+        )
+
     rows = []
 
     for target, mapping in partitions.cell_clusters.items():
         for cell, label in mapping.items():
             start, stop = partitions.intervals_by_context[cell.dataset_id][cell.interval_id]
-
             rows.append(
                 {
                     "target": target,
@@ -85,6 +97,12 @@ def partitions_to_frame(partitions) -> pd.DataFrame:
             )
 
     return pd.DataFrame(rows)
+
+
+def partition_diagnostics(partitions) -> dict[str, Any]:
+    if partitions is None:
+        return {}
+    return dict(getattr(partitions, "diagnostics", {}) or {})
 
 
 def save_posthoc_tables(run: SpaceTimeExperimentRun, out_dir: Path | str) -> dict[str, Path]:
@@ -129,10 +147,13 @@ def save_spacetime_run(
     )
     paths["changepoints"] = changepoints_path
 
-    mechanism_clusters = partitions_to_frame(run.partitions)
-    clusters_path = out_dir / "mechanism_clusters.csv"
-    mechanism_clusters.to_csv(clusters_path, index=False)
-    paths["mechanism_clusters"] = clusters_path
+    mechanism_clusters_path = out_dir / "mechanism_clusters.csv"
+    partitions_to_frame(run.partitions).to_csv(mechanism_clusters_path, index=False)
+    paths["mechanism_clusters"] = mechanism_clusters_path
+
+    mechanism_cluster_diagnostics_path = out_dir / "mechanism_cluster_diagnostics.json"
+    write_json(mechanism_cluster_diagnostics_path, partition_diagnostics(run.partitions))
+    paths["mechanism_cluster_diagnostics"] = mechanism_cluster_diagnostics_path
 
     config_path = out_dir / "config.json"
     write_json(

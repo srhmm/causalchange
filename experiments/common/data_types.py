@@ -12,6 +12,7 @@ from causalchange.causal_change import CausalChange
 
 ChangepointModeName = Literal["none", "detect", "fixed"]
 ScoreName = Literal["lin", "gam", "spline", "krr", "gp", "ff"]
+MechanismClusteringName = Literal["testing", "edge-strengths", "skip"]
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,7 @@ class SpaceTimeExperimentConfig:
 
     detect_contexts: bool = True
     detect_regimes: bool = True
+    mechanism_clustering: MechanismClusteringName = "edge-strengths"
     mechanism_test_alpha: float = 0.05
 
     standardize: Literal["none", "global", "per_context"] = "per_context"

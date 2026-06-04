@@ -5,20 +5,8 @@ from collections.abc import Hashable, Mapping, Sequence
 import networkx as nx
 import pandas as pd
 
+from causalchange import SpaceTime
 from causalchange.causal_change import CausalChange
-from causalchange.core.types import (
-    ChangepointMethod,
-    ChangepointMode,
-    ChangepointScope,
-    DataMode,
-    GPType,
-    GraphSearch,
-    MechanismClusteringMethod,
-    MechanismClusteringScope,
-    ScoreType,
-    StatisticalTestingMethod,
-    TabularContextMethod,
-)
 from causalchange.posthoc.temporal import compute_edge_contributions, compute_mechanism_scores
 from experiments.common.data_types import (
     PanelDataset,
@@ -29,95 +17,96 @@ from experiments.common.data_types import (
 from experiments.common.preprocessing import build_context_dataframe, preprocess_panel_dataset
 
 
-def resolve_score_type(value: str) -> ScoreType | GPType:
-    """Resolve experiment score names to CausalChange score enums."""
-    if value in (GPType.EXACT.value, GPType.FOURIER.value):
-        return GPType(value)
-    return ScoreType(value)
-
-
-def resolve_changepoint_mode(value: str) -> ChangepointMode:
+def _public_changepoint_mode(value: str) -> str:
     if value == "none":
-        return ChangepointMode.SKIP
-    if value == "detect":
-        return ChangepointMode.DETECT
-    if value == "fixed":
-        return ChangepointMode.ORACLE
+        return "skip"
+    if value in {"detect", "fixed"}:
+        return value
     raise ValueError(f"Unknown changepoint mode: {value!r}")
 
 
-def changepoint_method_for_mode(mode: ChangepointMode) -> ChangepointMethod:
-    return ChangepointMethod.PELT if mode == ChangepointMode.DETECT else ChangepointMethod.SKIP
+def _public_changepoint_scope(changepoint_mode: str, data_mode: str) -> str:
+    if changepoint_mode == "skip":
+        return "skip"
+    # Real-world experiments currently use a common changepoint grid across contexts.
+    # Switch to "per-context" here if a future experiment needs context-specific changepoints.
+    return "global"
 
 
-def changepoint_scope_for_mode(mode: ChangepointMode) -> ChangepointScope:
-    return ChangepointScope.GLOBAL if mode != ChangepointMode.SKIP else ChangepointScope.SKIP
+def _public_changepoint_method(changepoint_mode: str) -> str:
+    return "pelt" if changepoint_mode == "detect" else "skip"
 
 
-def clustering_scope_from_config(config: SpaceTimeExperimentConfig) -> MechanismClusteringScope:
+def _public_clustering_scope(config: SpaceTimeExperimentConfig, data_mode: str) -> str:
     if config.detect_contexts and config.detect_regimes:
-        return MechanismClusteringScope.REGIMES_CONTEXTS
+        if data_mode != "time-contexts":
+            return "regimes"
+        return "regimes-contexts"
     if config.detect_contexts:
-        return MechanismClusteringScope.CONTEXTS
+        if data_mode != "time-contexts":
+            return "skip"
+        return "contexts"
     if config.detect_regimes:
-        return MechanismClusteringScope.REGIMES
-    return MechanismClusteringScope.SKIP
+        return "regimes"
+    return "skip"
+
+
+def _public_clustering_method(config: SpaceTimeExperimentConfig, clustering_scope: str) -> str:
+    if clustering_scope == "skip" or config.mechanism_clustering == "skip":
+        return "skip"
+    if config.mechanism_clustering == "testing":
+        return "statistical-testing"
+    if config.mechanism_clustering == "edge-strengths":
+        return "mechanism-clustering"
+    raise ValueError(f"Unknown mechanism_clustering: {config.mechanism_clustering!r}")
+
+
+def _public_testing_method(clustering_method: str) -> str:
+    return "kernel" if clustering_method == "statistical-testing" else "skip"
 
 
 def dataframe_for_spacetime(
     dataset: PanelDataset,
     *,
     config: SpaceTimeExperimentConfig,
-) -> tuple[pd.DataFrame, DataMode]:
-    """Return the dataframe and data mode expected by CausalChange."""
+) -> tuple[pd.DataFrame, str]:
+    """Return the dataframe and public SpaceTime data_mode string."""
     dataset.validate()
 
     if dataset.n_contexts() == 1:
         context_id = dataset.context_ids()[0]
-        return dataset.panel[context_id].loc[:, list(dataset.variables)].reset_index(drop=True), DataMode.TIME
+        return dataset.panel[context_id].loc[:, list(dataset.variables)].reset_index(drop=True), "time"
 
     frame = build_context_dataframe(
         dataset.panel,
         context_col=config.context_col,
         variables=dataset.variables,
     )
-    return frame, DataMode.TIME_CONTEXTS
+    return frame, "time-contexts"
 
 
 def make_spacetime_estimator(
     *,
-    data_mode: DataMode,
+    data_mode: str,
     config: SpaceTimeExperimentConfig,
-) -> CausalChange:
-    fixed_changepoints = list(config.fixed_changepoints) if config.changepoints == "fixed" else None
+) -> SpaceTime:
+    """Build the public SpaceTime wrapper used by the real-world experiments."""
+    changepoint_mode = _public_changepoint_mode(config.changepoints)
+    clustering_scope = _public_clustering_scope(config, data_mode)
+    clustering_method = _public_clustering_method(config, clustering_scope)
 
-    changepoint_mode = resolve_changepoint_mode(config.changepoints)
-    clustering_scope = clustering_scope_from_config(config)
-    clustering_method = (
-        MechanismClusteringMethod.TESTING
-        if clustering_scope != MechanismClusteringScope.SKIP
-        else MechanismClusteringMethod.SKIP
-    )
-    testing_method = (
-        StatisticalTestingMethod.KERNEL
-        if clustering_method == MechanismClusteringMethod.TESTING
-        else StatisticalTestingMethod.SKIP
-    )
-
-    return CausalChange(
+    return SpaceTime(
         data_mode=data_mode,
-        graph_search=GraphSearch.GLOBE,
-        score_type=resolve_score_type(config.score_type),
-        context_method=TabularContextMethod.SKIP,
-        context_col=config.context_col if data_mode.is_context() else None,
+        score_type=config.score_type,
+        context_col=config.context_col,
         tau_max=config.tau_max,
         changepoint_mode=changepoint_mode,
-        changepoint_scope=changepoint_scope_for_mode(changepoint_mode),
-        changepoint_method=changepoint_method_for_mode(changepoint_mode),
-        fixed_changepoints=fixed_changepoints,
+        changepoint_scope=_public_changepoint_scope(changepoint_mode, data_mode),
+        changepoint_method=_public_changepoint_method(changepoint_mode),
+        fixed_changepoints=list(config.fixed_changepoints) if changepoint_mode == "fixed" else None,
         clustering_scope=clustering_scope,
         clustering_method=clustering_method,
-        testing_method=testing_method,
+        testing_method=_public_testing_method(clustering_method),
         d_min=config.d_min,
         max_iter=config.max_iter,
         pelt_penalty=config.pelt_penalty,
@@ -135,11 +124,11 @@ def fit_spacetime(
     compute_global_scores: bool = True,
     compute_window_scores: bool = True,
 ) -> SpaceTimeExperimentRun:
-    """Preprocess, fit SpaceTime, and compute post-hoc tables.
+    """Preprocess, fit SpaceTime, and compute post-hoc score tables.
 
-    ``graph_for_posthoc`` and ``changepoints_for_posthoc`` allow fixed-artifact
-    post-hoc analysis after a discovery run. This keeps graph/changepoint choices
-    explicit and reproducible.
+    The fitted estimator returns a context-regime grid in ``run.partitions``.
+    For edge-strength clustering, each grid cell is represented by pairwise
+    edge-strength features under the final graph and changepoints.
     """
     current = dataset
 
@@ -186,10 +175,11 @@ def compute_posthoc_tables(
     edge_contributions_global = None
     edge_contributions_windows = None
 
+    engine = estimator.engine_
+    if engine is None:
+        raise RuntimeError("Estimator has no fitted engine.")
+
     if compute_global_scores:
-        engine = estimator.engine_
-        if engine is None:
-            raise RuntimeError("Estimator has no fitted engine.")
         mechanism_scores_global = compute_mechanism_scores(
             engine,
             graph=graph,
@@ -204,9 +194,6 @@ def compute_posthoc_tables(
         )
 
     if compute_window_scores:
-        engine = estimator.engine_
-        if engine is None:
-            raise RuntimeError("Estimator has no fitted engine.")
         mechanism_scores_windows = compute_mechanism_scores(
             engine,
             graph=graph,

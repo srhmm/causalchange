@@ -9,6 +9,7 @@ from typing import Any, cast
 import networkx as nx
 from pydantic import BaseModel, ValidationError
 
+from causalchange import Linc, SpaceTime, Topic
 from causalchange.causal_change import CausalChange
 from causalchange.config.benchmark_config import (
     AlgoConfig,
@@ -24,17 +25,14 @@ from causalchange.config.benchmark_config import (
     SpaceTimeAlgoConfig,
     TopicAlgoConfig,
 )
+from causalchange.config.causal_change_config import CausalChangeConfigTabular
+from causalchange.core.results import GridCell
 from causalchange.core.types import (
-    ChangepointMethod,
-    ChangepointMode,
-    ChangepointScope,
     DataMode,
     GPType,
     GraphSearch,
-    MechanismClusteringMethod,
     MechanismClusteringScope,
     ScoreType,
-    StatisticalTestingMethod,
     TabularContextMethod,
     TabularContextMode,
 )
@@ -77,22 +75,76 @@ def _node_to_summary_var(node) -> str:
     return text
 
 
+def _compact_signatures(signatures: dict[Any, tuple[Any, ...]]) -> dict[Any, int]:
+    label_by_signature: dict[tuple[Any, ...], int] = {}
+    labels: dict[Any, int] = {}
+
+    for key, signature in signatures.items():
+        if signature not in label_by_signature:
+            label_by_signature[signature] = len(label_by_signature)
+        labels[key] = label_by_signature[signature]
+
+    return labels
+
+
 def _estimated_context_labels_by_target(est: CausalChange) -> dict[str, dict[int, int]]:
+    """Project cell clusters to one context label per target for benchmark metrics."""
     result = est.get_result()
     partitions = result.grid_clusters
-    return {
-        str(target): {int(dataset_id): int(label) for dataset_id, label in labels.items()}
-        for target, labels in partitions.contexts.items()
-    }
+
+    if partitions is None:
+        return {}
+
+    out: dict[str, dict[int, int]] = {}
+
+    for target, mapping in partitions.cell_clusters.items():
+        signatures: dict[Any, tuple[int, ...]] = {}
+
+        for dataset_id, intervals in partitions.intervals_by_context.items():
+            signatures[dataset_id] = tuple(
+                int(mapping[GridCell(dataset_id=dataset_id, interval_id=interval_id)])
+                for interval_id in range(len(intervals))
+            )
+
+        out[str(target)] = {
+            int(dataset_id): int(label) for dataset_id, label in _compact_signatures(signatures).items()
+        }
+
+    return out
 
 
 def _estimated_regime_labels_by_target(est: CausalChange) -> dict[str, dict[int, int]]:
+    """Project cell clusters to one regime/interval label per target for benchmark metrics."""
     result = est.get_result()
     partitions = result.grid_clusters
-    return {
-        str(target): {int(regime_id): int(label) for regime_id, label in labels.items()}
-        for target, labels in partitions.regimes.items()
-    }
+
+    if partitions is None:
+        return {}
+
+    max_intervals = max(
+        (len(intervals) for intervals in partitions.intervals_by_context.values()),
+        default=0,
+    )
+    out: dict[str, dict[int, int]] = {}
+
+    for target, mapping in partitions.cell_clusters.items():
+        signatures: dict[int, tuple[tuple[str, int], ...]] = {}
+
+        for interval_id in range(max_intervals):
+            signatures[interval_id] = tuple(
+                (
+                    repr(dataset_id),
+                    int(mapping[GridCell(dataset_id=dataset_id, interval_id=interval_id)]),
+                )
+                for dataset_id, intervals in partitions.intervals_by_context.items()
+                if interval_id < len(intervals)
+            )
+
+        out[str(target)] = {
+            int(interval_id): int(label) for interval_id, label in _compact_signatures(signatures).items()
+        }
+
+    return out
 
 
 def _project_temporal_graph_to_summary(graph: nx.DiGraph) -> nx.DiGraph:
@@ -185,119 +237,101 @@ def _clustering_scope_from_flags(*, contexts: bool, regimes: bool) -> MechanismC
     return MechanismClusteringScope.SKIP
 
 
-def _changepoint_method_for_mode(mode: ChangepointMode) -> ChangepointMethod:
-    return ChangepointMethod.PELT if mode == ChangepointMode.DETECT else ChangepointMethod.SKIP
+def _changepoint_method_for_mode(mode: str) -> str:
+    return "pelt" if mode == "detect" else "skip"
 
 
-def _changepoint_scope_for_mode(mode: ChangepointMode, data_mode: DataMode) -> ChangepointScope:
-    if mode == ChangepointMode.SKIP:
-        return ChangepointScope.SKIP
+def _changepoint_scope_for_mode(mode: str, data_mode: str) -> str:
+    if mode == "skip":
+        return "skip"
+
     # Default benchmark behavior: detect/fix a shared global set of changepoints.
-    return ChangepointScope.GLOBAL
+    return "global"
+
+
+def _public_data_mode(data_mode: DataMode) -> str:
+    if data_mode == DataMode.TIME:
+        return "time"
+    if data_mode == DataMode.TIME_CONTEXTS:
+        return "time-contexts"
+    raise ValueError(f"Expected temporal data mode, got {data_mode!r}.")
+
+
+def _public_changepoint_mode(value: str) -> str:
+    if value == "oracle":
+        return "fixed"
+    if value == "none":
+        return "skip"
+    if value == "detect":
+        return "detect"
+    raise ValueError(f"Unknown changepoint mode: {value!r}")
+
+
+def _public_clustering_scope(*, contexts: bool, regimes: bool) -> str:
+    if contexts and regimes:
+        return "regimes-contexts"
+    if contexts:
+        return "contexts"
+    if regimes:
+        return "regimes"
+    return "skip"
 
 
 def run_algo(sample: BenchmarkSample, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> CausalChange:
     data_mode = _data_mode_from_setting(data_cfg.setting)
+    score_type = algo_cfg.score_type
 
-    is_spacetime = algo_cfg.name == "spacetime"
-    is_temporal = data_mode.is_temporal()
+    if algo_cfg.name == "topic":
+        return Topic(score_type=score_type).fit(sample.df)
 
-    spacetime_algo_cfg: SpaceTimeAlgoConfig | None = None
-    if is_spacetime:
-        spacetime_algo_cfg = cast(SpaceTimeAlgoConfig, algo_cfg)
+    if algo_cfg.name == "linc":
+        context_cfg = cast(ContextDataConfig, data_cfg)
+        return Linc(score_type=score_type, context_col=context_cfg.context_col).fit(sample.df)
 
-    temporal_data_cfg: TemporalDataConfig | None = None
-    if is_temporal:
-        temporal_data_cfg = cast(TemporalDataConfig, data_cfg)
+    if algo_cfg.name == "chain":
+        context_cfg = cast(ContextDataConfig, data_cfg)
+        cfg = CausalChangeConfigTabular(
+            data_mode=DataMode.TAB_CONTEXTS,
+            graph_search=GraphSearch.TOPIC,
+            score_type=_resolve_score_type(score_type),
+            context_mode=TabularContextMode.ORACLE,
+            context_combination_method=TabularContextMethod.CHAIN,
+            context_col=context_cfg.context_col,
+        )
+        return CausalChange(cfg).fit(sample.df)
 
-    graph_search = (
-        GraphSearch.GLOBE
-        if is_spacetime
-        else (GraphSearch.TOPIC if algo_cfg.name in ("topic", "linc", "chain") else GraphSearch.SKIP)
-    )
-
-    if graph_search == GraphSearch.SKIP:
+    if algo_cfg.name != "spacetime":
         raise ValueError(f"invalid: {algo_cfg.name}")
 
-    context_method = (
-        TabularContextMethod.LINC
-        if algo_cfg.name == "linc"
-        else (TabularContextMethod.CHAIN if algo_cfg.name == "chain" else TabularContextMethod.SKIP)
+    if not data_mode.is_temporal():
+        raise ValueError("SpaceTime benchmarks require temporal data.")
+
+    spacetime_algo_cfg = cast(SpaceTimeAlgoConfig, algo_cfg)
+    temporal_data_cfg = cast(TemporalDataConfig, data_cfg)
+
+    tau_max = spacetime_algo_cfg.tau_max or temporal_data_cfg.tau_max
+    changepoint_mode = _public_changepoint_mode(spacetime_algo_cfg.changepoint_mode)
+    fixed_changepoints = (
+        sample.spacetime.changepoints if changepoint_mode == "fixed" and sample.spacetime is not None else None
     )
-    context_mode = TabularContextMode.ORACLE if context_method != TabularContextMethod.SKIP else TabularContextMode.SKIP
+    regimes = bool(getattr(temporal_data_cfg, "n_changepoints", 0))
+    clustering_scope = _public_clustering_scope(contexts=data_mode.is_context(), regimes=regimes)
+    clustering_method = "mechanism-clustering" if clustering_scope != "skip" else "skip"
 
-    score_type = _resolve_score_type(algo_cfg.score_type)
-
-    if is_temporal:
-        assert temporal_data_cfg is not None
-        assert spacetime_algo_cfg is not None
-        tau_max = spacetime_algo_cfg.tau_max or temporal_data_cfg.tau_max
-        d_min = temporal_data_cfg.min_segment_length
-    else:
-        tau_max = None
-        d_min = 30
-
-    if data_mode.is_context():
-        context_data_cfg = cast(ContextDataConfig, data_cfg)
-        context_col = context_data_cfg.context_col
-    else:
-        context_col = None
-
-    if is_spacetime and is_temporal:
-        assert spacetime_algo_cfg is not None
-        assert sample.spacetime is not None
-
-        if spacetime_algo_cfg.changepoint_mode == "oracle":
-            changepoint_mode = ChangepointMode.ORACLE
-            fixed_changepoints = sample.spacetime.changepoints
-        elif spacetime_algo_cfg.changepoint_mode == "detect":
-            changepoint_mode = ChangepointMode.DETECT
-            fixed_changepoints = None
-        else:
-            changepoint_mode = ChangepointMode.SKIP
-            fixed_changepoints = None
-
-        clustering_scope = _clustering_scope_from_flags(
-            contexts=data_mode.is_context(),
-            regimes=bool(getattr(temporal_data_cfg, "n_changepoints", 0)),
-        )
-    else:
-        changepoint_mode = ChangepointMode.SKIP
-        fixed_changepoints = None
-        clustering_scope = MechanismClusteringScope.SKIP
-
-    changepoint_method = _changepoint_method_for_mode(changepoint_mode)
-    changepoint_scope = _changepoint_scope_for_mode(changepoint_mode, data_mode)
-    clustering_method = (
-        MechanismClusteringMethod.TESTING
-        if clustering_scope != MechanismClusteringScope.SKIP
-        else MechanismClusteringMethod.SKIP
-    )
-    testing_method = (
-        StatisticalTestingMethod.KERNEL
-        if clustering_method == MechanismClusteringMethod.TESTING
-        else StatisticalTestingMethod.SKIP
-    )
-
-    est = CausalChange(
-        data_mode=data_mode,
-        graph_search=graph_search,
+    return SpaceTime(
+        data_mode=_public_data_mode(data_mode),
         score_type=score_type,
-        context_mode=context_mode,
-        context_method=context_method,
-        context_col=context_col,
         tau_max=tau_max,
+        context_col=(cast(ContextDataConfig, data_cfg).context_col if data_mode.is_context() else "context"),
         changepoint_mode=changepoint_mode,
-        changepoint_scope=changepoint_scope,
-        changepoint_method=changepoint_method,
+        changepoint_scope=("global" if changepoint_mode != "skip" else "skip"),
+        changepoint_method=("pelt" if changepoint_mode == "detect" else "skip"),
+        fixed_changepoints=fixed_changepoints,
         clustering_scope=clustering_scope,
         clustering_method=clustering_method,
-        testing_method=testing_method,
-        d_min=d_min,
-        fixed_changepoints=fixed_changepoints,
-    )
-
-    return est.fit(sample.df)
+        testing_method="skip",
+        d_min=temporal_data_cfg.min_segment_length,
+    ).fit(sample.df)
 
 
 def run_scoring(

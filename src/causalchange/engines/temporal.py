@@ -215,8 +215,25 @@ class TemporalDiscoveryEngine(
 
             previous_key = key
 
-        if final_search_result is None or self.partitions_ is None:
-            raise RuntimeError("Temporal discovery failed to produce a result.")
+        if final_search_result is None:
+            raise RuntimeError("Temporal discovery failed to produce a graph search result.")
+
+        # Final mechanism clustering is post-processing under the final graph and
+        # final changepoints. This is the result exposed as result.grid_clusters.
+        t_final_part0 = perf_counter()
+        self.partitions_ = self.scm_clustering.fit_predict(
+            panel=self.panel_,
+            graph=final_search_result.graph,
+            changepoints=self.changepoints_,
+            changepoints_by_context=self.changepoints_by_context_,
+            scorer=self.scoring,
+        )
+        final_partition_time = perf_counter() - t_final_part0
+        self._score_cache = {}
+
+        if all_history:
+            all_history[-1]["final_partition_diagnostics"] = self.partitions_.diagnostics
+            all_history[-1]["timing"]["final_partitioning"] = final_partition_time
 
         changepoint_result = ChangepointResult(
             changepoints=self.changepoints_,

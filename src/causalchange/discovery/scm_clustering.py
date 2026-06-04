@@ -30,6 +30,9 @@ class SCMClustering(ABC):
 class TabularSCMClustering(SCMClustering):
     """Placeholder for future tabular/mixture SCM clustering."""
 
+    def fit_predict(self, *args: Any, **kwargs: Any) -> SCMClusteringResult:
+        raise NotImplementedError("Tabular SCM clustering is not implemented yet.")
+
 
 class BaseTemporalSCMClustering(SCMClustering):
     """Shared logic for temporal SCM clustering over context x interval grid cells."""
@@ -675,3 +678,7 @@ class TemporalSCMClustering(SCMClustering):
             changepoints_by_context=changepoints_by_context,
             scorer=scorer,
         )
+
+
+# Backward-compatible alias for older tests/imports.
+SpaceTimeClustering = TemporalSCMClustering
