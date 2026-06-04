@@ -9,7 +9,7 @@ from causalchange import Topic, ScoreType
 
 X = pd.DataFrame(...)
 
-cc = Topic(score_type=ScoreType.LIN)
+cc = Topic(score_type="lin")
 
 cc.fit(X)
 print(cc.graph_.edges())

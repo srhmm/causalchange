@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import networkx as nx
 import pandas as pd
 
-from causalchange.core.results import EdgeContributionRecord, MechanismClusteringResult, MechanismScoreRecord
+from causalchange.core.results import EdgeContributionRecord, GridCell, MechanismScoreRecord, SCMClusteringResult
 from causalchange.domain.temporal import TemporalNode, util_changepoints_to_intervals
 
 if TYPE_CHECKING:
@@ -58,17 +58,28 @@ def fixed_partition_for_graph(
     graph: nx.DiGraph,
     dataset_ids: Iterable[Any],
     n_intervals: int,
-) -> MechanismClusteringResult:
-    """Create singleton/no-change partitions for a fixed graph.
+    intervals_by_context: dict[Any, list[tuple[int, int]]] | None = None,
+) -> SCMClusteringResult:
+    """Create singleton/no-change grid partitions for a fixed graph."""
 
-    Useful for post-hoc scoring from saved graph/changepoints when you do not want
-    to rerun context/regime partitioning.
-    """
+    dataset_ids = list(dataset_ids)
     targets = sorted({str(effect[0]) for effect in _effect_nodes(graph)})
 
-    return MechanismClusteringResult(
-        contexts={target: {dataset_id: 0 for dataset_id in dataset_ids} for target in targets},
-        regimes={target: {interval_id: interval_id for interval_id in range(n_intervals)} for target in targets},
+    if intervals_by_context is None:
+        intervals_by_context = {
+            dataset_id: [(interval_id, interval_id + 1) for interval_id in range(n_intervals)]
+            for dataset_id in dataset_ids
+        }
+
+    cells = [
+        GridCell(dataset_id=dataset_id, interval_id=interval_id)
+        for dataset_id, intervals in intervals_by_context.items()
+        for interval_id in range(len(intervals))
+    ]
+
+    return SCMClusteringResult(
+        cell_clusters={target: {cell: cell.interval_id for cell in cells} for target in targets},
+        intervals_by_context=intervals_by_context,
         diagnostics={"mode": "fixed_posthoc"},
     )
 
@@ -171,6 +182,23 @@ def _edge_contributions_global(
     return records
 
 
+def _posthoc_intervals_by_context(
+    engine: TemporalDiscoveryEngine,
+    *,
+    changepoints: list[int] | None,
+) -> dict[Any, list[tuple[int, int]]]:
+    panel = _require_panel(engine)
+
+    if engine.partitions_ is not None:
+        return engine.partitions_.intervals_by_context
+
+    cps = list(engine.changepoints_ if changepoints is None else changepoints)
+    return {
+        dataset_id: util_changepoints_to_intervals(len(X_context), cps)
+        for dataset_id, X_context in panel.datasets.items()
+    }
+
+
 def _mechanism_scores_windows(
     engine: TemporalDiscoveryEngine,
     graph: nx.DiGraph,
@@ -178,14 +206,19 @@ def _mechanism_scores_windows(
     changepoints: list[int] | None,
 ) -> list[MechanismScoreRecord]:
     panel = _require_panel(engine)
-    cps = list(engine.changepoints_ if changepoints is None else changepoints)
-    n_samples = len(panel.first_dataset())
-    intervals = util_changepoints_to_intervals(n_samples=n_samples, changepoints=cps)
+    # cps = list(engine.changepoints_ if changepoints is None else changepoints)
+    # n_samples = len(panel.first_dataset())
+    # intervals = util_changepoints_to_intervals(n_samples=n_samples, changepoints=cps)
 
     records: list[MechanismScoreRecord] = []
 
+    intervals_by_context = _posthoc_intervals_by_context(
+        engine,
+        changepoints=changepoints,
+    )
+
     for dataset_id, X_context in panel.datasets.items():
-        for interval_id, (start, stop) in enumerate(intervals):
+        for interval_id, (start, stop) in enumerate(intervals_by_context[dataset_id]):
             X_window = _windowed_dataframe(
                 X_context,
                 start=start,

@@ -66,31 +66,25 @@ def edge_frame_to_graph(frame: pd.DataFrame) -> nx.DiGraph:
     return graph
 
 
-def partitions_to_frames(partitions) -> tuple[pd.DataFrame, pd.DataFrame]:
-    context_rows = []
-    regime_rows = []
+def partitions_to_frame(partitions) -> pd.DataFrame:
+    rows = []
 
-    for target, mapping in partitions.contexts.items():
-        for dataset_id, label in mapping.items():
-            context_rows.append(
+    for target, mapping in partitions.cell_clusters.items():
+        for cell, label in mapping.items():
+            start, stop = partitions.intervals_by_context[cell.dataset_id][cell.interval_id]
+
+            rows.append(
                 {
                     "target": target,
-                    "dataset_id": dataset_id,
-                    "context_cluster": int(label),
+                    "dataset_id": cell.dataset_id,
+                    "interval_id": int(cell.interval_id),
+                    "interval_start": int(start),
+                    "interval_stop": int(stop),
+                    "mechanism_cluster": int(label),
                 }
             )
 
-    for target, mapping in partitions.regimes.items():
-        for interval_id, label in mapping.items():
-            regime_rows.append(
-                {
-                    "target": target,
-                    "interval_id": int(interval_id),
-                    "regime_cluster": int(label),
-                }
-            )
-
-    return pd.DataFrame(context_rows), pd.DataFrame(regime_rows)
+    return pd.DataFrame(rows)
 
 
 def save_posthoc_tables(run: SpaceTimeExperimentRun, out_dir: Path | str) -> dict[str, Path]:
@@ -135,13 +129,10 @@ def save_spacetime_run(
     )
     paths["changepoints"] = changepoints_path
 
-    context_partitions, regime_partitions = partitions_to_frames(run.partitions)
-    context_path = out_dir / "context_partitions.csv"
-    regime_path = out_dir / "regime_partitions.csv"
-    context_partitions.to_csv(context_path, index=False)
-    regime_partitions.to_csv(regime_path, index=False)
-    paths["context_partitions"] = context_path
-    paths["regime_partitions"] = regime_path
+    mechanism_clusters = partitions_to_frame(run.partitions)
+    clusters_path = out_dir / "mechanism_clusters.csv"
+    mechanism_clusters.to_csv(clusters_path, index=False)
+    paths["mechanism_clusters"] = clusters_path
 
     config_path = out_dir / "config.json"
     write_json(

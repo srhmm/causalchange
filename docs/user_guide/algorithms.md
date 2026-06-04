@@ -88,5 +88,5 @@ For `ChangepointMode.DETECT`, install `ruptures` via `pip install "causalchange[
 
 ---
 
-#### Causal Clustering with CMMs  [[4]](references.md)
+### Causal Clustering with CMMs  [[4]](references.md)
 Under construction.

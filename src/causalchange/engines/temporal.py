@@ -14,7 +14,7 @@ from causalchange.core.protocols import (
     TemporalScoringProtocol,
     TemporalSearchProtocol,
 )
-from causalchange.core.results import ChangepointResult, TemporalResult
+from causalchange.core.results import ChangepointResult, SCMClusteringResult, TemporalResult
 from causalchange.core.types import (
     ChangepointMode,
     ChangepointScope,
@@ -72,7 +72,7 @@ class TemporalDiscoveryEngine(
         self.changepoints_by_context_: dict[Any, list[int]] | None = None
         self.changepoint_diagnostics_: dict[str, Any] = {}
         self.panel_: TimeGrid | None = None
-        self.partitions_ = None
+        self.partitions_: SCMClusteringResult | None = None
         self.result_: TemporalResult | None = None
         self._score_cache: dict[tuple, float] = {}
 
@@ -166,6 +166,8 @@ class TemporalDiscoveryEngine(
                 panel=self.panel_,
                 graph=graph,
                 changepoints=self.changepoints_,
+                changepoints_by_context=self.changepoints_by_context_,
+                scorer=self.scoring,
             )
             t_part = perf_counter() - t_part0
 
@@ -239,15 +241,35 @@ class TemporalDiscoveryEngine(
         if self.partitions_ is None:
             return None
 
-        context_key = tuple(
-            (target, tuple(sorted(mapping.items()))) for target, mapping in sorted(self.partitions_.contexts.items())
+        cell_key = tuple(
+            (
+                target,
+                tuple(
+                    sorted(
+                        (
+                            repr(cell.dataset_id),
+                            cell.interval_id,
+                            cluster_id,
+                        )
+                        for cell, cluster_id in mapping.items()
+                    )
+                ),
+            )
+            for target, mapping in sorted(self.partitions_.cell_clusters.items())
         )
 
-        regime_key = tuple(
-            (target, tuple(sorted(mapping.items()))) for target, mapping in sorted(self.partitions_.regimes.items())
+        interval_key = tuple(
+            (
+                repr(dataset_id),
+                tuple(intervals),
+            )
+            for dataset_id, intervals in sorted(
+                self.partitions_.intervals_by_context.items(),
+                key=lambda item: repr(item[0]),
+            )
         )
 
-        return context_key, regime_key
+        return cell_key, interval_key
 
     def _make_panel(self, X: pd.DataFrame) -> TimeGrid:
         if self.data_mode == DataMode.TIME:

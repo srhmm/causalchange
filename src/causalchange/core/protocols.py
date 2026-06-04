@@ -6,7 +6,7 @@ from typing import Any, Protocol
 import networkx as nx
 import pandas as pd
 
-from causalchange.core.results import ContextCombinationResult, GraphSearchResult, MechanismClusteringResult
+from causalchange.core.results import ContextCombinationResult, GraphSearchResult, SCMClusteringResult
 from causalchange.domain.tabular import TabularAllowedEdge, TabularNode, TabularScoreFunction
 from causalchange.domain.temporal import TemporalAllowedEdge, TemporalNode, TemporalScoreFunction, TimeGrid
 
@@ -72,7 +72,7 @@ class TemporalScoringProtocol(Protocol):
         panel: TimeGrid,
         effect: TemporalNode,
         parents: Sequence[TemporalNode],
-        partitions: MechanismClusteringResult,
+        partitions: SCMClusteringResult,
     ) -> float: ...
 
     @property
@@ -140,4 +140,6 @@ class MechanismClusteringProtocol(Protocol):
         panel: TimeGrid | None = None,
         graph: Any = None,
         changepoints: list[int] | None = None,
-    ) -> MechanismClusteringResult: ...
+        changepoints_by_context: dict[Any, list[int]] | None = None,
+        scorer: Any = None,
+    ) -> SCMClusteringResult: ...

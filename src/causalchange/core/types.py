@@ -7,7 +7,7 @@ import numpy as np
 # %% Supp input data types
 
 
-class DataMode(Enum):
+class DataMode(str, Enum):
     SKIP = "skip"
     TABULAR = "tabular-single"
     TAB_CONTEXTS = "tabular-contexts"
@@ -26,24 +26,24 @@ class DataMode(Enum):
 # %% TIME, TIME_CONTEXTS
 
 
-class ChangepointMode(Enum):
+class ChangepointMode(str, Enum):
     SKIP = "skip"
     ORACLE = "fixed"
     DETECT = "detect"
 
 
-class ChangepointScope(Enum):
+class ChangepointScope(str, Enum):
     SKIP = "skip"
     GLOBAL = "global"
     PER_CONTEXT = "per-context"
 
 
-class ChangepointMethod(Enum):
+class ChangepointMethod(str, Enum):
     SKIP = "skip"
     PELT = "pelt"
 
 
-class MechanismClusteringScope(Enum):  # or -Partitioning
+class MechanismClusteringScope(str, Enum):  # or -Partitioning
     SKIP = "skip"
     REGIMES = "regimes"
     CONTEXTS = "contexts"
@@ -56,7 +56,7 @@ class MechanismClusteringScope(Enum):  # or -Partitioning
         return self.value in [MechanismClusteringScope.REGIMES.value, MechanismClusteringScope.REGIMES_CONTEXTS.value]
 
 
-class MechanismClusteringMethod(Enum):  # or -Partitioning
+class MechanismClusteringMethod(str, Enum):  # or -Partitioning
     SKIP = "skip"
     TESTING = "statistical-testing"
     CLUSTERING = "mechanism-clustering"
@@ -66,7 +66,7 @@ class MechanismClusteringMethod(Enum):  # or -Partitioning
 
 
 # not strictly necessary
-class TabularContextMode(Enum):
+class TabularContextMode(str, Enum):
     SKIP = "skip"
     ORACLE = "fixed"
     DETECT = "detect"
@@ -91,7 +91,7 @@ class TabularContextMode(Enum):
         return data_mode in self.compatible_data_modes()
 
 
-class TabularContextMethod(Enum):
+class TabularContextMethod(str, Enum):
     SKIP = "skip"
     CHAIN = "chain"
     LINC = "linc"
@@ -116,7 +116,7 @@ class TabularContextMethod(Enum):
 # %% Search
 
 
-class GraphSearch(Enum):
+class GraphSearch(str, Enum):
     TOPIC = "topological"
     GLOBE = "edge-greedy"
     SKIP = "skip"
@@ -146,7 +146,7 @@ class GraphSearch(Enum):
         return data_mode in self.compatible_data_modes()
 
 
-class PostprocessingMode(Enum):
+class PostprocessingMode(str, Enum):
     SKIP = "skip"
     EDGE_STRENGTHS = "edge-strengths"
 
@@ -205,7 +205,7 @@ class ScoreType(LowerIsBetterScoreMixin, Enum):
     SKIP = "skip"
 
 
-class StatisticalTestingMethod(Enum):
+class StatisticalTestingMethod(str, Enum):
     SKIP = "skip"
     KERNEL = "kernel"
     NONE = "none"

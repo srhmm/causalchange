@@ -6,8 +6,8 @@ from causalchange.core.results import (
     CausalChangeResult,
     ChangepointResult,
     GraphSearchResult,
-    MechanismClusteringResult,
     PostProcessingResult,
+    SCMClusteringResult,
     TemporalResult,
 )
 
@@ -29,7 +29,7 @@ def test_temporal_result_aliases_component_results():
     graph = nx.DiGraph()
     graph_search = GraphSearchResult(graph=graph)
     changepoint = ChangepointResult(changepoints=[10], changepoints_by_context={0: [10]})
-    clusters = MechanismClusteringResult(contexts={"x": {0: 0}}, regimes={"x": {0: 0}})
+    clusters = SCMClusteringResult(contexts={"x": {0: 0}}, regimes={"x": {0: 0}})
 
     result = TemporalResult(
         graph_search=graph_search,

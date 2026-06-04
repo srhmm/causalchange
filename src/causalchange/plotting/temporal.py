@@ -63,25 +63,18 @@ def plot_partitions(partitions, *, title: str | None = None):
 
     rows = []
 
-    for target, mapping in partitions.contexts.items():
-        for item, label in mapping.items():
-            rows.append(
-                {
-                    "kind": "context",
-                    "target": target,
-                    "item": str(item),
-                    "label": label,
-                }
-            )
+    for target, mapping in partitions.cell_clusters.items():
+        for cell, label in mapping.items():
+            interval = partitions.intervals_by_context[cell.dataset_id][cell.interval_id]
 
-    for target, mapping in partitions.regimes.items():
-        for item, label in mapping.items():
             rows.append(
                 {
-                    "kind": "regime",
                     "target": target,
-                    "item": str(item),
-                    "label": label,
+                    "dataset_id": str(cell.dataset_id),
+                    "interval_id": cell.interval_id,
+                    "interval_start": interval[0],
+                    "interval_stop": interval[1],
+                    "mechanism": label,
                 }
             )
 
@@ -90,7 +83,7 @@ def plot_partitions(partitions, *, title: str | None = None):
     if df.empty:
         raise ValueError("No partition information available.")
 
-    fig, ax = plt.subplots(figsize=(8, max(3, 0.35 * len(df))))
+    fig, ax = plt.subplots(figsize=(9, max(3, 0.35 * len(df))))
     ax.axis("off")
 
     table = ax.table(

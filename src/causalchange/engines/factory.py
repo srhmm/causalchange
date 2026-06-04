@@ -15,7 +15,7 @@ from causalchange.discovery.changepoints import ChangepointDetection
 from causalchange.discovery.context_combination import CHAINContextCombination, LINCContextCombination, SkipCombination
 from causalchange.discovery.graph_tabular import GraphSearchTabularGreedy, GraphSearchTabularTopological
 from causalchange.discovery.graph_temporal import GraphSearchTemporalGreedy, GraphSearchTemporalTopological
-from causalchange.discovery.scm_clustering import SpaceTimeClustering
+from causalchange.discovery.scm_clustering import TemporalSCMClustering
 from causalchange.domain.context import MultiContextDomain, SingleContextDomain
 from causalchange.domain.tabular import TabularDomain
 from causalchange.domain.temporal import TemporalDomain
@@ -89,7 +89,7 @@ class EngineFactory:
         )
 
         changepoint_detection = ChangepointDetection(cfg)
-        scm_clustering = SpaceTimeClustering(cfg)
+        scm_clustering = TemporalSCMClustering(cfg)
 
         return TemporalDiscoveryEngine(
             data_mode=cfg.data_mode,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import networkx as nx
 import pandas as pd
 
-from causalchange.core.results import GraphSearchResult, MechanismClusteringResult, TemporalResult
+from causalchange.core.results import GraphSearchResult, SCMClusteringResult, TemporalResult
 from causalchange.core.types import ChangepointMode, ChangepointScope, DataMode, MechanismClusteringScope
 from causalchange.domain.temporal import TemporalDomain
 from causalchange.engines.temporal import TemporalDiscoveryEngine
@@ -49,7 +49,7 @@ class DummyChangepointDetection:
 
 class DummyClustering:
     def fit_predict(self, X=None, *, panel=None, graph=None, changepoints=None):
-        return MechanismClusteringResult(
+        return SCMClusteringResult(
             contexts={"x": {0: 0}},
             regimes={"x": {0: 0}},
             diagnostics={"mode": "dummy"},

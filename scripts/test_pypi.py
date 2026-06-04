@@ -3,9 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from causalchange.causal_change import CausalChange
-from causalchange.config.cc_config import ChangepointMode
-from causalchange.config.cc_types import ContextMode, DataMode, GraphSearch, ScoreType
+from causalchange import SpaceTime, Topic
 
 
 def smoke_topic() -> None:
@@ -15,19 +13,9 @@ def smoke_topic() -> None:
     x0 = rng.normal(size=n)
     x1 = np.tanh(x0) + rng.normal(scale=0.2, size=n)
 
-    X = pd.DataFrame(
-        {
-            "x0": x0,
-            "x1": x1,
-        }
-    )
+    X = pd.DataFrame({"x0": x0, "x1": x1})
 
-    cc = CausalChange(
-        data_mode=DataMode.TABULAR,
-        graph_search=GraphSearch.Topic,
-        score_type=ScoreType.LIN,
-        context_method=ContextMode.SKIP,
-    ).fit(X)
+    cc = Topic(score_type="lin").fit(X)
 
     assert cc.graph_ is not None
     assert cc.graph_.number_of_nodes() == 2
@@ -39,11 +27,10 @@ def smoke_topic() -> None:
 def smoke_spacetime() -> None:
     n = 80
     cp = 40
+    rng = np.random.default_rng(42)
 
     x0 = np.zeros(n)
     x1 = np.zeros(n)
-
-    rng = np.random.default_rng(42)
 
     for t in range(1, n):
         x0[t] = 0.6 * x0[t - 1] + rng.normal(scale=0.3)
@@ -53,23 +40,15 @@ def smoke_spacetime() -> None:
         else:
             x1[t] = 0.5 * x1[t - 1] - 0.8 * x0[t - 1] + rng.normal(scale=0.3)
 
-    X = pd.DataFrame(
-        {
-            "x0": x0,
-            "x1": x1,
-        }
-    )
+    X = pd.DataFrame({"x0": x0, "x1": x1})
 
-    cc = CausalChange(
-        data_mode=DataMode.TIME,
-        graph_search=GraphSearch.GLOBE,
-        score_type=ScoreType.LIN,
-        context_method=ContextMode.SKIP,
+    cc = SpaceTime(
+        data_mode="time",
+        score_type="lin",
         tau_max=1,
-        changepoint_mode=ChangepointMode.ORACLE,
+        changepoint_mode="fixed",
         fixed_changepoints=[cp],
-        detect_contexts=False,
-        detect_regimes=False,
+        clustering_scope="skip",
     ).fit(X)
 
     assert cc.graph_ is not None

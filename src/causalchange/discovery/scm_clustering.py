@@ -1,34 +1,43 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from typing import Any
 
+import numpy as np
 import pandas as pd
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.preprocessing import StandardScaler
 
 from causalchange.config.causal_change_config import CausalChangeConfigTemporal
-from causalchange.core.results import MechanismClusteringResult
-from causalchange.core.types import MechanismClusteringScope, StatisticalTestingMethod
-from causalchange.domain.temporal import TemporalNode, TimeGrid, util_changepoints_to_intervals
+from causalchange.core.results import GridCell, SCMClusteringResult
+from causalchange.core.types import MechanismClusteringMethod, StatisticalTestingMethod
+from causalchange.domain.temporal import (
+    TemporalNode,
+    TimeGrid,
+    util_changepoints_to_intervals,
+)
 from causalchange.scoring.statistical_tests import SCMEqualityTestKCI
+from causalchange.scoring.tabular import SCMScoreTabular
 
 
-class SCMClustering: ...  # for causal mixtures
+class SCMClustering(ABC):
+    """Abstract base for SCM mechanism clustering."""
+
+    @abstractmethod
+    def fit_predict(self, *args: Any, **kwargs: Any) -> SCMClusteringResult: ...
 
 
-class SpaceTimeClustering:
-    """
-    Partition contexts and time regimes for SPACETIME
+class TabularSCMClustering(SCMClustering):
+    """Placeholder for future tabular/mixture SCM clustering."""
 
-        contexts[target][dataset_id] = context_cluster_id
-        regimes[target][regime_id] = regime_cluster_id
-    """
+
+class BaseTemporalSCMClustering(SCMClustering):
+    """Shared logic for temporal SCM clustering over context x interval grid cells."""
 
     def __init__(self, cfg: CausalChangeConfigTemporal):
         self.cfg = cfg
-        self.equality_test = SCMEqualityTestKCI(
-            alpha=cfg.mechanism_test_alpha,
-            min_samples=max(5, min(cfg.d_min, 10)),
-        )
 
+    @abstractmethod
     def fit_predict(
         self,
         X: pd.DataFrame | None = None,
@@ -36,248 +45,166 @@ class SpaceTimeClustering:
         panel: TimeGrid | None = None,
         graph=None,
         changepoints: list[int] | None = None,
-    ) -> MechanismClusteringResult:
-        if panel is None:
-            if X is None:
-                raise ValueError("Either X or panel must be provided.")
+        changepoints_by_context: dict[Any, list[int]] | None = None,
+        scorer=None,
+    ) -> SCMClusteringResult: ...
 
-            panel = TimeGrid(
-                datasets={0: X},
-                variables=[str(c) for c in X.columns],
-                context_col=None,
-            )
+    def _coerce_panel(
+        self,
+        X: pd.DataFrame | None,
+        panel: TimeGrid | None,
+    ) -> TimeGrid:
+        if panel is not None:
+            return panel
 
-        changepoints = list(changepoints or [])
-        n_samples = len(panel.first_dataset())
-        intervals = util_changepoints_to_intervals(n_samples, changepoints)
+        if X is None:
+            raise ValueError("Either X or panel must be provided.")
 
-        contexts = self._initial_context_partitions(panel)
-        regimes = self._initial_regime_partitions(
-            variables=panel.variables,
-            n_regimes=len(intervals),
+        return TimeGrid(
+            datasets={0: X},
+            variables=[str(c) for c in X.columns],
+            context_col=None,
         )
 
-        diagnostics: dict[str, Any] = {
-            "mode": "initial",
-            "changepoints": changepoints,
-            "intervals": intervals,
-            "n_contexts": panel.n_contexts,
-            "n_regimes": len(intervals),
-            "tests": [],
+    def _intervals_by_context(
+        self,
+        *,
+        panel: TimeGrid,
+        changepoints: list[int] | None,
+        changepoints_by_context: dict[Any, list[int]] | None,
+    ) -> dict[Any, list[tuple[int, int]]]:
+        if not self.cfg.clustering_scope.detects_regimes():
+            return {dataset_id: [(0, len(X_context))] for dataset_id, X_context in panel.datasets.items()}
+
+        if changepoints_by_context is not None:
+            return {
+                dataset_id: util_changepoints_to_intervals(
+                    len(panel.datasets[dataset_id]),
+                    list(changepoints_by_context.get(dataset_id, [])),
+                )
+                for dataset_id in panel.dataset_ids
+            }
+
+        global_changepoints = list(changepoints or [])
+
+        return {
+            dataset_id: util_changepoints_to_intervals(
+                len(panel.datasets[dataset_id]),
+                global_changepoints,
+            )
+            for dataset_id in panel.dataset_ids
         }
 
-        if self.cfg.testing_method == StatisticalTestingMethod.NONE:
-            diagnostics["mode"] = "none"
-            return MechanismClusteringResult(
-                contexts=contexts,
-                regimes=regimes,
-                diagnostics=diagnostics,
-            )
+    def _grid_cells(
+        self,
+        intervals_by_context: dict[Any, list[tuple[int, int]]],
+    ) -> list[GridCell]:
+        return [
+            GridCell(dataset_id=dataset_id, interval_id=interval_id)
+            for dataset_id, intervals in intervals_by_context.items()
+            for interval_id in range(len(intervals))
+        ]
 
-        if self.cfg.clustering_scope in [MechanismClusteringScope.REGIMES, MechanismClusteringScope.REGIMES_CONTEXTS]:
-            regimes, regime_tests = self._partition_regimes(
-                panel=panel,
-                graph=graph,
-                intervals=intervals,
-            )
-            diagnostics["tests"].extend(regime_tests)
+    def _trivial_result(
+        self,
+        *,
+        panel: TimeGrid,
+        intervals_by_context: dict[Any, list[tuple[int, int]]],
+        mode: str,
+        extra_diagnostics: dict[str, Any] | None = None,
+    ) -> SCMClusteringResult:
+        cells = self._grid_cells(intervals_by_context)
 
-        if self.cfg.clustering_scope in [MechanismClusteringScope.CONTEXTS, MechanismClusteringScope.REGIMES_CONTEXTS]:
-            contexts, context_tests = self._partition_contexts(
-                panel=panel,
-                graph=graph,
-                intervals=intervals,
-            )
-            diagnostics["tests"].extend(context_tests)
+        cell_clusters = {target: {cell: 0 for cell in cells} for target in panel.variables}
 
-        diagnostics["mode"] = "kernel" if diagnostics["tests"] else "initial"
+        diagnostics: dict[str, Any] = {
+            "mode": mode,
+            "n_cells": len(cells),
+            "n_contexts": panel.n_contexts,
+            "intervals_by_context": intervals_by_context,
+        }
 
-        return MechanismClusteringResult(
-            contexts=contexts,
-            regimes=regimes,
+        if extra_diagnostics:
+            diagnostics.update(extra_diagnostics)
+
+        return SCMClusteringResult(
+            cell_clusters=cell_clusters,
+            intervals_by_context=intervals_by_context,
             diagnostics=diagnostics,
         )
 
-    def _initial_context_partitions(
-        self,
-        panel: TimeGrid,
-    ) -> dict[str, dict[Any, int]]:
-        if not self.cfg.clustering_scope.detects_contexts():
-            return {target: {dataset_id: 0 for dataset_id in panel.dataset_ids} for target in panel.variables}
+    def _parents_for_target(self, graph, target: str) -> list[TemporalNode]:
+        if graph is None:
+            return []
 
-        return {
-            target: {dataset_id: context_idx for context_idx, dataset_id in enumerate(panel.dataset_ids)}
-            for target in panel.variables
-        }
+        effect = (target, 0)
 
-    def _initial_regime_partitions(
-        self,
-        *,
-        variables: list[str],
-        n_regimes: int,
-    ) -> dict[str, dict[int, int]]:
-        return {target: {regime_id: regime_id for regime_id in range(n_regimes)} for target in variables}
+        if effect not in graph:
+            return []
 
-    def _partition_regimes(
-        self,
-        *,
-        panel: TimeGrid,
-        graph,
-        intervals: list[tuple[int, int]],
-    ) -> tuple[dict[str, dict[int, int]], list[dict[str, Any]]]:
-        regimes: dict[str, dict[int, int]] = {}
-        tests_list: list[dict[str, Any]] = []
+        parents: list[TemporalNode] = []
 
-        regime_ids = list(range(len(intervals)))
+        for parent in graph.predecessors(effect):
+            if not isinstance(parent, tuple) or len(parent) != 2:
+                continue
 
-        for target in panel.variables:
-            parents = self._parents_for_target(graph, target)
-            parent_cols = self._parent_cols(parents)
+            parent_var, lag = parent
+            parents.append((str(parent_var), int(lag)))
 
-            same_pairs: set[frozenset[Any]] = set()
-            different_pairs: set[frozenset[Any]] = set()
-            pvalues: dict[frozenset[Any], float] = {}
+        return sorted(parents, key=repr)
 
-            for r1 in regime_ids:
-                for r2 in regime_ids:
-                    if r2 <= r1:
-                        continue
+    def _parent_cols(self, parents: list[TemporalNode]) -> list[str]:
+        return [f"parent_{idx}" for idx, _ in enumerate(parents)]
 
-                    sample_1 = self._pooled_interval_sample(
-                        panel=panel,
-                        target=target,
-                        parents=parents,
-                        interval=intervals[r1],
-                    )
-                    sample_2 = self._pooled_interval_sample(
-                        panel=panel,
-                        target=target,
-                        parents=parents,
-                        interval=intervals[r2],
-                    )
-
-                    result = self.equality_test.same_mechanism(
-                        sample_a=sample_1,
-                        sample_b=sample_2,
-                        target_col="target",
-                        parent_cols=parent_cols,
-                    )
-
-                    pair = self._pair_key(r1, r2)
-                    pvalues[pair] = result.pvalue
-
-                    if result.same:
-                        same_pairs.add(pair)
-                    else:
-                        different_pairs.add(pair)
-
-                    tests_list.append(
-                        {
-                            "kind": "regime",
-                            "target": target,
-                            "regime_a": r1,
-                            "regime_b": r2,
-                            "pvalue": result.pvalue,
-                            "same": result.same,
-                            "method": result.method,
-                        }
-                    )
-
-            regimes[target] = self._cluster_from_pairwise_tests(
-                nodes=regime_ids,
-                same_pairs=same_pairs,
-                different_pairs=different_pairs,
-                pvalues=pvalues,
-            )
-
-        return regimes, tests_list
-
-    def _partition_contexts(
+    def _sample_for_cell(
         self,
         *,
         panel: TimeGrid,
-        graph,
-        intervals: list[tuple[int, int]],
-    ) -> tuple[dict[str, dict[Any, int]], list[dict[str, Any]]]:
-        contexts: dict[str, dict[Any, int]] = {}
-        tests: list[dict[str, Any]] = []
+        cell: GridCell,
+        intervals_by_context: dict[Any, list[tuple[int, int]]],
+        target: str,
+        parents: list[TemporalNode],
+    ) -> pd.DataFrame:
+        X = panel.datasets[cell.dataset_id]
+        interval = intervals_by_context[cell.dataset_id][cell.interval_id]
 
-        dataset_ids = panel.dataset_ids
+        return self._sample_for_interval(
+            X=X,
+            target=target,
+            parents=parents,
+            interval=interval,
+        )
 
-        for target in panel.variables:
-            parents = self._parents_for_target(graph, target)
-            parent_cols = self._parent_cols(parents)
+    def _sample_for_interval(
+        self,
+        *,
+        X: pd.DataFrame,
+        target: str,
+        parents: list[TemporalNode],
+        interval: tuple[int, int],
+    ) -> pd.DataFrame:
+        start, stop = interval
+        max_lag = max([lag for _, lag in parents], default=0)
+        first_t = max(start, max_lag, self.cfg.tau_max)
 
-            same_pairs: set[frozenset[Any]] = set()
-            different_pairs: set[frozenset[Any]] = set()
-            pvalues: dict[frozenset[Any], float] = {}
+        rows: list[dict[str, float]] = []
 
-            for i, ctx_a in enumerate(dataset_ids):
-                for ctx_b in dataset_ids[i + 1 :]:
-                    pair_results = []
+        for t in range(first_t, stop):
+            row: dict[str, float] = {}
 
-                    for regime_id, interval in enumerate(intervals):
-                        sample_a = self._sample_for_interval(
-                            X=panel.datasets[ctx_a],
-                            target=target,
-                            parents=parents,
-                            interval=interval,
-                        )
-                        sample_b = self._sample_for_interval(
-                            X=panel.datasets[ctx_b],
-                            target=target,
-                            parents=parents,
-                            interval=interval,
-                        )
+            for idx, (parent_var, lag) in enumerate(parents):
+                row[f"parent_{idx}"] = float(X[str(parent_var)].iloc[t - int(lag)])
 
-                        result = self.equality_test.same_mechanism(
-                            sample_a=sample_a,
-                            sample_b=sample_b,
-                            target_col="target",
-                            parent_cols=parent_cols,
-                        )
+            row["target"] = float(X[str(target)].iloc[t])
+            rows.append(row)
 
-                        pair_results.append(result)
-
-                        tests.append(
-                            {
-                                "kind": "context",
-                                "target": target,
-                                "context_a": ctx_a,
-                                "context_b": ctx_b,
-                                "regime": regime_id,
-                                "pvalue": result.pvalue,
-                                "same": result.same,
-                                "method": result.method,
-                            }
-                        )
-
-                    pair = self._pair_key(ctx_a, ctx_b)
-
-                    # Contexts are merged only if they are compatible in every regime.
-                    # A single detected difference is treated as a hard cannot-link.
-                    if pair_results and all(result.same for result in pair_results):
-                        same_pairs.add(pair)
-                        pvalues[pair] = min(result.pvalue for result in pair_results)
-                    else:
-                        different_pairs.add(pair)
-                        pvalues[pair] = min(
-                            (result.pvalue for result in pair_results),
-                            default=0.0,
-                        )
-
-            contexts[target] = self._cluster_from_pairwise_tests(
-                nodes=dataset_ids,
-                same_pairs=same_pairs,
-                different_pairs=different_pairs,
-                pvalues=pvalues,
-            )
-
-        return contexts, tests
+        columns = [*self._parent_cols(parents), "target"]
+        return pd.DataFrame(rows, columns=columns)
 
     def _pair_key(self, a: Any, b: Any) -> frozenset[Any]:
         if a == b:
             raise ValueError("Pair keys require two distinct nodes.")
+
         return frozenset((a, b))
 
     def _cluster_from_pairwise_tests(
@@ -288,15 +215,6 @@ class SpaceTimeClustering:
         different_pairs: set[frozenset[Any]],
         pvalues: dict[frozenset[Any], float],
     ) -> dict[Any, int]:
-        """
-        Cluster nodes using complete-link equality and hard cannot-link constraints.
-
-        A merge is allowed only if every cross-pair between the two clusters was
-        judged equal, and no cross-pair was judged different.
-
-        This avoids transitive merges of the form:
-            A same B, B same C, but A different C.
-        """
         clusters: list[set[Any]] = [{node} for node in nodes]
 
         while True:
@@ -368,87 +286,392 @@ class SpaceTimeClustering:
         right: set[Any],
         pvalues: dict[frozenset[Any], float],
     ) -> float:
-        values = []
-
-        for a in left:
-            for b in right:
-                values.append(float(pvalues.get(self._pair_key(a, b), 0.0)))
+        values = [float(pvalues.get(self._pair_key(a, b), 0.0)) for a in left for b in right]
 
         if not values:
             return 0.0
 
         return float(sum(values) / len(values))
 
-    def _pooled_interval_sample(
+
+class TemporalSCMSkipClustering(BaseTemporalSCMClustering):
+    """Skip temporal SCM clustering."""
+
+    def fit_predict(
         self,
+        X: pd.DataFrame | None = None,
         *,
-        panel: TimeGrid,
-        target: str,
-        parents: list[TemporalNode],
-        interval: tuple[int, int],
-    ) -> pd.DataFrame:
-        samples = [
-            self._sample_for_interval(
-                X=X_context,
-                target=target,
-                parents=parents,
-                interval=interval,
+        panel: TimeGrid | None = None,
+        graph=None,
+        changepoints: list[int] | None = None,
+        changepoints_by_context: dict[Any, list[int]] | None = None,
+        scorer=None,
+    ) -> SCMClusteringResult:
+        panel = self._coerce_panel(X, panel)
+
+        intervals_by_context = self._intervals_by_context(
+            panel=panel,
+            changepoints=changepoints,
+            changepoints_by_context=changepoints_by_context,
+        )
+
+        return self._trivial_result(
+            panel=panel,
+            intervals_by_context=intervals_by_context,
+            mode="skip",
+        )
+
+
+class TemporalSCMPairwiseTesting(BaseTemporalSCMClustering):
+    """Cluster temporal SCM grid cells by pairwise mechanism equality tests."""
+
+    def __init__(self, cfg: CausalChangeConfigTemporal):
+        super().__init__(cfg)
+
+        self.equality_test = SCMEqualityTestKCI(
+            alpha=cfg.mechanism_test_alpha,
+            min_samples=max(5, min(cfg.d_min, 10)),
+        )
+
+    def fit_predict(
+        self,
+        X: pd.DataFrame | None = None,
+        *,
+        panel: TimeGrid | None = None,
+        graph=None,
+        changepoints: list[int] | None = None,
+        changepoints_by_context: dict[Any, list[int]] | None = None,
+        scorer=None,
+    ) -> SCMClusteringResult:
+        panel = self._coerce_panel(X, panel)
+
+        intervals_by_context = self._intervals_by_context(
+            panel=panel,
+            changepoints=changepoints,
+            changepoints_by_context=changepoints_by_context,
+        )
+
+        cells = self._grid_cells(intervals_by_context)
+
+        diagnostics: dict[str, Any] = {
+            "mode": "pairwise_testing",
+            "changepoints": list(changepoints or []),
+            "intervals_by_context": intervals_by_context,
+            "n_cells": len(cells),
+            "n_contexts": panel.n_contexts,
+            "tests": [],
+        }
+
+        if self.cfg.testing_method == StatisticalTestingMethod.SKIP:
+            return self._trivial_result(
+                panel=panel,
+                intervals_by_context=intervals_by_context,
+                mode="testing_skipped",
+                extra_diagnostics=diagnostics,
             )
-            for X_context in panel.datasets.values()
-        ]
 
-        samples = [sample for sample in samples if not sample.empty]
+        cell_clusters: dict[str, dict[GridCell, int]] = {}
 
-        if not samples:
-            return pd.DataFrame(columns=[*self._parent_cols(parents), "target"])
+        for target in panel.variables:
+            parents = self._parents_for_target(graph, target)
+            parent_cols = self._parent_cols(parents)
 
-        return pd.concat(samples, axis=0, ignore_index=True)
+            same_pairs: set[frozenset[Any]] = set()
+            different_pairs: set[frozenset[Any]] = set()
+            pvalues: dict[frozenset[Any], float] = {}
 
-    def _sample_for_interval(
+            for i, cell_a in enumerate(cells):
+                for cell_b in cells[i + 1 :]:
+                    sample_a = self._sample_for_cell(
+                        panel=panel,
+                        cell=cell_a,
+                        intervals_by_context=intervals_by_context,
+                        target=target,
+                        parents=parents,
+                    )
+                    sample_b = self._sample_for_cell(
+                        panel=panel,
+                        cell=cell_b,
+                        intervals_by_context=intervals_by_context,
+                        target=target,
+                        parents=parents,
+                    )
+
+                    pair = self._pair_key(cell_a, cell_b)
+
+                    if sample_a.empty or sample_b.empty:
+                        same = False
+                        pvalue = 0.0
+                        method = "empty_sample"
+                    else:
+                        result = self.equality_test.same_mechanism(
+                            sample_a=sample_a,
+                            sample_b=sample_b,
+                            target_col="target",
+                            parent_cols=parent_cols,
+                        )
+                        same = bool(result.same)
+                        pvalue = float(result.pvalue)
+                        method = result.method
+
+                    pvalues[pair] = pvalue
+
+                    if same:
+                        same_pairs.add(pair)
+                    else:
+                        different_pairs.add(pair)
+
+                    diagnostics["tests"].append(
+                        {
+                            "target": target,
+                            "cell_a": cell_a,
+                            "cell_b": cell_b,
+                            "pvalue": pvalue,
+                            "same": same,
+                            "method": method,
+                        }
+                    )
+
+            cell_clusters[target] = self._cluster_from_pairwise_tests(
+                nodes=cells,
+                same_pairs=same_pairs,
+                different_pairs=different_pairs,
+                pvalues=pvalues,
+            )
+
+        return SCMClusteringResult(
+            cell_clusters=cell_clusters,
+            intervals_by_context=intervals_by_context,
+            diagnostics=diagnostics,
+        )
+
+
+class TemporalSCMEdgeStrengthClustering(BaseTemporalSCMClustering):
+    """Cluster temporal SCM grid cells by edge-strength feature vectors."""
+
+    def fit_predict(
         self,
+        X: pd.DataFrame | None = None,
         *,
-        X: pd.DataFrame,
-        target: str,
-        parents: list[TemporalNode],
-        interval: tuple[int, int],
-    ) -> pd.DataFrame:
-        start, stop = interval
-        max_lag = max([lag for _, lag in parents], default=0)
-        first_t = max(start, max_lag, self.cfg.tau_max)
+        panel: TimeGrid | None = None,
+        graph=None,
+        changepoints: list[int] | None = None,
+        changepoints_by_context: dict[Any, list[int]] | None = None,
+        scorer=None,
+    ) -> SCMClusteringResult:
+        if scorer is None:
+            raise ValueError("scorer is required for edge-strength clustering.")
 
-        rows = []
+        panel = self._coerce_panel(X, panel)
 
-        for t in range(first_t, stop):
-            row: dict[str, float] = {}
+        intervals_by_context = self._intervals_by_context(
+            panel=panel,
+            changepoints=changepoints,
+            changepoints_by_context=changepoints_by_context,
+        )
 
-            for idx, (parent_var, lag) in enumerate(parents):
-                row[f"parent_{idx}"] = float(X[parent_var].iloc[t - lag])
+        cells = self._grid_cells(intervals_by_context)
 
-            row["target"] = float(X[target].iloc[t])
-            rows.append(row)
+        diagnostics: dict[str, Any] = {
+            "mode": "edge_strength_clustering",
+            "changepoints": list(changepoints or []),
+            "intervals_by_context": intervals_by_context,
+            "n_cells": len(cells),
+            "n_contexts": panel.n_contexts,
+            "features": {},
+            "failures": [],
+        }
 
-        columns = [*self._parent_cols(parents), "target"]
-        return pd.DataFrame(rows, columns=columns)
+        if graph is None or graph.number_of_edges() == 0:
+            return self._trivial_result(
+                panel=panel,
+                intervals_by_context=intervals_by_context,
+                mode="edge_strength_clustering_no_graph",
+                extra_diagnostics=diagnostics,
+            )
 
-    def _parents_for_target(self, graph, target: str) -> list[TemporalNode]:
-        if graph is None:
-            return []
+        cell_clusters: dict[str, dict[GridCell, int]] = {}
+        tabular_scorer = SCMScoreTabular(self.cfg)
 
-        effect = (target, 0)
+        for target in panel.variables:
+            parents = self._parents_for_target(graph, target)
 
-        if effect not in graph:
-            return []
-
-        parents = []
-
-        for parent in graph.predecessors(effect):
-            if not isinstance(parent, tuple) or len(parent) != 2:
+            if not parents:
+                cell_clusters[target] = {cell: 0 for cell in cells}
+                diagnostics["features"][target] = {
+                    "n_features": 0,
+                    "reason": "no_parents",
+                }
                 continue
 
-            parent_var, lag = parent
-            parents.append((str(parent_var), int(lag)))
+            feature_rows = []
 
-        return parents
+            for cell in cells:
+                sample = self._sample_for_cell(
+                    panel=panel,
+                    cell=cell,
+                    intervals_by_context=intervals_by_context,
+                    target=target,
+                    parents=parents,
+                )
 
-    def _parent_cols(self, parents: list[TemporalNode]) -> list[str]:
-        return [f"parent_{idx}" for idx, _ in enumerate(parents)]
+                features = self._edge_strength_features(
+                    sample=sample,
+                    parents=parents,
+                    tabular_scorer=tabular_scorer,
+                    transition_gain=scorer.transition_gain,
+                    diagnostics=diagnostics,
+                    target=target,
+                    cell=cell,
+                )
+
+                feature_rows.append(features)
+
+            X_features = np.asarray(feature_rows, dtype=float)
+
+            labels = self._cluster_feature_matrix(
+                items=cells,
+                X_features=X_features,
+            )
+
+            cell_clusters[target] = labels
+
+            diagnostics["features"][target] = {
+                "n_features": int(X_features.shape[1]) if X_features.ndim == 2 else 0,
+                "n_cells": len(cells),
+                "n_clusters": len(set(labels.values())),
+                "parents": parents,
+            }
+
+        return SCMClusteringResult(
+            cell_clusters=cell_clusters,
+            intervals_by_context=intervals_by_context,
+            diagnostics=diagnostics,
+        )
+
+    def _edge_strength_features(
+        self,
+        *,
+        sample: pd.DataFrame,
+        parents: list[TemporalNode],
+        tabular_scorer: SCMScoreTabular,
+        transition_gain,
+        diagnostics: dict[str, Any],
+        target: str,
+        cell: GridCell,
+    ) -> list[float]:
+        parent_cols = self._parent_cols(parents)
+
+        if sample.empty:
+            return [0.0 for _ in parent_cols]
+
+        try:
+            full_score = float(tabular_scorer.local_score(sample, "target", parent_cols))
+        except Exception as exc:
+            diagnostics["failures"].append(
+                {
+                    "target": target,
+                    "cell": cell,
+                    "stage": "full_score",
+                    "error": repr(exc),
+                }
+            )
+            return [0.0 for _ in parent_cols]
+
+        features: list[float] = []
+
+        for parent_col in parent_cols:
+            reduced_cols = [col for col in parent_cols if col != parent_col]
+
+            try:
+                reduced_score = float(tabular_scorer.local_score(sample, "target", reduced_cols))
+                gain = float(transition_gain(reduced_score, full_score))
+                features.append(max(gain, 0.0))
+            except Exception as exc:
+                diagnostics["failures"].append(
+                    {
+                        "target": target,
+                        "cell": cell,
+                        "stage": "reduced_score",
+                        "parent_col": parent_col,
+                        "error": repr(exc),
+                    }
+                )
+                features.append(0.0)
+
+        return features
+
+    def _cluster_feature_matrix(
+        self,
+        *,
+        items: list[GridCell],
+        X_features: np.ndarray,
+    ) -> dict[GridCell, int]:
+        if len(items) == 0:
+            return {}
+
+        if len(items) == 1:
+            return {items[0]: 0}
+
+        if X_features.size == 0 or X_features.shape[1] == 0:
+            return {item: 0 for item in items}
+
+        X_features = np.nan_to_num(
+            X_features,
+            nan=0.0,
+            posinf=0.0,
+            neginf=0.0,
+        )
+
+        if np.allclose(X_features, X_features[0]):
+            return {item: 0 for item in items}
+
+        X_scaled = StandardScaler().fit_transform(X_features)
+
+        n_clusters = getattr(self.cfg, "mechanism_clustering_n_clusters", None)
+        distance_threshold = getattr(self.cfg, "mechanism_clustering_distance_threshold", None)
+
+        if n_clusters is None and distance_threshold is None:
+            n_clusters = min(3, len(items))
+
+        model = AgglomerativeClustering(
+            n_clusters=n_clusters,
+            distance_threshold=distance_threshold,
+        )
+
+        labels = model.fit_predict(X_scaled)
+
+        return {item: int(label) for item, label in zip(items, labels, strict=True)}
+
+
+class TemporalSCMClustering(SCMClustering):
+    """Dispatcher for temporal SCM clustering methods."""
+
+    def __init__(self, cfg: CausalChangeConfigTemporal):
+        if cfg.clustering_method == MechanismClusteringMethod.SKIP:
+            self.impl: BaseTemporalSCMClustering = TemporalSCMSkipClustering(cfg)
+        elif cfg.clustering_method == MechanismClusteringMethod.TESTING:
+            self.impl = TemporalSCMPairwiseTesting(cfg)
+        elif cfg.clustering_method == MechanismClusteringMethod.CLUSTERING:
+            self.impl = TemporalSCMEdgeStrengthClustering(cfg)
+        else:
+            raise ValueError(f"Unsupported clustering_method: {cfg.clustering_method}")
+
+    def fit_predict(
+        self,
+        X: pd.DataFrame | None = None,
+        *,
+        panel: TimeGrid | None = None,
+        graph=None,
+        changepoints: list[int] | None = None,
+        changepoints_by_context: dict[Any, list[int]] | None = None,
+        scorer=None,
+    ) -> SCMClusteringResult:
+        return self.impl.fit_predict(
+            X=X,
+            panel=panel,
+            graph=graph,
+            changepoints=changepoints,
+            changepoints_by_context=changepoints_by_context,
+            scorer=scorer,
+        )

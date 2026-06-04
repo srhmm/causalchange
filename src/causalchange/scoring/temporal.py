@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from causalchange.config.causal_change_config import CausalChangeConfigTemporal
-from causalchange.core.results import MechanismClusteringResult
+from causalchange.core.results import GridCell, SCMClusteringResult
 from causalchange.core.types import DataMode
 from causalchange.domain.temporal import (
     TemporalNode,
@@ -173,16 +173,8 @@ class SCMScoreTemporal(BaseLocalScorer):
         panel: TimeGrid,
         effect: TemporalNode,
         parents: Sequence[TemporalNode],
-        partitions: MechanismClusteringResult,
+        partitions: SCMClusteringResult,
     ) -> float:
-        """
-        Score one temporal local mechanism over context/regime partitions.
-
-        For the target variable, samples are pooled by context cluster and
-        regime cluster. One local model is fitted per pooled group, and the
-        group scores are summed.
-        """
-
         if effect[1] != 0:
             raise ValueError(f"Temporal effects must have lag 0, got {effect}.")
 
@@ -192,65 +184,52 @@ class SCMScoreTemporal(BaseLocalScorer):
         target = str(effect[0])
         parents = tuple(parents)
 
-        intervals = self._intervals_from_partitions(panel, partitions)
+        target_clusters = partitions.cell_clusters.get(target)
 
-        context_partition = partitions.contexts.get(
-            target,
-            {dataset_id: 0 for dataset_id in panel.dataset_ids},
-        )
+        if not target_clusters:
+            return float(self.local_score(panel.first_dataset(), effect, parents))
 
-        regime_partition = partitions.regimes.get(
-            target,
-            {regime_id: regime_id for regime_id in range(len(intervals))},
-        )
+        cells_by_cluster: dict[int, list[GridCell]] = {}
 
-        context_clusters = sorted(set(context_partition.values()))
-        regime_clusters = sorted(set(regime_partition.values()))
+        for cell, cluster_id in target_clusters.items():
+            cells_by_cluster.setdefault(int(cluster_id), []).append(cell)
 
         total = 0.0
         any_group = False
 
-        for context_cluster in context_clusters:
-            dataset_ids = [
-                dataset_id for dataset_id in panel.dataset_ids if context_partition.get(dataset_id) == context_cluster
-            ]
+        for cells in cells_by_cluster.values():
+            samples = []
 
-            for regime_cluster in regime_clusters:
-                group_samples = []
+            for cell in cells:
+                X_context = panel.datasets[cell.dataset_id]
+                interval = partitions.intervals_by_context[cell.dataset_id][cell.interval_id]
 
-                for dataset_id in dataset_ids:
-                    X_context = panel.datasets[dataset_id]
-
-                    for regime_id, interval in enumerate(intervals):
-                        if regime_partition.get(regime_id) != regime_cluster:
-                            continue
-
-                        sample = self._panel_interval_design(
-                            X=X_context,
-                            effect=effect,
-                            parents=parents,
-                            interval=interval,
-                        )
-
-                        if not sample.empty:
-                            group_samples.append(sample)
-
-                if not group_samples:
-                    continue
-
-                Z_group = pd.concat(group_samples, axis=0, ignore_index=True)
-
-                total += float(
-                    self._local_score_design(
-                        Z=Z_group,
-                        effect=effect,
-                        parents=parents,
-                        ret_full_result=False,
-                        ret_residuals=False,
-                    )
+                sample = self._panel_interval_design(
+                    X=X_context,
+                    effect=effect,
+                    parents=parents,
+                    interval=interval,
                 )
 
-                any_group = True
+                if not sample.empty:
+                    samples.append(sample)
+
+            if not samples:
+                continue
+
+            Z_group = pd.concat(samples, axis=0, ignore_index=True)
+
+            total += float(
+                self._local_score_design(
+                    Z=Z_group,
+                    effect=effect,
+                    parents=parents,
+                    ret_full_result=False,
+                    ret_residuals=False,
+                )
+            )
+
+            any_group = True
 
         if not any_group:
             return float("inf")
@@ -443,7 +422,7 @@ class SCMScoreTemporal(BaseLocalScorer):
     def _intervals_from_partitions(
         self,
         panel: TimeGrid,
-        partitions: MechanismClusteringResult,
+        partitions: SCMClusteringResult,
     ) -> list[tuple[int, int]]:
         intervals_raw = partitions.diagnostics.get("intervals")
 

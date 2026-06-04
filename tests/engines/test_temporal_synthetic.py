@@ -4,7 +4,7 @@ from typing import Any
 
 import pandas as pd
 
-from causalchange.core.results import MechanismClusteringResult, TemporalResult
+from causalchange.core.results import SCMClusteringResult, TemporalResult
 from causalchange.core.types import (
     ChangepointMode,
     ChangepointScope,
@@ -63,7 +63,7 @@ class NoChangepoints:
 
 class NoMechanismClustering:
     def fit_predict(self, *, panel, graph=None, changepoints=None):
-        return MechanismClusteringResult(
+        return SCMClusteringResult(
             contexts={target: {dataset_id: 0 for dataset_id in panel.dataset_ids} for target in panel.variables},
             regimes={target: {0: 0} for target in panel.variables},
             diagnostics={"mode": "skip", "intervals": [(0, len(panel.first_dataset()))]},
