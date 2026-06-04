@@ -1,6 +1,6 @@
 ## CausalChange
 
-causalchange provides causal discovery algorithms with focus on addressing different forms of
+`CausalChange` provides causal discovery algorithms with focus on addressing different forms of
 distribution shifts.
 
 ---
@@ -16,31 +16,31 @@ distribution shifts.
 ### Quick Example
 
 ```python
-from causalchange.causal_change import CausalChange
-from causalchange.core.types import DataMode, GraphSearch, ScoreType
+import pandas as pd
 
-cc = CausalChange(
-    data_mode=DataMode.IID,
-    graph_search=GraphSearch.TOPIC,
-    score_type=ScoreType.LIN,
-)
+from causalchange import Topic, ScoreType
+
+X = pd.DataFrame(...)
+
+cc = Topic(score_type=ScoreType.LIN)
 
 cc.fit(X)
 print(cc.graph_.edges())
 ```
+
 ---
 
 ### Further Examples
 
-The demos under `notebooks/` show basic usage on small synthetic examples,
-*   [TOPIC](notebooks/02_topic_tutorial.ipynb), for score-based causal DAG discovery from tabular data in topological order [2],
-*   [LINC](notebooks/03_linc_tutorial.ipynb), for causal discovery from multiple contexts, i.e., multiple tabular datasets with distribution shifts [1],
-*   [SpaceTime](notebooks/04_spacetime_tutorial.ipynb), for temporal causal discovery and changepoint detection in time series or multi-context time series [3].
+The `notebooks/` show basic usage on small synthetic examples,
+*   [TOPIC](notebooks/01_topic_tutorial.ipynb), for score-based causal DAG discovery from tabular data in topological order [2],
+*   [LINC](notebooks/02_linc_tutorial.ipynb), for causal discovery from multiple contexts, i.e., multiple tabular datasets with distribution shifts [1],
+*   [SpaceTime](notebooks/03_spacetime_tutorial.ipynb), for temporal causal discovery and changepoint detection in time series or multi-context time series [3].
 
 ---
 ### Documentation
 
-See [docs/](docs/) for more documentation notes.
+See [docs/](docs/) for additional documentation.
 
 
 ---

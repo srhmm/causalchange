@@ -209,6 +209,8 @@ __marimo__/
 #custom
 
 .DS_Store
+.pytest_cache
+.ruff_cache
 __pycache__/
 *.py[cod]
 *$py.class
@@ -216,6 +218,8 @@ __pycache__/
 build/
 dist/
 
+src/causalchange.egg-info
+src/__pycache__/
 .idea/
 
 # folders containing data

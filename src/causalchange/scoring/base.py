@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
-import networkx as nx
 import numpy as np
 import pandas as pd
 
-from causalchange.core.results import SpaceTimeGridClusters
+from causalchange.config.causal_change_config import CausalChangeConfigBase
 from causalchange.core.types import DataMode, GPType, ScoreType
-from causalchange.domain.temporal import TimeGrid
 from causalchange.scoring.regression import (
     fit_score_functional_model,
     fit_score_gam,
@@ -21,8 +20,68 @@ from causalchange.scoring.regression import (
 )
 
 
+class ScoreConventionProtocol(Protocol):
+    @property
+    def higher_is_better(self) -> bool: ...
+
+    def transition_gain(self, old_score: float, new_score: float) -> float: ...
+
+    def gain_is_better(self, a: float, b: float) -> bool: ...
+
+    def raw_score_is_better(self, a: float, b: float) -> bool: ...
+
+    def score_significant(self, gain: float, n: int) -> bool: ...
+
+
+class BaseLocalScorer(ABC):
+    """high-level scoring, shared logic for tabular and temporal."""
+
+    def __init__(self, cfg: CausalChangeConfigBase):
+        self.data_mode: DataMode = cfg.data_mode
+        self.score_type: ScoreConventionProtocol = cast(ScoreConventionProtocol, cfg.score_type)
+        self.score_params: dict[str, Any] = dict(cfg.score_kwargs or {})
+        self._global_n_samples: int | None = None
+
+    @property
+    def higher_is_better(self) -> bool:
+        return bool(self.score_type.higher_is_better)
+
+    def transition_gain(self, old_score: float, new_score: float) -> float:
+        return float(self.score_type.transition_gain(old_score, new_score))
+
+    def gain_is_better(self, a: float, b: float) -> bool:
+        return bool(self.score_type.gain_is_better(a, b))
+
+    def raw_score_is_better(self, a: float, b: float) -> bool:
+        return bool(self.score_type.raw_score_is_better(a, b))
+
+    def score_significant(self, gain: float) -> bool:
+        n = self._require_global_n_samples("score_significant")
+        return bool(self.score_type.score_significant(gain, n))
+
+    def _set_global_n_samples(self, n_samples: int) -> None:
+        self._global_n_samples = int(n_samples)
+
+    def _require_global_n_samples(self, method_name: str) -> int:
+        if self._global_n_samples is None:
+            raise RuntimeError(f"Call fit(...) or fit_panel(...) before {method_name}().")
+
+        return int(self._global_n_samples)
+
+    @staticmethod
+    def _stringify_columns(df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df.columns = [str(c) for c in df.columns]
+        return df
+
+    @abstractmethod
+    def local_score(self, *args: Any, **kwargs: Any) -> float | Any:
+        """Score one local mechanism/family."""
+        ...
+
+
 class SCMScore:
-    higher_is_better = True
+    """low-level scoring"""
 
     def __init__(
         self,
@@ -43,6 +102,8 @@ class SCMScore:
         # Memoization
         self.score_cache: dict[tuple[int, tuple[int, ...]], float] = {}
         self.res_cache: dict[tuple[int, tuple[int, ...]], dict] = {}
+
+        self.X: np.ndarray | None = None
 
     def fit(self, X: np.ndarray):
         """sets data"""
@@ -76,7 +137,7 @@ class SCMScore:
             raise ValueError(f"Unsupported score_type: {self.score_type}")
         return score_fun
 
-    def score_edge(
+    def local_score(
         self,
         j: int,
         pa: Sequence[int],
@@ -84,6 +145,9 @@ class SCMScore:
         ret_residuals: bool = False,
     ):
         """scores causal relationship pa->j"""
+        if self.X is None:
+            raise RuntimeError("Call fit(X) before local_score().")
+
         pa_key = tuple(sorted(int(p) for p in pa))
         key = (j, pa_key)
 
@@ -107,57 +171,3 @@ class SCMScore:
             self.res_cache[key] = res
 
         return (float(score), res) if ret_full_result else float(score)
-
-
-# todo consider removing this
-class TemporalScoring(Protocol):
-    tau_max: int
-
-    def fit(self, X: pd.DataFrame) -> None: ...
-
-    def set_time_windows(
-        self,
-        *,
-        n_raw_samples: int,
-        changepoints: list[int],
-    ) -> None: ...
-
-    def score_edge(
-        self,
-        X: pd.DataFrame,
-        effect: Any,
-        parents: tuple[Any, ...],
-    ) -> float: ...
-
-    def residual_signal(
-        self,
-        X: pd.DataFrame,
-        *,
-        graph: nx.DiGraph | None,
-        variables: list[str],
-    ) -> np.ndarray: ...
-
-    def fit_panel(self, panel: TimeGrid) -> None: ...
-
-    def residual_signal_panel(
-        self,
-        panel: TimeGrid,
-        *,
-        graph: nx.DiGraph | None,
-        variables: list[str],
-    ) -> np.ndarray: ...
-
-    def score_edge_panel(
-        self,
-        *,
-        panel: TimeGrid,
-        effect: Any,
-        parents: tuple[Any, ...],
-        partitions: SpaceTimeGridClusters,
-    ) -> float: ...
-
-    def transition_gain(self, old_score: float, new_score: float) -> float: ...
-
-    def score_significant(self, gain: float) -> bool: ...
-
-    def score_is_better(self, a: float, b: float) -> bool: ...

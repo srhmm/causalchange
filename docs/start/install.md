@@ -9,5 +9,4 @@
 
 `python -m ipykernel install --user --name causalchange --display-name "Python (causalchange)"`
 
-**Tests**
-Run the full test suite with `pytest`.
+**Tests** `pytest`

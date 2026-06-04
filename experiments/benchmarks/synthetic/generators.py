@@ -6,13 +6,13 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from benchmarks.synthetic.generator_time import sample_spacetime_synthetic
 from causalchange.config.benchmark_config import (
     MultiDataConfig,
     MultiTemporalDataConfig,
     SingleDataConfig,
     SingleTemporalDataConfig,
 )
+from experiments.benchmarks.synthetic.generator_time import sample_spacetime_synthetic
 
 
 def sample_single_continuous(config: SingleDataConfig):

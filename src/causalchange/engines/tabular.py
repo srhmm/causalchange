@@ -7,40 +7,46 @@ import pandas as pd
 
 from causalchange.core.protocols import (
     BaseContextCombination,
-    BaseScoring,
     ContextPreproc,
-    Domain,
-    Search,
+    TabularDomainProtocol,
+    TabularScoringProtocol,
+    TabularSearchProtocol,
 )
-from causalchange.core.results import ContextCombinationResult, GraphSearchTabularResult
-from causalchange.core.types import DataMode
+from causalchange.core.results import ContextCombinationResult, TabularResult
+from causalchange.core.types import DataMode, PostprocessingMode
+from causalchange.engines.base import BaseDiscoveryEngine
 
 
-class TabularDiscoveryEngine:
-    """shows lower-level control flow for tabular causal discovery."""
+class TabularDiscoveryEngine(BaseDiscoveryEngine[TabularDomainProtocol, TabularScoringProtocol, TabularSearchProtocol]):
+    """shows lower-level control flow for tabular causal discovery"""
 
     def __init__(
         self,
         *,
         data_mode: DataMode,
-        domain: Domain,
+        domain: TabularDomainProtocol,
         context_preproc: ContextPreproc,
-        scoring: BaseScoring,
+        scoring: TabularScoringProtocol,
         context_comb: BaseContextCombination,
-        search: Search,
+        search: TabularSearchProtocol,
+        postprocessing_mode: PostprocessingMode = PostprocessingMode.SKIP,
     ):
-        self.data_mode = data_mode
+        super().__init__(
+            data_mode=data_mode,
+            domain=domain,
+            scoring=scoring,
+            search=search,
+            postprocessing_mode=postprocessing_mode,
+        )
 
         self.domain = domain
         self.context_preproc = context_preproc
-        self.scoring = scoring
         self.context_comb = context_comb
         self.search = search
 
         self.X0_: pd.DataFrame | None = None
         self.contexts_: dict[Hashable, pd.DataFrame] | None = None
         self.last_context_combo_: ContextCombinationResult | None = None
-
         self._score_cache: dict[tuple[Any, tuple[Any, ...]], ContextCombinationResult] = {}
 
     def fit(self, X: pd.DataFrame) -> TabularDiscoveryEngine:
@@ -52,7 +58,7 @@ class TabularDiscoveryEngine:
         self._score_cache = {}
         return self
 
-    def score_edge(self, effect: Any, parents: Iterable[Any]) -> float:
+    def local_score(self, effect: Any, parents: Iterable[Any]) -> float:
         if self.contexts_ is None:
             raise RuntimeError("Engine not fitted. Call fit() first.")
 
@@ -65,7 +71,7 @@ class TabularDiscoveryEngine:
             return float(res.total)
 
         def score_ctx(df: pd.DataFrame) -> float:
-            return float(self.scoring.score_edge(df, effect, parents_t))
+            return float(self.scoring.local_score(df, effect, parents_t))
 
         res = self.context_comb.combine_contexts(
             contexts=self.contexts_,
@@ -78,40 +84,24 @@ class TabularDiscoveryEngine:
         self.last_context_combo_ = res
         return float(res.total)
 
-    def discover(self) -> GraphSearchTabularResult:
+    def _run_discovery(self) -> TabularResult:
         if self.X0_ is None:
             raise RuntimeError("Engine not fitted. Call fit() first.")
 
         nodes = self.domain.nodes(self.X0_)
         candidates = self.domain.candidates(self.X0_)
 
-        result = self.search.run(
+        graph_search_result = self.search.run(
             nodes=nodes,
             candidates=candidates,
             allowed_edge=self.domain.allowed_edge,
-            score_fun=self.score_edge,
+            score_fun=self.local_score,
         )
 
-        result.edge_strengths = self._compute_edge_strengths(result.graph)
-        result.diagnostics = {
-            "data_mode": self.data_mode.value,
-        }
-
-        return result
-
-    def _compute_edge_strengths(self, graph) -> dict[tuple[Any, Any], float]:
-        strengths: dict[tuple[Any, Any], float] = {}
-
-        for edge in graph.edges():
-            parent, effect = edge
-
-            parents = tuple(graph.predecessors(effect))
-            score_with = self.score_edge(effect, parents)
-
-            parents_without = tuple(p for p in parents if p != parent)
-            score_without = self.score_edge(effect, parents_without)
-
-            # MDL scores are lower-is-better, so positive means the edge helps.
-            strengths[edge] = float(score_without - score_with)  # todo use higher is better mixin.
-
-        return strengths
+        return TabularResult(
+            graph_search=graph_search_result,
+            history=graph_search_result.history,
+            diagnostics={
+                "score_cache_size": len(self._score_cache),
+            },
+        )

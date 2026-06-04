@@ -7,52 +7,64 @@ from typing import Any
 
 import pandas as pd
 
-from causalchange.config.causal_change_config import (
+from causalchange.core.protocols import (
+    ChangepointDetectionProtocol,
+    MechanismClusteringProtocol,
+    TemporalDomainProtocol,
+    TemporalScoringProtocol,
+    TemporalSearchProtocol,
+)
+from causalchange.core.results import ChangepointResult, TemporalResult
+from causalchange.core.types import (
     ChangepointMode,
     ChangepointScope,
     DataMode,
+    MechanismClusteringScope,
+    PostprocessingMode,
 )
-from causalchange.core.results import TemporalResult
 from causalchange.domain.temporal import TimeGrid
-from causalchange.posthoc.temporal import compute_edge_contributions, compute_mechanism_scores
-from causalchange.scoring.temporal import SCMScoreTemporal
+from causalchange.engines.base import BaseDiscoveryEngine
 
 
-class TemporalDiscoveryEngine:
+class TemporalDiscoveryEngine(
+    BaseDiscoveryEngine[TemporalDomainProtocol, TemporalScoringProtocol, TemporalSearchProtocol]
+):
     """shows lower-level control flow for temporal causal discovery."""
 
     def __init__(
         self,
         *,
         data_mode: DataMode,
-        domain,
-        scoring: SCMScoreTemporal,
-        search,
-        changepoint_detection,
-        scm_clustering,
+        domain: TemporalDomainProtocol,
+        scoring: TemporalScoringProtocol,
+        search: TemporalSearchProtocol,
+        changepoint_detection: ChangepointDetectionProtocol,
+        scm_clustering: MechanismClusteringProtocol,
+        clustering_scope: MechanismClusteringScope,
         context_col: str,
         tau_max: int,
         changepoint_mode: ChangepointMode,
         changepoint_scope: ChangepointScope,
         max_iter: int,
-        detect_contexts: bool,
-        detect_regimes: bool,
         diagnostics: dict[str, Any] | None = None,
+        postprocessing_mode: PostprocessingMode = PostprocessingMode.SKIP,
     ):
-        self.data_mode = data_mode
-        self.domain = domain
-        self.scorer = scoring
-        self.search = search
+        super().__init__(
+            data_mode=data_mode,
+            domain=domain,
+            scoring=scoring,
+            search=search,
+            postprocessing_mode=postprocessing_mode,
+        )
+        self.changepoint_mode = changepoint_mode
         self.changepoint_detection = changepoint_detection
-        self.partitioning = scm_clustering
+        self.changepoint_scope = changepoint_scope
+        self.scm_clustering = scm_clustering
+        self.clustering_scope = clustering_scope
 
         self.context_col = context_col
         self.tau_max = tau_max
-        self.changepoint_mode = changepoint_mode
-        self.changepoint_scope = changepoint_scope
         self.max_iter = max_iter
-        self.detect_contexts = detect_contexts
-        self.detect_regimes = detect_regimes
         self.diagnostics = dict(diagnostics or {})
 
         self.X0_: pd.DataFrame | None = None
@@ -67,14 +79,14 @@ class TemporalDiscoveryEngine:
     def fit(self, X: pd.DataFrame) -> TemporalDiscoveryEngine:
         self.panel_ = self._make_panel(X)
 
-        self.scorer.fit_panel(self.panel_)
+        self.scoring.fit_panel(self.panel_)
 
         X0 = self.panel_.first_dataset()
         self.X0_ = X0
 
         return self
 
-    def score_edge(self, effect, parents) -> float:
+    def local_score(self, effect, parents) -> float:
         if self.panel_ is None:
             raise RuntimeError("Engine not fitted. Call fit() first.")
 
@@ -91,7 +103,7 @@ class TemporalDiscoveryEngine:
 
         if self.partitions_ is not None:
             value = float(
-                self.scorer.score_edge_panel(
+                self.scoring.local_score_grid(
                     panel=self.panel_,
                     effect=effect,
                     parents=parents,
@@ -102,31 +114,21 @@ class TemporalDiscoveryEngine:
             if self.X0_ is None:
                 raise RuntimeError("Engine not fitted. Call fit() first.")
 
-            value = float(self.scorer.score_edge(self.X0_, effect, parents))
+            value = float(self.scoring.local_score(self.X0_, effect, parents))
 
         self._score_cache[cache_key] = value
         return value
 
-    def _partition_key(self) -> tuple | None:
-        if self.partitions_ is None:
-            return None
-
-        context_key = tuple(
-            (target, tuple(sorted(mapping.items()))) for target, mapping in sorted(self.partitions_.contexts.items())
-        )
-
-        regime_key = tuple(
-            (target, tuple(sorted(mapping.items()))) for target, mapping in sorted(self.partitions_.regimes.items())
-        )
-
-        return context_key, regime_key
-
-    def discover(self) -> TemporalResult:
+    def _run_discovery(self) -> TemporalResult:
         if self.X0_ is None:
             raise RuntimeError("Engine not fitted. Call fit() first.")
 
         variables = self.domain.variables(self.X0_)
-        needs_iteration = self.changepoint_mode == ChangepointMode.DETECT or self.detect_contexts or self.detect_regimes
+        needs_iteration = self.changepoint_mode == ChangepointMode.DETECT or self.clustering_scope in [
+            MechanismClusteringScope.REGIMES,
+            MechanismClusteringScope.CONTEXTS,
+            MechanismClusteringScope.REGIMES_CONTEXTS,
+        ]
 
         max_iter = self.max_iter if needs_iteration else 1
         graph = None
@@ -142,7 +144,7 @@ class TemporalDiscoveryEngine:
             self.changepoints_ = self.changepoint_detection.detect(
                 time_grid=self.panel_,
                 graph=graph,
-                scorer=self.scorer,
+                scorer=self.scoring,
                 variables=variables,
             )
             t_cp = perf_counter() - t_cp0
@@ -154,13 +156,13 @@ class TemporalDiscoveryEngine:
 
             self.changepoint_diagnostics_ = self.changepoint_detection.diagnostics_
 
-            self.scorer.set_time_windows(
+            self.scoring.set_time_windows(
                 n_raw_samples=len(self.panel_.first_dataset()),
                 changepoints=self.changepoints_,
             )
 
             t_part0 = perf_counter()
-            self.partitions_ = self.partitioning.fit_predict(
+            self.partitions_ = self.scm_clustering.fit_predict(
                 panel=self.panel_,
                 graph=graph,
                 changepoints=self.changepoints_,
@@ -174,7 +176,7 @@ class TemporalDiscoveryEngine:
                 variables=variables,
                 tau_max=self.tau_max,
                 allowed_edge=self.domain.allowed_edge,
-                score_fun=self.score_edge,
+                score_fun=self.local_score,
             )
             t_search = perf_counter() - t_search0
 
@@ -214,25 +216,38 @@ class TemporalDiscoveryEngine:
         if final_search_result is None or self.partitions_ is None:
             raise RuntimeError("Temporal discovery failed to produce a result.")
 
-        edge_strengths = self._compute_edge_strengths(final_search_result.graph)
-
-        result = TemporalResult(
-            graph=final_search_result.graph,
-            topological_order=final_search_result.topological_order,
+        changepoint_result = ChangepointResult(
             changepoints=self.changepoints_,
-            grid_clusters=self.partitions_,
             changepoints_by_context=self.changepoints_by_context_,
-            changepoint_diagnostics=self.changepoint_diagnostics_,
-            edge_strengths=edge_strengths,
-            history=all_history,
-            diagnostics={
-                "data_mode": self.data_mode.value,
-                **self.diagnostics,
-            },
+            diagnostics=self.changepoint_diagnostics_,
         )
 
+        result = TemporalResult(
+            graph_search=final_search_result,
+            changepoint=changepoint_result,
+            mechanism_clustering=self.partitions_,
+            history=all_history,
+            diagnostics={
+                "n_iterations": len(all_history),
+                "score_cache_size": len(self._score_cache),
+            },
+        )
         self.result_ = result
         return result
+
+    def _partition_key(self) -> tuple | None:
+        if self.partitions_ is None:
+            return None
+
+        context_key = tuple(
+            (target, tuple(sorted(mapping.items()))) for target, mapping in sorted(self.partitions_.contexts.items())
+        )
+
+        regime_key = tuple(
+            (target, tuple(sorted(mapping.items()))) for target, mapping in sorted(self.partitions_.regimes.items())
+        )
+
+        return context_key, regime_key
 
     def _make_panel(self, X: pd.DataFrame) -> TimeGrid:
         if self.data_mode == DataMode.TIME:
@@ -283,49 +298,4 @@ class TemporalDiscoveryEngine:
             datasets=datasets,
             variables=variables,
             context_col=context_col,
-        )
-
-    def _compute_edge_strengths(self, graph) -> dict[tuple[Any, Any], float]:
-        strengths: dict[tuple[Any, Any], float] = {}
-
-        for edge in graph.edges():
-            parent, effect = edge
-
-            parents = list(graph.predecessors(effect))
-            score_with = self.score_edge(effect, tuple(parents))
-
-            parents_without = [p for p in parents if p != parent]
-            score_without = self.score_edge(effect, tuple(parents_without))
-
-            # MDL scores are lower-is-better, so positive means the edge helps.
-            strengths[edge] = float(score_without - score_with)
-
-        return strengths
-
-    def mechanism_scores(
-        self,
-        *,
-        graph=None,
-        scope="global",
-        changepoints: list[int] | None = None,
-    ):
-        return compute_mechanism_scores(
-            self,
-            graph=graph,
-            scope=scope,
-            changepoints=changepoints,
-        )
-
-    def edge_contributions(
-        self,
-        *,
-        graph=None,
-        scope="global",
-        changepoints: list[int] | None = None,
-    ):
-        return compute_edge_contributions(
-            self,
-            graph=graph,
-            scope=scope,
-            changepoints=changepoints,
         )

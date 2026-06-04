@@ -2,9 +2,9 @@ import json
 import os
 from dataclasses import asdict
 
-import benchmarks.benchmark_grids
-from benchmarks.run_methods import iter_valid_configs, run_on_config
-from benchmarks.utils import (
+import experiments.benchmarks.benchmark_grids
+from experiments.benchmarks.run_methods import iter_valid_configs, run_on_config
+from experiments.benchmarks.utils import (
     bench_name_from_cfg,
     config_group_key,
     file_name_from_cfg,
@@ -15,7 +15,9 @@ from benchmarks.utils import (
 
 BASE_SEED = 42
 N_REPEATS = 10
-BENCHMARK_GRID = benchmarks.benchmark_grids.BENCHMARK_GRID_SPACETIME  # benchmarks.benchmark_grids.BENCHMARK_GRID_MULTI
+BENCHMARK_GRID = (
+    experiments.benchmarks.benchmark_grids.BENCHMARK_GRID_SPACETIME
+)  # benchmarks.benchmark_grids.BENCHMARK_GRID_MULTI
 
 if __name__ == "__main__":
     groups = {}

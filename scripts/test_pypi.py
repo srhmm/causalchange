@@ -23,10 +23,10 @@ def smoke_topic() -> None:
     )
 
     cc = CausalChange(
-        data_mode=DataMode.IID,
-        graph_search=GraphSearch.TOPIC,
+        data_mode=DataMode.TABULAR,
+        graph_search=GraphSearch.Topic,
         score_type=ScoreType.LIN,
-        context_mode=ContextMode.SKIP,
+        context_method=ContextMode.SKIP,
     ).fit(X)
 
     assert cc.graph_ is not None
@@ -64,9 +64,9 @@ def smoke_spacetime() -> None:
         data_mode=DataMode.TIME,
         graph_search=GraphSearch.GLOBE,
         score_type=ScoreType.LIN,
-        context_mode=ContextMode.SKIP,
+        context_method=ContextMode.SKIP,
         tau_max=1,
-        changepoint_mode=ChangepointMode.FIXED,
+        changepoint_mode=ChangepointMode.ORACLE,
         fixed_changepoints=[cp],
         detect_contexts=False,
         detect_regimes=False,

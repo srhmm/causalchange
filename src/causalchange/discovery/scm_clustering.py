@@ -5,8 +5,8 @@ from typing import Any
 import pandas as pd
 
 from causalchange.config.causal_change_config import CausalChangeConfigTemporal
-from causalchange.core.results import SpaceTimeGridClusters
-from causalchange.core.types import StatisticalTestingMethod
+from causalchange.core.results import MechanismClusteringResult
+from causalchange.core.types import MechanismClusteringScope, StatisticalTestingMethod
 from causalchange.domain.temporal import TemporalNode, TimeGrid, util_changepoints_to_intervals
 from causalchange.scoring.statistical_tests import SCMEqualityTestKCI
 
@@ -36,7 +36,7 @@ class SpaceTimeClustering:
         panel: TimeGrid | None = None,
         graph=None,
         changepoints: list[int] | None = None,
-    ) -> SpaceTimeGridClusters:
+    ) -> MechanismClusteringResult:
         if panel is None:
             if X is None:
                 raise ValueError("Either X or panel must be provided.")
@@ -59,8 +59,6 @@ class SpaceTimeClustering:
 
         diagnostics: dict[str, Any] = {
             "mode": "initial",
-            "detect_contexts": self.cfg.detect_contexts,
-            "detect_regimes": self.cfg.detect_regimes,
             "changepoints": changepoints,
             "intervals": intervals,
             "n_contexts": panel.n_contexts,
@@ -68,15 +66,15 @@ class SpaceTimeClustering:
             "tests": [],
         }
 
-        if self.cfg.partitioning_method == StatisticalTestingMethod.NONE:
+        if self.cfg.testing_method == StatisticalTestingMethod.NONE:
             diagnostics["mode"] = "none"
-            return SpaceTimeGridClusters(
+            return MechanismClusteringResult(
                 contexts=contexts,
                 regimes=regimes,
                 diagnostics=diagnostics,
             )
 
-        if self.cfg.detect_regimes:
+        if self.cfg.clustering_scope in [MechanismClusteringScope.REGIMES, MechanismClusteringScope.REGIMES_CONTEXTS]:
             regimes, regime_tests = self._partition_regimes(
                 panel=panel,
                 graph=graph,
@@ -84,7 +82,7 @@ class SpaceTimeClustering:
             )
             diagnostics["tests"].extend(regime_tests)
 
-        if self.cfg.detect_contexts:
+        if self.cfg.clustering_scope in [MechanismClusteringScope.CONTEXTS, MechanismClusteringScope.REGIMES_CONTEXTS]:
             contexts, context_tests = self._partition_contexts(
                 panel=panel,
                 graph=graph,
@@ -94,7 +92,7 @@ class SpaceTimeClustering:
 
         diagnostics["mode"] = "kernel" if diagnostics["tests"] else "initial"
 
-        return SpaceTimeGridClusters(
+        return MechanismClusteringResult(
             contexts=contexts,
             regimes=regimes,
             diagnostics=diagnostics,
@@ -104,7 +102,7 @@ class SpaceTimeClustering:
         self,
         panel: TimeGrid,
     ) -> dict[str, dict[Any, int]]:
-        if not self.cfg.detect_contexts:
+        if not self.cfg.clustering_scope.detects_contexts():
             return {target: {dataset_id: 0 for dataset_id in panel.dataset_ids} for target in panel.variables}
 
         return {

@@ -3,95 +3,80 @@
 
 ---
 
-#### Tabular causal discovery with TOPIC [[1]](references.md)
+### Tabular causal discovery with TOPIC [[1]](references.md)
 
-Notebook [`02_topic_tutorial.ipynb`](../../notebooks/02_topic_tutorial.ipynb)
+**Notebook** [`02_topic_tutorial.ipynb`](../../notebooks/01_topic_tutorial.ipynb)
 
-Setting
-```python
-data_mode=DataMode.IID
-graph_search=GraphSearch.TOPIC
-````
-Example usage
+
+
+**Example usage**
+
 ```python
 import pandas as pd
 
-from causalchange.causal_change import CausalChange
-from causalchange.config.cc_types import (
-    DataMode,
-    GraphSearch,
-    ScoreType,
-)
+from causalchange import Topic, ScoreType
 
 X = pd.DataFrame(...)
 
-cc = CausalChange(
-    data_mode=DataMode.IID,
-    graph_search=GraphSearch.TOPIC,
-    score_type=ScoreType.LIN,
-)
+cc = Topic(score_type=ScoreType.LIN)
 
 cc.fit(X)
-
 print(cc.graph_.edges())
 ```
 
 
 ---
 
-#### Multi-context tabular data with LINC  [[2]](references.md)
+### Multi-context tabular data with LINC  [[2]](references.md)
 
-Notebook [`03_linc_tutorial.ipynb`](../../notebooks/03_linc_tutorial.ipynb)
+**Notebook** [`03_linc_tutorial.ipynb`](../../notebooks/02_linc_tutorial.ipynb)
 
-Setting
+**Example usage**
+
 ```python
-data_mode=DataMode.CONTEXTS
-context_mode=ContextMode.LINC
-```
-Example usage
-```python
-cc = CausalChange(
-    data_mode=DataMode.CONTEXTS,
-    graph_search=GraphSearch.TOPIC,
+from causalchange import Linc, ScoreType
+
+cc = Linc(
     score_type=ScoreType.LIN,
-    aggregation=ContextAggregation.LINC,
     context_col="context",
 )
 
 cc.fit(X)
 ```
-Above, X contains a column `context_col` encoding the context.
 
 
 ---
 
-#### Time series causal discovery with SpaceTime  [[3]](references.md)
+### Time series causal discovery with SpaceTime  [[3]](references.md)
 
-Notebook [`04_spacetime_tutorial.ipynb`](../../notebooks/04_spacetime_tutorial.ipynb)
+**Notebook** [`04_spacetime_tutorial.ipynb`](../../notebooks/03_spacetime_tutorial.ipynb)
 
- Settings
-```python
-data_mode=DataMode.TIME
-#or
-data_mode=DataMode.TIME_CONTEXTS
-```
-
-Example Usage
+**Example usage**
 
 ```python
-from causalchange.config.cc_config import ChangepointMode
+from causalchange import (
+    SpaceTime,
+    DataMode,
+    ScoreType,
+    ChangepointMode,
+    ChangepointScope,
+    ChangepointMethod,
+    MechanismClusteringScope,
+    MechanismClusteringMethod,
+    StatisticalTestingMethod,
+)
 
-cc = CausalChange(
+cc = SpaceTime(
     data_mode=DataMode.TIME_CONTEXTS,
-    graph_search=GraphSearch.GLOBE,
     score_type=ScoreType.LIN,
     context_col="context",
     tau_max=2,
-    changepoints=ChangepointMode.DETECT,
-    d_min=20,
-    pelt_penalty="auto",
-    detect_contexts=True,
-    detect_regimes=True,
+    changepoint_mode=ChangepointMode.DETECT,
+    changepoint_scope=ChangepointScope.GLOBAL,
+    changepoint_method=ChangepointMethod.PELT,
+    clustering_scope=MechanismClusteringScope.REGIMES_CONTEXTS,
+    clustering_method=MechanismClusteringMethod.TESTING,
+    testing_method=StatisticalTestingMethod.KERNEL,
 )
 
 cc.fit(X)
@@ -99,9 +84,7 @@ cc.fit(X)
 
 SpaceTime uses temporal nodes of the form `("x0", 0)` (current time), `("x0", 1)` (lag 1), `("x0", 2)` (lag 2) and
 learns directed edges of the form `(("x0", 1), ("x1", 0))` meaning `x0(t-1) -> x1(t)`.
-For `ChangepointMode.DETECT` and mechanism partitioning with `detect_contexts=True` or `detect_regimes=True`,
-install the SpaceTime extra with `pip install "causalchange[spacetime]"`.
-
+For `ChangepointMode.DETECT`, install `ruptures` via `pip install "causalchange[spacetime]"`. For kernel mechanism testing with `testing_method=StatisticalTestingMethod.KERNEL`, install the full SpaceTime extras, which include `hyppo`.
 
 ---
 

@@ -6,14 +6,20 @@ import networkx as nx
 import pandas as pd
 
 from causalchange.causal_change import CausalChange
-from causalchange.config.cc_config import ChangepointMode
-from causalchange.config.cc_types import (
-    ContextMode,
+from causalchange.core.types import (
+    ChangepointMethod,
+    ChangepointMode,
+    ChangepointScope,
     DataMode,
     GPType,
     GraphSearch,
+    MechanismClusteringMethod,
+    MechanismClusteringScope,
     ScoreType,
+    StatisticalTestingMethod,
+    TabularContextMethod,
 )
+from causalchange.posthoc.temporal import compute_edge_contributions, compute_mechanism_scores
 from experiments.common.data_types import (
     PanelDataset,
     PosthocTables,
@@ -32,12 +38,30 @@ def resolve_score_type(value: str) -> ScoreType | GPType:
 
 def resolve_changepoint_mode(value: str) -> ChangepointMode:
     if value == "none":
-        return ChangepointMode.NONE
+        return ChangepointMode.SKIP
     if value == "detect":
         return ChangepointMode.DETECT
     if value == "fixed":
-        return ChangepointMode.FIXED
+        return ChangepointMode.ORACLE
     raise ValueError(f"Unknown changepoint mode: {value!r}")
+
+
+def changepoint_method_for_mode(mode: ChangepointMode) -> ChangepointMethod:
+    return ChangepointMethod.PELT if mode == ChangepointMode.DETECT else ChangepointMethod.SKIP
+
+
+def changepoint_scope_for_mode(mode: ChangepointMode) -> ChangepointScope:
+    return ChangepointScope.GLOBAL if mode != ChangepointMode.SKIP else ChangepointScope.SKIP
+
+
+def clustering_scope_from_config(config: SpaceTimeExperimentConfig) -> MechanismClusteringScope:
+    if config.detect_contexts and config.detect_regimes:
+        return MechanismClusteringScope.REGIMES_CONTEXTS
+    if config.detect_contexts:
+        return MechanismClusteringScope.CONTEXTS
+    if config.detect_regimes:
+        return MechanismClusteringScope.REGIMES
+    return MechanismClusteringScope.SKIP
 
 
 def dataframe_for_spacetime(
@@ -67,20 +91,36 @@ def make_spacetime_estimator(
 ) -> CausalChange:
     fixed_changepoints = list(config.fixed_changepoints) if config.changepoints == "fixed" else None
 
+    changepoint_mode = resolve_changepoint_mode(config.changepoints)
+    clustering_scope = clustering_scope_from_config(config)
+    clustering_method = (
+        MechanismClusteringMethod.TESTING
+        if clustering_scope != MechanismClusteringScope.SKIP
+        else MechanismClusteringMethod.SKIP
+    )
+    testing_method = (
+        StatisticalTestingMethod.KERNEL
+        if clustering_method == MechanismClusteringMethod.TESTING
+        else StatisticalTestingMethod.SKIP
+    )
+
     return CausalChange(
         data_mode=data_mode,
         graph_search=GraphSearch.GLOBE,
         score_type=resolve_score_type(config.score_type),
-        context_mode=ContextMode.SKIP,
+        context_method=TabularContextMethod.SKIP,
         context_col=config.context_col if data_mode.is_context() else None,
         tau_max=config.tau_max,
-        changepoint_mode=resolve_changepoint_mode(config.changepoints),
+        changepoint_mode=changepoint_mode,
+        changepoint_scope=changepoint_scope_for_mode(changepoint_mode),
+        changepoint_method=changepoint_method_for_mode(changepoint_mode),
         fixed_changepoints=fixed_changepoints,
+        clustering_scope=clustering_scope,
+        clustering_method=clustering_method,
+        testing_method=testing_method,
         d_min=config.d_min,
         max_iter=config.max_iter,
         pelt_penalty=config.pelt_penalty,
-        detect_contexts=config.detect_contexts,
-        detect_regimes=config.detect_regimes,
         mechanism_test_alpha=config.mechanism_test_alpha,
     )
 
@@ -126,9 +166,9 @@ def fit_spacetime(
         dataset=current,
         config=config,
         estimator=estimator,
-        graph=estimator.graph,
-        changepoints=list(estimator.result.changepoints),
-        partitions=estimator.result.grid_clusters,
+        graph=estimator.graph_,
+        changepoints=list(estimator.changepoints_ or []),
+        partitions=estimator.partitions_,
         posthoc=posthoc,
     )
 
@@ -147,24 +187,34 @@ def compute_posthoc_tables(
     edge_contributions_windows = None
 
     if compute_global_scores:
-        mechanism_scores_global = estimator.get_spacetime_mechanism_scores(
+        engine = estimator.engine_
+        if engine is None:
+            raise RuntimeError("Estimator has no fitted engine.")
+        mechanism_scores_global = compute_mechanism_scores(
+            engine,
             graph=graph,
             scope="global",
             changepoints=changepoints,
         )
-        edge_contributions_global = estimator.get_spacetime_edge_contributions(
+        edge_contributions_global = compute_edge_contributions(
+            engine,
             graph=graph,
             scope="global",
             changepoints=changepoints,
         )
 
     if compute_window_scores:
-        mechanism_scores_windows = estimator.get_spacetime_mechanism_scores(
+        engine = estimator.engine_
+        if engine is None:
+            raise RuntimeError("Estimator has no fitted engine.")
+        mechanism_scores_windows = compute_mechanism_scores(
+            engine,
             graph=graph,
             scope="windows",
             changepoints=changepoints,
         )
-        edge_contributions_windows = estimator.get_spacetime_edge_contributions(
+        edge_contributions_windows = compute_edge_contributions(
+            engine,
             graph=graph,
             scope="windows",
             changepoints=changepoints,

@@ -1,21 +1,32 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 
-import networkx as nx
 import pandas as pd
 
 from causalchange.config.causal_change_config import CausalChangeConfig
 from causalchange.config.factory import ConfigFactory
-from causalchange.core.results import ContextCombinationResult, GraphSearchTabularResult, TemporalResult
+from causalchange.core.results import (
+    CausalChangeResult,
+    ContextCombinationResult,
+    TemporalResult,
+)
 from causalchange.core.types import (
+    ChangepointMethod,
     ChangepointMode,
     ChangepointScope,
-    ContextMode,
     DataMode,
     GPType,
     GraphSearch,
+    MechanismClusteringMethod,
+    MechanismClusteringScope,
+    MixedSCMType,
+    PostprocessingMode,
     ScoreType,
+    StatisticalTestingMethod,
+    TabularContextMethod,
+    TabularContextMode,
 )
 from causalchange.engines.factory import EngineFactory
 from causalchange.engines.tabular import TabularDiscoveryEngine
@@ -30,22 +41,27 @@ class CausalChange:
         data_mode: DataMode = DataMode.SKIP,
         graph_search: GraphSearch = GraphSearch.SKIP,
         score_type: ScoreType | GPType = ScoreType.SKIP,
-        context_mode: ContextMode = ContextMode.SKIP,
-        changepoint_mode: ChangepointMode = ChangepointMode.NONE,
-        changepoint_scope: ChangepointScope = ChangepointScope.GLOBAL,
+        mix_type: MixedSCMType = MixedSCMType.SKIP,
+        context_mode: TabularContextMode = TabularContextMode.SKIP,
+        context_method: TabularContextMethod = TabularContextMethod.SKIP,
+        changepoint_mode: ChangepointMode = ChangepointMode.SKIP,
+        changepoint_scope: ChangepointScope = ChangepointScope.SKIP,
+        changepoint_method: ChangepointMethod = ChangepointMethod.SKIP,
+        clustering_scope: MechanismClusteringScope = MechanismClusteringScope.SKIP,
+        clustering_method: MechanismClusteringMethod = MechanismClusteringMethod.SKIP,
+        testing_method: StatisticalTestingMethod = StatisticalTestingMethod.SKIP,
+        postprocessing_mode: PostprocessingMode = PostprocessingMode.SKIP,
         var_nms: list[str] | None = None,
         context_col: str | None = None,
         tau_max: int | None = None,
         d_min: int = 30,
         max_iter: int = 3,
         pelt_penalty: float | str = "auto",
-        detect_contexts: bool = False,
-        detect_regimes: bool = False,
         mechanism_test_alpha: float = 0.05,
         fixed_changepoints: list[int] | None = None,
         lg: logging = None,
         vb: int = 0,
-        # **kwargs,
+        score_kwargs: dict[str, Any] | None = None,
     ):
         r"""CausalChange: Causal Discovery Algorithms under Distribution Change (continuous data, multi-context
         continuous data, continuous-valued time series, or mixtures of causal mechanisms).
@@ -53,15 +69,26 @@ class CausalChange:
 
         :Arguments:
         * *cfg* (``CausalChangeConfig``) -- config with all parameters; or pass them manually below
-        * *data_mode* (``DataMode``) -- input data type, one tabular dataset (``IID``), tabular data from
-          multiple contexts (``CONTEXTS``); one time series (``TIME``)
+        * *data_mode* (``DataMode``) -- input data type, one tabular dataset (``TABULAR``), tabular data from
+          multiple contexts (``TAB_CONTEXTS``); one time series (``TIME``)
           or time series from multiple contexts (``TIME_CONTEXTS``).
-        * *graph_search* (``GraphSearch``) -- search algorithm for DAGs
-        * *score_type* (``ScoreType``) -- regressor and corresponding scoring criterion
-        * *context_mode* (``ContextMode``) -- for multi-context data, algorithm to combine contexts
+        * *graph_search* (``GraphSearch``) -- search algorithm for DAGs / temporal graphs
+        * *score_type* (``ScoreType | GPType``) -- regressor and corresponding scoring criterion,
+          e.g.,``ScoreType.LIN`` or ``GPType.FOURIER``
+        * *mix_type* (``MixedSCMType``) -- regressor and scoring for mixtures of SCMs, e.g.,``MixedSCMType.LIN``
+        * *context_mode* (``TabularContextMode``) -- no contexts, hidden or observed
+        * *context_method* (``TabularContextMethod``) -- algo to combine contexts
         * *changepoint_mode* (``ChangepointMode``) -- for time series, algorithm to detect causal changepoints
         * *changepoint_scope* (``ChangepointMode``) -- for time series from multiple contexts, whether to
           detect changepoints globally or per context
+        * *changepoint_method* (``ChangepointMethod``) -- for time series, changepoint detection algo
+        * *clustering_scope* (``MechanismClusteringScope``) -- for time series, clustering of similar causal mechanisms
+          over regimes/contexts/both/neither
+        * *clustering_method* (``MechanismClusteringMethod``) -- for time series, clustering algo
+        * *testing_method* (``StatisticalTestingMethod``) -- if needed, statistical testing method
+        * *postprocessing_mode* (``PostprocessingMode``) -- if needed, postprocessing, such as computing strengths
+          of each pair-wise edge (X1, X2) relative to the discovered causal graph; different from edge score of
+          of each set-wise causal relationship (XPa={X1,..Xn), Xtgt) in the causal graph
         * *var_nms* (``list[str]``) -- optional column names for display/debug/plotting
         * *context_col* (``str``) -- for multi-context data, the column name of an
           indicator column for the contexts
@@ -70,14 +97,13 @@ class CausalChange:
         * *max_iter* (``int``) -- for time series, maximum number of interleaved iterations
         * *pelt_penalty* (``int``) -- for time series, sensitivity threshold for changepoint detection in PELT,
           a float number or one of {"auto", "mbic", "bic"}.
-        * *detect_contexts* (``int``) -- for time series, whether to perform mechanism clustering over contexts
-        * *detect_regimes* (``int``) -- for time series, whether to perform mechanism clustering over the time range
-        * *mechanism_test_alpha* (``int``) -- if testing causal mechanisms for equality (e.g., if detect_contexts
-          or detect_regimes) significance threshold for testing
+        * *mechanism_test_alpha* (``int``) -- if testing causal mechanisms for equality,
+          significance threshold for testing
         * *fixed_changepoints* (``int``) -- for time series, optional known changepoints
-          (used when ``changepoints==ChangepointMode.FIXED``)
+          (used when ``changepoints==ChangepointMode.ORACLE``)
         * *lg* (``logging``) -- logger if verbosity>0
         * *vb* (``int``) -- verbosity level
+        * *score_kwargs* (``dict``) -- any arguments needed for scoring functions
         """
 
         self.lg = lg
@@ -89,31 +115,29 @@ class CausalChange:
             data_mode=data_mode,
             graph_search=graph_search,
             score_type=score_type,
+            mix_type=mix_type,
             context_mode=context_mode,
+            context_combination_method=context_method,
             context_col=context_col,
-            tau_max=tau_max,
-            changepoints=changepoint_mode,
+            changepoint_mode=changepoint_mode,
             changepoint_scope=changepoint_scope,
-            fixed_changepoints=fixed_changepoints,
+            changepoint_method=changepoint_method,
+            clustering_scope=clustering_scope,
+            clustering_method=clustering_method,
+            testing_method=testing_method,
+            postprocessing_mode=postprocessing_mode,
+            tau_max=tau_max,
             d_min=d_min,
-            # kwargs=kwargs,
             max_iter=max_iter,
             pelt_penalty=pelt_penalty,
-            detect_contexts=detect_contexts,
-            detect_regimes=detect_regimes,
             mechanism_test_alpha=mechanism_test_alpha,
+            fixed_changepoints=fixed_changepoints,
+            score_kwargs=score_kwargs,
         )
-
-        self.data_mode = self.cfg.data_mode
-        self.graph_search = self.cfg.graph_search
-        self.score_type = self.cfg.score_type
-        self.context_mode = getattr(self.cfg, "context_mode", ContextMode.SKIP)
-        self.context_col = self.cfg.context_col
 
         self.X_: pd.DataFrame | None = None
         self.engine_: TabularDiscoveryEngine | TemporalDiscoveryEngine | None = None
-        self.result_: GraphSearchTabularResult | TemporalResult | None = None
-        self.graph_: nx.DiGraph | None = None
+        self.result_: CausalChangeResult | None = None
 
         self.N: int | None = None
         self.D: int | None = None
@@ -121,13 +145,6 @@ class CausalChange:
         self.fitted_graph = False
 
         self.result_ = None
-        self.graph_ = None
-        self.edge_strengths_: dict = {}
-        self.order_: list | None = None
-
-        self.changepoints_: list[int] | None = None
-        self.changepoints_by_context_: dict | None = None
-        self.partitions_ = None
 
     def fit(self, X: pd.DataFrame) -> CausalChange:
         X_checked = self.check_input(X)
@@ -136,30 +153,18 @@ class CausalChange:
         self.engine_.fit(X_checked)
 
         self.result_ = self.engine_.discover()
-        self.graph_ = self.result_.graph
+
         self.fitted_graph = True
-
-        self.edge_strengths_ = getattr(self.result_, "edge_strengths", {})
-        self.order_ = self.result_.topological_order
-
-        if self.cfg.data_mode.is_temporal():
-            self.changepoints_ = self.result_.changepoints
-            self.changepoints_by_context_ = getattr(self.result_, "changepoints_by_context", None)
-            self.partitions_ = self.result_.grid_clusters
-        else:
-            self.changepoints_ = None
-            self.changepoints_by_context_ = None
-            self.partitions_ = None
-
         return self
 
     def score(self, effect, parents=()) -> float:
         self._require_fitted()
         assert self.engine_ is not None
-        return float(self.engine_.score_edge(effect, parents))
+        return float(self.engine_.local_score(effect, parents))
 
-    def get_result(self) -> GraphSearchTabularResult | TemporalResult:
-        return self.result
+    def get_result(self) -> CausalChangeResult:
+        self._require_fitted()
+        return self.result_
 
     def check_input(self, X: pd.DataFrame) -> pd.DataFrame:
         """some data checks"""
@@ -168,12 +173,14 @@ class CausalChange:
         if X.empty:
             raise ValueError("X must contain at least one row and one column.")
 
-        if self.data_mode.is_context():
-            assert self.context_col in X.columns
-            assert not X[self.context_col].isna().any()
+        if self.cfg.data_mode.is_context():
+            assert self.cfg.context_col in X.columns
+            assert not X[self.cfg.context_col].isna().any()
 
         feature_cols = (
-            [c for c in X.columns if c != self.context_col] if self.data_mode.is_context() else (list(X.columns))
+            [co for co in X.columns if co != self.cfg.context_col]
+            if self.cfg.data_mode.is_context()
+            else (list(X.columns))
         )
         if not feature_cols:
             raise ValueError("No feature columns found after excluding context_col.")
@@ -191,29 +198,56 @@ class CausalChange:
         return X
 
     @property
-    def graph(self) -> nx.DiGraph:
+    def graph_(self):
         self._require_fitted()
-        assert self.graph_ is not None
-        return self.graph_
+        return self.result_.graph
 
     @property
-    def result(self) -> GraphSearchTabularResult | TemporalResult:
+    def edge_strengths_(self):
         self._require_fitted()
-        assert self.result_ is not None
-        return self.result_
+        return self.result_.edge_strengths
 
     @property
-    def topological_order_(self) -> list:
+    def topological_order_(self) -> list | None:
         self._require_fitted()
-        assert self.result_ is not None
         return self.result_.topological_order
 
     @property
     def history_(self) -> list[dict]:
         self._require_fitted()
-        assert self.result_ is not None
         return self.result_.history
 
+    @property
+    def changepoints_(self) -> list[int] | None:
+        self._require_fitted()
+
+        if not self.cfg.data_mode.is_temporal():
+            return None
+
+        result = cast(TemporalResult, self.result_)
+        return result.changepoints
+
+    @property
+    def changepoints_by_context_(self) -> dict | None:
+        self._require_fitted()
+
+        if not self.cfg.data_mode.is_temporal():
+            return None
+
+        result = cast(TemporalResult, self.result_)
+        return result.changepoints_by_context
+
+    @property
+    def partitions_(self):
+        self._require_fitted()
+
+        if not self.cfg.data_mode.is_temporal():
+            return None
+
+        result = cast(TemporalResult, self.result_)
+        return result.grid_clusters
+
+    """   should be in PostProcessingResults
     def get_spacetime_mechanism_scores(
         self,
         *,
@@ -232,7 +266,7 @@ class CausalChange:
             changepoints=changepoints,
         )
 
-    def get_spacetime_edge_contributions(
+     def get_spacetime_edge_contributions(
         self,
         *,
         graph=None,
@@ -248,12 +282,12 @@ class CausalChange:
             graph=graph,
             scope=scope,
             changepoints=changepoints,
-        )
+        )"""
 
     @property
     def last_context_combo_(self) -> ContextCombinationResult | None:
         return None if self.engine_ is None else getattr(self.engine_, "last_context_combo_", None)
 
     def _require_fitted(self) -> None:
-        if self.engine_ is None or self.result_ is None or self.graph_ is None:
+        if self.engine_ is None or self.result_ is None:
             raise RuntimeError("Call fit(X) before accessing fitted results.")

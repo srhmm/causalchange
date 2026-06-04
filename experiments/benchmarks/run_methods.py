@@ -9,20 +9,6 @@ from typing import Any, cast
 import networkx as nx
 from pydantic import BaseModel, ValidationError
 
-from benchmarks.synthetic.generator_time import BenchmarkSample
-from benchmarks.synthetic.generators import (
-    sample_multi_continuous,
-    sample_multi_temporal,
-    sample_single_continuous,
-    sample_single_temporal,
-)
-from benchmarks.synthetic.metrics import compute_metrics
-from benchmarks.synthetic.metrics_time import (
-    compute_changepoint_metrics,
-    compute_target_partition_metrics,
-    compute_target_regime_partition_metrics_over_time,
-)
-from benchmarks.utils import _pgmpy_graph_to_nx
 from causalchange.causal_change import CausalChange
 from causalchange.config.benchmark_config import (
     AlgoConfig,
@@ -38,8 +24,34 @@ from causalchange.config.benchmark_config import (
     SpaceTimeAlgoConfig,
     TopicAlgoConfig,
 )
-from causalchange.config.cc_config import ChangepointMode
-from causalchange.config.cc_types import ContextMode, GPType, ScoreType
+from causalchange.core.types import (
+    ChangepointMethod,
+    ChangepointMode,
+    ChangepointScope,
+    DataMode,
+    GPType,
+    GraphSearch,
+    MechanismClusteringMethod,
+    MechanismClusteringScope,
+    ScoreType,
+    StatisticalTestingMethod,
+    TabularContextMethod,
+    TabularContextMode,
+)
+from experiments.benchmarks.synthetic.generator_time import BenchmarkSample
+from experiments.benchmarks.synthetic.generators import (
+    sample_multi_continuous,
+    sample_multi_temporal,
+    sample_single_continuous,
+    sample_single_temporal,
+)
+from experiments.benchmarks.synthetic.metrics import compute_metrics
+from experiments.benchmarks.synthetic.metrics_time import (
+    compute_changepoint_metrics,
+    compute_target_partition_metrics,
+    compute_target_regime_partition_metrics_over_time,
+)
+from experiments.benchmarks.utils import _pgmpy_graph_to_nx
 
 TemporalDataConfig = SingleTemporalDataConfig | MultiTemporalDataConfig
 ContextDataConfig = MultiDataConfig | MultiTemporalDataConfig | MixedDataConfig
@@ -66,7 +78,8 @@ def _node_to_summary_var(node) -> str:
 
 
 def _estimated_context_labels_by_target(est: CausalChange) -> dict[str, dict[int, int]]:
-    partitions = est.result.grid_clusters
+    result = est.get_result()
+    partitions = result.grid_clusters
     return {
         str(target): {int(dataset_id): int(label) for dataset_id, label in labels.items()}
         for target, labels in partitions.contexts.items()
@@ -74,7 +87,8 @@ def _estimated_context_labels_by_target(est: CausalChange) -> dict[str, dict[int
 
 
 def _estimated_regime_labels_by_target(est: CausalChange) -> dict[str, dict[int, int]]:
-    partitions = est.result.grid_clusters
+    result = est.get_result()
+    partitions = result.grid_clusters
     return {
         str(target): {int(regime_id): int(label) for regime_id, label in labels.items()}
         for target, labels in partitions.regimes.items()
@@ -100,7 +114,7 @@ def _project_temporal_graph_to_summary(graph: nx.DiGraph) -> nx.DiGraph:
 
 def _estimator_to_nx(est_or_graph: Any) -> nx.DiGraph:
     if isinstance(est_or_graph, CausalChange):
-        return est_or_graph.graph
+        return est_or_graph.graph_
     if isinstance(est_or_graph, nx.DiGraph):
         return est_or_graph
     return _pgmpy_graph_to_nx(est_or_graph)
@@ -147,10 +161,43 @@ def run_sampling(config: DataConfig) -> BenchmarkSample:
     )
 
 
-def run_algo(sample: BenchmarkSample, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> CausalChange:
-    from causalchange.config.cc_types import DataMode, GraphSearch
+def _data_mode_from_setting(setting: str) -> DataMode:
+    mapping = {
+        "single": DataMode.TABULAR,
+        "multi": DataMode.TAB_CONTEXTS,
+        "mixed": DataMode.TABULAR,
+        "time": DataMode.TIME,
+        "time-contexts": DataMode.TIME_CONTEXTS,
+    }
+    try:
+        return mapping[setting]
+    except KeyError as exc:
+        raise ValueError(f"Unknown data setting: {setting!r}") from exc
 
-    data_mode = DataMode(data_cfg.setting)
+
+def _clustering_scope_from_flags(*, contexts: bool, regimes: bool) -> MechanismClusteringScope:
+    if contexts and regimes:
+        return MechanismClusteringScope.REGIMES_CONTEXTS
+    if contexts:
+        return MechanismClusteringScope.CONTEXTS
+    if regimes:
+        return MechanismClusteringScope.REGIMES
+    return MechanismClusteringScope.SKIP
+
+
+def _changepoint_method_for_mode(mode: ChangepointMode) -> ChangepointMethod:
+    return ChangepointMethod.PELT if mode == ChangepointMode.DETECT else ChangepointMethod.SKIP
+
+
+def _changepoint_scope_for_mode(mode: ChangepointMode, data_mode: DataMode) -> ChangepointScope:
+    if mode == ChangepointMode.SKIP:
+        return ChangepointScope.SKIP
+    # Default benchmark behavior: detect/fix a shared global set of changepoints.
+    return ChangepointScope.GLOBAL
+
+
+def run_algo(sample: BenchmarkSample, data_cfg: DataConfig, algo_cfg: AlgoConfig) -> CausalChange:
+    data_mode = _data_mode_from_setting(data_cfg.setting)
 
     is_spacetime = algo_cfg.name == "spacetime"
     is_temporal = data_mode.is_temporal()
@@ -172,11 +219,12 @@ def run_algo(sample: BenchmarkSample, data_cfg: DataConfig, algo_cfg: AlgoConfig
     if graph_search == GraphSearch.SKIP:
         raise ValueError(f"invalid: {algo_cfg.name}")
 
-    aggregation = (
-        ContextMode.LINC
+    context_method = (
+        TabularContextMethod.LINC
         if algo_cfg.name == "linc"
-        else (ContextMode.CHAIN if algo_cfg.name == "chain" else ContextMode.SKIP)
+        else (TabularContextMethod.CHAIN if algo_cfg.name == "chain" else TabularContextMethod.SKIP)
     )
+    context_mode = TabularContextMode.ORACLE if context_method != TabularContextMethod.SKIP else TabularContextMode.SKIP
 
     score_type = _resolve_score_type(algo_cfg.score_type)
 
@@ -200,35 +248,53 @@ def run_algo(sample: BenchmarkSample, data_cfg: DataConfig, algo_cfg: AlgoConfig
         assert sample.spacetime is not None
 
         if spacetime_algo_cfg.changepoint_mode == "oracle":
-            changepoints = ChangepointMode.FIXED
+            changepoint_mode = ChangepointMode.ORACLE
             fixed_changepoints = sample.spacetime.changepoints
         elif spacetime_algo_cfg.changepoint_mode == "detect":
-            changepoints = ChangepointMode.DETECT
+            changepoint_mode = ChangepointMode.DETECT
             fixed_changepoints = None
         else:
-            changepoints = ChangepointMode.NONE
+            changepoint_mode = ChangepointMode.SKIP
             fixed_changepoints = None
 
-        detect_contexts = spacetime_algo_cfg.detect_contexts
-        detect_regimes = spacetime_algo_cfg.detect_regimes
+        clustering_scope = _clustering_scope_from_flags(
+            contexts=data_mode.is_context(),
+            regimes=bool(getattr(temporal_data_cfg, "n_changepoints", 0)),
+        )
     else:
-        changepoints = ChangepointMode.NONE
+        changepoint_mode = ChangepointMode.SKIP
         fixed_changepoints = None
-        detect_contexts = False
-        detect_regimes = False
+        clustering_scope = MechanismClusteringScope.SKIP
+
+    changepoint_method = _changepoint_method_for_mode(changepoint_mode)
+    changepoint_scope = _changepoint_scope_for_mode(changepoint_mode, data_mode)
+    clustering_method = (
+        MechanismClusteringMethod.TESTING
+        if clustering_scope != MechanismClusteringScope.SKIP
+        else MechanismClusteringMethod.SKIP
+    )
+    testing_method = (
+        StatisticalTestingMethod.KERNEL
+        if clustering_method == MechanismClusteringMethod.TESTING
+        else StatisticalTestingMethod.SKIP
+    )
 
     est = CausalChange(
         data_mode=data_mode,
         graph_search=graph_search,
         score_type=score_type,
-        context_mode=aggregation,
+        context_mode=context_mode,
+        context_method=context_method,
         context_col=context_col,
         tau_max=tau_max,
-        changepoint_mode=changepoints,
+        changepoint_mode=changepoint_mode,
+        changepoint_scope=changepoint_scope,
+        changepoint_method=changepoint_method,
+        clustering_scope=clustering_scope,
+        clustering_method=clustering_method,
+        testing_method=testing_method,
         d_min=d_min,
         fixed_changepoints=fixed_changepoints,
-        detect_contexts=detect_contexts,
-        detect_regimes=detect_regimes,
     )
 
     return est.fit(sample.df)
@@ -239,7 +305,7 @@ def run_scoring(
     est: CausalChange,
     return_nx: bool = False,
 ) -> dict[str, float] | tuple[dict[str, float], nx.DiGraph]:
-    est_nx = est.graph
+    est_nx = est.graph_
 
     if any(isinstance(node, tuple) for node in est_nx.nodes()):
         est_summary = _project_temporal_graph_to_summary(est_nx)
@@ -264,15 +330,16 @@ def run_scoring(
         changepoint_metrics = _metrics_to_float_dict(
             compute_changepoint_metrics(
                 spacetime_sample.changepoints,
-                est.result.changepoints,
+                est.changepoints_,
                 tolerance=5,
             )
         )
 
         metrics.update(changepoint_metrics)
         spacetime_cfg = est.cfg
+        clustering_scope = getattr(spacetime_cfg, "clustering_scope", MechanismClusteringScope.SKIP)
 
-        if spacetime_cfg.detect_contexts:
+        if clustering_scope.detects_contexts():
             context_partition_metrics = compute_target_partition_metrics(
                 spacetime_sample.context_labels_by_target,
                 _estimated_context_labels_by_target(est),
@@ -282,12 +349,12 @@ def run_scoring(
             metrics["context_partition_ami"] = context_partition_metrics.ami_mean
             metrics["context_partition_nmi"] = context_partition_metrics.nmi_mean
 
-        if spacetime_cfg.detect_regimes:
+        if clustering_scope.detects_regimes():
             regime_partition_metrics = compute_target_regime_partition_metrics_over_time(
                 spacetime_sample.regime_labels_by_target,
                 spacetime_sample.changepoints,
                 _estimated_regime_labels_by_target(est),
-                est.result.changepoints,
+                est.changepoints_,
                 n_samples=len(spacetime_sample.time_regime_labels),
             )
 

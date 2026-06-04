@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable, Iterable
+from collections.abc import Callable, Hashable, Iterable, Mapping
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from causalchange.core.results import ContextCombinationResult
-from causalchange.core.types import ContextCombinationParams
+from causalchange.core.types import ContextCombinationKwargs
 
 
 class SkipCombination:
@@ -16,7 +16,7 @@ class SkipCombination:
     def combine_contexts(
         self,
         *,
-        contexts: dict[Hashable, pd.DataFrame],
+        contexts: Mapping[Hashable, pd.DataFrame],
         effect: Any,
         parents: tuple[Any, ...],
         score_ctx: Callable[[pd.DataFrame], float],
@@ -24,7 +24,7 @@ class SkipCombination:
         if len(contexts) != 1:
             raise ValueError(
                 f"SkipCombination expects exactly one context, got {len(contexts)}. "
-                "Use ContextMode.LINC for multi-context data."
+                "use TabularContextMethod.LINC for context data"
             )
 
         ctx, df = next(iter(contexts.items()))
@@ -43,7 +43,7 @@ class SkipCombination:
 
 
 class LINCContextCombination:
-    def __init__(self, *, grouping: ContextCombinationParams, higher_is_better: bool):
+    def __init__(self, *, grouping: ContextCombinationKwargs, higher_is_better: bool):
         self.grouping = grouping
         self.higher_is_better = bool(higher_is_better)
         self.last_gain_matrix: np.ndarray | None = None
@@ -55,12 +55,12 @@ class LINCContextCombination:
     def score_significant(self, gain: float) -> bool:
         return gain > float(self.grouping.gain_threshold)
 
-    def aggregate(
+    def combine_contexts(
         self,
         *,
-        contexts: dict[Hashable, pd.DataFrame],
+        contexts: Mapping[Hashable, pd.DataFrame],
         effect: Any,
-        parents: tuple,
+        parents: tuple[Any, ...],
         score_ctx: Callable[[pd.DataFrame], float],
     ) -> ContextCombinationResult:
         # effect/parents are unused for LINC (scoring is encapsulated by score_ctx)
@@ -199,9 +199,9 @@ class CHAINContextCombination:
     def combine_contexts(
         self,
         *,
-        contexts: dict[Hashable, pd.DataFrame],
+        contexts: Mapping[Hashable, pd.DataFrame],
         effect: Any,
-        parents: tuple,
+        parents: tuple[Any, ...],
         score_ctx: Callable[[pd.DataFrame], float],
     ) -> ContextCombinationResult:
         ctx_ids = list(contexts.keys())
@@ -231,7 +231,12 @@ class CHAINContextCombination:
             },
         )
 
-    def _invariance_penalty(self, contexts: dict[Hashable, pd.DataFrame], effect: Any, parents: tuple) -> float:
+    def _invariance_penalty(
+        self,
+        contexts: Mapping[Hashable, pd.DataFrame],
+        effect: Any,
+        parents: tuple[Any, ...],
+    ) -> float:
         eff = _colname(effect)
         par = tuple(sorted(_colname(p) for p in parents))
 

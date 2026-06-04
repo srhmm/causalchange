@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import networkx as nx
 import pandas as pd
 
-from causalchange.core.results import EdgeContributionRecord, MechanismScoreRecord, SpaceTimeGridClusters
+from causalchange.core.results import EdgeContributionRecord, MechanismClusteringResult, MechanismScoreRecord
 from causalchange.domain.temporal import TemporalNode, util_changepoints_to_intervals
 
 if TYPE_CHECKING:
@@ -58,7 +58,7 @@ def fixed_partition_for_graph(
     graph: nx.DiGraph,
     dataset_ids: Iterable[Any],
     n_intervals: int,
-) -> SpaceTimeGridClusters:
+) -> MechanismClusteringResult:
     """Create singleton/no-change partitions for a fixed graph.
 
     Useful for post-hoc scoring from saved graph/changepoints when you do not want
@@ -66,7 +66,7 @@ def fixed_partition_for_graph(
     """
     targets = sorted({str(effect[0]) for effect in _effect_nodes(graph)})
 
-    return SpaceTimeGridClusters(
+    return MechanismClusteringResult(
         contexts={target: {dataset_id: 0 for dataset_id in dataset_ids} for target in targets},
         regimes={target: {interval_id: interval_id for interval_id in range(n_intervals)} for target in targets},
         diagnostics={"mode": "fixed_posthoc"},
@@ -122,7 +122,7 @@ def _mechanism_scores_global(
 
     for effect in _effect_nodes(graph):
         parents = _parents_for_effect(graph, effect)
-        score = float(engine.score_edge(effect, parents))
+        score = float(engine.local_score(effect, parents))
 
         records.append(
             MechanismScoreRecord(
@@ -146,11 +146,11 @@ def _edge_contributions_global(
 
     for effect in _effect_nodes(graph):
         parents = _parents_for_effect(graph, effect)
-        full_score = float(engine.score_edge(effect, parents))
+        full_score = float(engine.local_score(effect, parents))
 
         for parent in parents:
             reduced_parents = tuple(p for p in parents if p != parent)
-            reduced_score = float(engine.score_edge(effect, reduced_parents))
+            reduced_score = float(engine.local_score(effect, reduced_parents))
             raw_gain = _score_gain(engine, reduced_score=reduced_score, full_score=full_score)
 
             records.append(
@@ -190,12 +190,12 @@ def _mechanism_scores_windows(
                 X_context,
                 start=start,
                 stop=stop,
-                tau_max=engine.cfg.tau_max,
+                tau_max=engine.tau_max,
             )
 
             for effect in _effect_nodes(graph):
                 parents = _parents_for_effect(graph, effect)
-                score = float(engine.scorer.score_edge(X_window, effect, parents))
+                score = float(engine.scoring.local_score(X_window, effect, parents))
 
                 records.append(
                     MechanismScoreRecord(
@@ -204,7 +204,7 @@ def _mechanism_scores_windows(
                         interval_id=interval_id,
                         interval_start=start,
                         interval_stop=stop,
-                        n_samples=_effective_n_samples(X_window, engine.cfge.tau_max),
+                        n_samples=_effective_n_samples(X_window, engine.tau_max),
                         target=str(effect[0]),
                         effect=effect,
                         parents=parents,
@@ -235,17 +235,17 @@ def _edge_contributions_windows(
                 X_context,
                 start=start,
                 stop=stop,
-                tau_max=engine.cfg.tau_max,
+                tau_max=engine.tau_max,
             )
-            n_eff = _effective_n_samples(X_window, engine.cfg.tau_max)
+            n_eff = _effective_n_samples(X_window, engine.tau_max)
 
             for effect in _effect_nodes(graph):
                 parents = _parents_for_effect(graph, effect)
-                full_score = float(engine.scorer.score_edge(X_window, effect, parents))
+                full_score = float(engine.scoring.local_score(X_window, effect, parents))
 
                 for parent in parents:
                     reduced_parents = tuple(p for p in parents if p != parent)
-                    reduced_score = float(engine.scorer.score_edge(X_window, effect, reduced_parents))
+                    reduced_score = float(engine.scoring.local_score(X_window, effect, reduced_parents))
                     raw_gain = _score_gain(
                         engine,
                         reduced_score=reduced_score,
@@ -310,8 +310,5 @@ def _score_gain(
     reduced_score: float,
     full_score: float,
 ) -> float:
-    """Return the gain from adding the parent"""
-    try:
-        return float(engine.scorer.transition_gain(reduced_score, full_score))
-    except Exception:
-        return float(reduced_score - full_score)
+    """gain from adding the parent"""
+    return float(engine.scoring.transition_gain(reduced_score, full_score))

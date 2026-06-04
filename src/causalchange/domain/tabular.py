@@ -7,7 +7,7 @@ import pandas as pd
 
 TabularNode = str
 TabularEdge = tuple[TabularNode, TabularNode]
-TabularScoreFunction = Callable[[TabularNode, tuple[TabularNode, ...]], float]  # EdgeScoreTabular.score_edge()
+TabularScoreFunction = Callable[[TabularNode, tuple[TabularNode, ...]], float]  # EdgeScoreTabular.local_score()
 TabularAllowedEdge = Callable[[TabularNode, TabularNode], bool]
 
 

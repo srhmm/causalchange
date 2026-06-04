@@ -4,15 +4,16 @@
 
 structure of `causalchange`
 
-
 ```text
-CausalChange (API)
+Topic / Linc / SpaceTime wrappers
+--> CausalChange (general API)
 --> config (input params)
 --> engine factory (workflow high-level)
 --> discovery engine (workflow for each algo)
 --> component discovery (component of each algo)
 --> result
 ```
+
 responsibilities
 
 ```text

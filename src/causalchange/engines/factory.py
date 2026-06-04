@@ -7,11 +7,14 @@ from causalchange.config.causal_change_config import (
     CausalChangeConfigTabular,
     CausalChangeConfigTemporal,
 )
-from causalchange.core.types import ContextMode, GraphSearch
-from causalchange.discovery.changepoint_detection import ChangepointDetection
+from causalchange.core.protocols import (
+    TabularScoringProtocol,
+)
+from causalchange.core.types import GraphSearch, TabularContextMethod
+from causalchange.discovery.changepoints import ChangepointDetection
 from causalchange.discovery.context_combination import CHAINContextCombination, LINCContextCombination, SkipCombination
-from causalchange.discovery.graphsearch_tabular import GraphSearchTabularGreedy, GraphSearchTabularTopological
-from causalchange.discovery.graphsearch_temporal import GraphSearchTemporalGreedy, GraphSearchTemporalTopological
+from causalchange.discovery.graph_tabular import GraphSearchTabularGreedy, GraphSearchTabularTopological
+from causalchange.discovery.graph_temporal import GraphSearchTemporalGreedy, GraphSearchTemporalTopological
 from causalchange.discovery.scm_clustering import SpaceTimeClustering
 from causalchange.domain.context import MultiContextDomain, SingleContextDomain
 from causalchange.domain.tabular import TabularDomain
@@ -23,20 +26,23 @@ from causalchange.scoring.temporal import SCMScoreTemporal
 
 
 class EngineFactory:
-    """shows the high-level control flow for causal discovery."""
+    """creates engines that control the flow of causal discovery"""
 
     # factory = converts a config to a discovery engine
     @staticmethod
-    def from_config(cfg: CausalChangeConfig):
-        if cfg.data_mode.is_temporal():
+    def from_config(cfg: CausalChangeConfig) -> TabularDiscoveryEngine | TemporalDiscoveryEngine:
+        if isinstance(cfg, CausalChangeConfigTemporal):
             return EngineFactory._make_temporal_engine(cfg)
 
-        return EngineFactory._make_tabular_engine(cfg)
+        if isinstance(cfg, CausalChangeConfigTabular):
+            return EngineFactory._make_tabular_engine(cfg)
+
+        raise TypeError(f"Unsupported config type: {type(cfg)!r}")
 
     @staticmethod
     def _make_tabular_engine(cfg: CausalChangeConfigTabular) -> TabularDiscoveryEngine:
         domain = TabularDomain()
-        scoring = SCMScoreTabular(cfg=cfg)
+        scoring: TabularScoringProtocol = SCMScoreTabular(cfg=cfg)
         search = (
             GraphSearchTabularTopological(scoring=scoring)
             if cfg.graph_search == GraphSearch.TOPIC
@@ -48,16 +54,16 @@ class EngineFactory:
         )
         context_combination = (
             LINCContextCombination(
-                grouping=cfg.grouping,
+                grouping=cfg.context_combination_kwargs,
                 higher_is_better=scoring.higher_is_better,
             )
-            if cfg.context_mode == ContextMode.LINC
+            if cfg.context_combination_method == TabularContextMethod.LINC
             else (
                 CHAINContextCombination(
                     higher_is_better=scoring.higher_is_better,
                     seed=cfg.seed,
                 )
-                if cfg.context_mode == ContextMode.CHAIN
+                if cfg.context_combination_method == TabularContextMethod.CHAIN
                 else SkipCombination()
             )
         )
@@ -69,13 +75,13 @@ class EngineFactory:
             scoring=scoring,
             context_comb=context_combination,
             search=search,
+            postprocessing_mode=cfg.postprocessing_mode,
         )
 
     @staticmethod
     def _make_temporal_engine(cfg: CausalChangeConfigTemporal) -> TemporalDiscoveryEngine:
         domain = TemporalDomain(tau_max=cfg.tau_max)
         scoring = SCMScoreTemporal(cfg=cfg)
-
         search = (
             GraphSearchTemporalTopological(scoring=scoring)
             if cfg.graph_search == GraphSearch.TOPIC
@@ -92,15 +98,11 @@ class EngineFactory:
             search=search,
             changepoint_detection=changepoint_detection,
             scm_clustering=scm_clustering,
+            clustering_scope=cfg.clustering_scope,
             context_col=cfg.context_col,
             tau_max=cfg.tau_max,
-            changepoint_mode=cfg.changepoints,
+            changepoint_mode=cfg.changepoint_mode,
             changepoint_scope=cfg.changepoint_scope,
             max_iter=cfg.max_iter,
-            detect_contexts=cfg.detect_contexts,
-            detect_regimes=cfg.detect_regimes,
-            diagnostics={
-                "graph_search": cfg.graph_search.value,
-                "score_type": str(cfg.score_type),
-            },
+            postprocessing_mode=cfg.postprocessing_mode,
         )

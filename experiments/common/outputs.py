@@ -130,7 +130,7 @@ def save_spacetime_run(
         {
             "changepoints": run.changepoints,
             "changepoints_by_context": getattr(run.estimator, "changepoints_by_context_", None),
-            "diagnostics": getattr(run.estimator.result, "changepoint_diagnostics", None),
+            "diagnostics": getattr(run.estimator.result_, "changepoint_diagnostics", None),
         },
     )
     paths["changepoints"] = changepoints_path

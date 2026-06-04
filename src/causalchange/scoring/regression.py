@@ -15,7 +15,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import SplineTransformer, StandardScaler
 
-from causalchange.core.types import MixingType
+from causalchange.core.types import MixedSCMType
 
 
 def fit_score_functional_model(
@@ -1178,8 +1178,8 @@ def mix_regression_bic(X, y, idl, beta_l, sigma_l):
     return bic
 
 
-def fit_conditional_mixture(mty: MixingType, **kwargs):
-    assert mty.value != MixingType.SKIP.value
+def fit_conditional_mixture(mty: MixedSCMType, **kwargs):
+    assert mty.value != MixedSCMType.SKIP.value
 
     if mty.value.startswith("mix"):
         method = (
@@ -1204,10 +1204,10 @@ def _fit_best_mixture(X, range_k, true_idl, sim_score=adjusted_mutual_info_score
     best_ami = sim_min
     best_arg = None
     for mty in [
-        MixingType.BASE_GMM,
-        MixingType.BASE_KMEANS,
-        MixingType.BASE_SPECTRAL,
-        MixingType.BASE_DBSCAN,
+        MixedSCMType.BASE_GMM,
+        MixedSCMType.BASE_KMEANS,
+        MixedSCMType.BASE_SPECTRAL,
+        MixedSCMType.BASE_DBSCAN,
     ]:
         idl, pproba, div = fit_mixture_model(mty, X, range_k, None)
         ami = sim_score(true_idl, idl)
@@ -1231,7 +1231,7 @@ def fit_mixture_model(
     kchoice_threshold=0.5,
     kchoice_min=-1,
 ):
-    if mty == MixingType.BASE_RANDOM_SPLIT:
+    if mty == MixedSCMType.BASE_RANDOM_SPLIT:
         assert true_idl is not None
         true_k = len(np.unique(true_idl))
         # sample random labels with true k
@@ -1239,11 +1239,11 @@ def fit_mixture_model(
         res_dict = dict(bic=0, idl=rand_split)
         return rand_split, None, dict()
 
-    elif mty == MixingType._BASE_BEST:
+    elif mty == MixedSCMType._BASE_BEST:
         assert true_idl is not None
         return _fit_best_mixture(X, range_k, true_idl)
 
-    elif mty in [MixingType.BASE_GMM, MixingType.BASE_GMM_GLOB]:
+    elif mty in [MixedSCMType.BASE_GMM, MixedSCMType.BASE_GMM_GLOB]:
         mm = GaussianMixture
         best_bic, best_m = np.inf, None
         for k in range_k:
@@ -1256,11 +1256,11 @@ def fit_mixture_model(
         res_dict = dict(bic=best_bic, idl=best_m.predict(X), pproba=best_m.predict_proba(X))
         return res_dict
 
-    elif mty == MixingType.BASE_DBSCAN:
+    elif mty == MixedSCMType.BASE_DBSCAN:
         mm = DBSCAN().fit(X)
         res_dict = dict(idl=mm.labels_)
         return res_dict
-    elif mty == MixingType.BASE_HDBSCAN:
+    elif mty == MixedSCMType.BASE_HDBSCAN:
         from sklearn.cluster import HDBSCAN
 
         mm = HDBSCAN().fit(X)
@@ -1268,7 +1268,11 @@ def fit_mixture_model(
         return res_dict
     else:
         model = (
-            KMeans if mty == MixingType.BASE_KMEANS else SpectralClustering if mty == MixingType.BASE_SPECTRAL else None
+            KMeans
+            if mty == MixedSCMType.BASE_KMEANS
+            else SpectralClustering
+            if mty == MixedSCMType.BASE_SPECTRAL
+            else None
         )
         if model is None:
             raise ValueError(mty)
@@ -1298,7 +1302,7 @@ def fit_resid_mixture(mty, X, node_i, pa_i, range_k, resid, true_idl):
 
 def fit_functional_mixture(X, node_i, pa_i, range_k, resid, true_idl, lg=None, vb=0, degree=3, method="lin"):
     if not len(pa_i):
-        return fit_marginal_mixture(MixingType.BASE_GMM, X, node_i, pa_i, range_k, resid, true_idl)
+        return fit_marginal_mixture(MixedSCMType.BASE_GMM, X, node_i, pa_i, range_k, resid, true_idl)
     if lg is not None and vb > 0:
         lg.info(f"Fitting mixture ({method})")
 

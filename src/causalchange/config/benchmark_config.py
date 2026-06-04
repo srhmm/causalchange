@@ -196,8 +196,7 @@ class SpaceTimeAlgoConfig(BaseModel):
     tau_max: int | None = Field(default=None, ge=1)
 
     changepoint_mode: Literal["none", "detect", "oracle"] = "detect"
-    detect_contexts: bool = True
-    detect_regimes: bool = True
+    # todo add new enum types
 
 
 AlgoConfig = Annotated[

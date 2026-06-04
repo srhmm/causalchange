@@ -1,7 +1,7 @@
 ## CausalChange
 
 `causalchange` provides causal discovery algorithms under different
-forms of distribution shift.
+forms of distribution shift through the `Topic`, `Linc` and `SpaceTime` estimators.
 
 ### Algorithms
 
@@ -12,6 +12,7 @@ forms of distribution shift.
 ### Start here
 - [Installation](start/install.md)
 - [Quickstart](start/quickstart.md)
-- [Data modes](user_guide/data_modes)
+- [API](user_guide/api.md)
+- [Inputs](user_guide/inputs.md)
 - [Algorithms](user_guide/algorithms.md)
-- [API reference](dev_guide/api.md)
+- [Outputs](user_guide/outputs.md)

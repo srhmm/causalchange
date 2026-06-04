@@ -7,36 +7,58 @@ import networkx as nx
 
 from causalchange.domain.temporal import TemporalNode
 
+# %% Components/algos
+
+
+@dataclass
+class GraphSearchResult:
+    """returned by a graph search algo"""
+
+    graph: nx.DiGraph
+    topological_order: list[Any] | None = None
+    history: list[dict[str, Any]] = field(default_factory=list)
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ChangepointResult:
+    """returned by changepoint detection algo"""
+
+    changepoints: list[int] = field(default_factory=list)
+    changepoints_by_context: dict[Any, list[int]] | None = None
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass(frozen=True)
-class SpaceTimeGridClusters:
-    """
+class ContextCombinationResult:
+    """returned by context combination algo"""
+
+    total: float
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class MechanismClusteringResult:
+    """result returned by mechanism clustering algo
+
     contexts[target][dataset_id] = context_cluster_id
     regimes[target][regime_id] = regime_cluster_id
     """
 
     contexts: dict[str, dict[Any, int]]
     regimes: dict[str, dict[int, int]]
-    diagnostics: dict[str, Any]
-
-
-@dataclass
-class TemporalResult:
-    graph: Any
-    changepoints: list[int]
-    grid_clusters: SpaceTimeGridClusters
-
-    topological_order: list[str] | None = None
-    history: list[dict[str, Any]] = field(default_factory=list)
-
-    edge_strengths: dict[tuple[Any, Any], float] = field(default_factory=dict)
-
-    # For ChangepointScope.PER_CONTEXT, changepoints is the union of changepoints_by_context
-    changepoints_by_context: dict[Any, list[int]] | None = None
-    changepoint_diagnostics: dict[str, Any] = field(default_factory=dict)
     diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class PostProcessingResult:
+    """Returned by postprocessing steps."""
+
+    edge_strengths: dict[tuple[Any, Any], float] = field(default_factory=dict)
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+
+# %% records
 @dataclass(frozen=True)
 class MechanismScoreRecord:
     scope: str
@@ -71,23 +93,56 @@ class EdgeContributionRecord:
     n_samples: int | None = None
 
 
-@dataclass(frozen=True)
-class ContextCombinationResult:
-    total: float
-    diagnostics: dict[str, Any]
+# %% CausalChange
 
 
 @dataclass
-class GraphSearchTemporalResult:
-    graph: nx.DiGraph
-    topological_order: list[str]
-    history: list[dict[str, Any]]
+class CausalChangeResult:
+    """Returned by a discovery engine."""
 
-
-@dataclass
-class GraphSearchTabularResult:
-    graph: nx.DiGraph
-    topological_order: list[Any]
-    history: list[dict[str, Any]]
-    edge_strengths: dict[tuple[Any, Any], float] = field(default_factory=dict)
+    graph_search: GraphSearchResult
+    postprocessing: PostProcessingResult = field(default_factory=PostProcessingResult)
+    history: list[dict[str, Any]] = field(default_factory=list)
     diagnostics: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def graph(self) -> nx.DiGraph:
+        return self.graph_search.graph
+
+    @property
+    def topological_order(self) -> list[Any] | None:
+        return self.graph_search.topological_order
+
+    @property
+    def edge_strengths(self) -> dict[tuple[Any, Any], float]:
+        return self.postprocessing.edge_strengths
+
+
+# %% Engines
+@dataclass
+class TabularResult(CausalChangeResult):
+    """returned by the tabular engine"""
+
+
+@dataclass
+class TemporalResult(CausalChangeResult):
+    """returned by the temporal engine"""
+
+    changepoint: ChangepointResult = field(default_factory=ChangepointResult)
+    mechanism_clustering: MechanismClusteringResult | None = None
+
+    @property
+    def changepoints(self) -> list[int]:
+        return self.changepoint.changepoints
+
+    @property
+    def changepoints_by_context(self) -> dict[Any, list[int]] | None:
+        return self.changepoint.changepoints_by_context
+
+    @property
+    def changepoint_diagnostics(self) -> dict[str, Any]:
+        return self.changepoint.diagnostics
+
+    @property
+    def grid_clusters(self) -> MechanismClusteringResult | None:
+        return self.mechanism_clustering
