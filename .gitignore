@@ -222,5 +222,5 @@ src/causalchange.egg-info
 src/__pycache__/
 .idea/
 
-# folders containing data
 src/data
+experiments/benchmarks/_results

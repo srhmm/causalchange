@@ -124,6 +124,9 @@ class SCMScoreTemporal(BaseLocalScorer):
 
         self._time_windows = design_windows
 
+    def clear_time_windows(self) -> None:
+        self._time_windows = None
+
     def local_score(
         self,
         X: pd.DataFrame,

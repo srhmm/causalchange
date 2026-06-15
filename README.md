@@ -16,16 +16,26 @@ distribution shifts.
 ### Quick Example
 
 ```python
+import numpy as np
 import pandas as pd
 
 from causalchange import Topic
 
-X = pd.DataFrame(...)
+rng = np.random.default_rng(0)
+n = 300
 
+# chain: X -> Y -> Z
+x = rng.normal(size=n)
+y = 2.0 * x + 0.2 * rng.normal(size=n)
+z = -1.0 * y + 0.2 * rng.normal(size=n)
 
-cc = Topic(score_type="lin")
+X = pd.DataFrame({"X": x, "Y": y, "Z": z})
+
+cc = Topic(score_type="lin", seed=0)
 cc.fit(X)
-print(cc.graph_.edges())
+
+print("Topological order:", cc.topological_order_)
+print("Edges:", sorted(cc.graph_.edges()))
 ```
 
 ---

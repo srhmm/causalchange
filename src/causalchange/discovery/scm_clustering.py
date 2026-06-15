@@ -70,15 +70,12 @@ class BaseTemporalSCMClustering(SCMClustering):
         )
 
     def _intervals_by_context(
-        self,
-        *,
-        panel: TimeGrid,
-        changepoints: list[int] | None,
-        changepoints_by_context: dict[Any, list[int]] | None,
+            self,
+            *,
+            panel: TimeGrid,
+            changepoints: list[int] | None,
+            changepoints_by_context: dict[Any, list[int]] | None,
     ) -> dict[Any, list[tuple[int, int]]]:
-        if not self.cfg.clustering_scope.detects_regimes():
-            return {dataset_id: [(0, len(X_context))] for dataset_id, X_context in panel.datasets.items()}
-
         if changepoints_by_context is not None:
             return {
                 dataset_id: util_changepoints_to_intervals(
@@ -88,12 +85,25 @@ class BaseTemporalSCMClustering(SCMClustering):
                 for dataset_id in panel.dataset_ids
             }
 
-        global_changepoints = list(changepoints or [])
+        if changepoints is not None:
+            global_changepoints = list(changepoints)
+            return {
+                dataset_id: util_changepoints_to_intervals(
+                    len(panel.datasets[dataset_id]),
+                    global_changepoints,
+                )
+                for dataset_id in panel.dataset_ids
+            }
 
+        if not self.cfg.clustering_scope.detects_regimes():
+            return {
+                dataset_id: [(0, len(X_context))]
+                for dataset_id, X_context in panel.datasets.items()
+            }
         return {
             dataset_id: util_changepoints_to_intervals(
                 len(panel.datasets[dataset_id]),
-                global_changepoints,
+                [],
             )
             for dataset_id in panel.dataset_ids
         }

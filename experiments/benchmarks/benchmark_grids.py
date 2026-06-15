@@ -1,4 +1,4 @@
-BENCHMARK_GRID_SINGLE = {
+GRID_TOPIC_SMALL = {
     "data": {
         "setting": ["single"],
         "n_nodes": [5],
@@ -16,50 +16,122 @@ BENCHMARK_GRID_SINGLE = {
         ]  # uncomment returns all impltd metrics
     },
 }
-BENCHMARK_GRID_MULTI = {
+GRID_TOPIC_MEDIUM = {
+    "data": {
+        "setting": ["single"],
+        "n_nodes": [5, 10, 20],
+        "edge_prob": [0.2, 0.4, 0.6],
+        "n_samples": [1000],
+        "nonlinearity": ["lin", "tanh", "sin", "relu"],
+    },
+    "algo": {
+        "name": ["topic"],
+        "score_type": ["lin", "gam", "spline"],
+    },
+}
+GRID_LINC_NO_CHANGE = {
     "data": {
         "setting": ["multi"],
-        "n_nodes": [5],
-        "edge_prob": [0.4],
-        "n_contexts": [5],
-        "n_samples_per_context": [500],
-        "n_intervened_per_context": [2],
+        "n_nodes": [5, 10],
+        "edge_prob": [0.3],
+        "n_contexts": [3, 5],
+        "n_samples_per_context": [300, 700],
+        "n_context_clusters": [1],
         "context_col": ["context"],
-        "intervention_type": ["hard", "soft_weight", "shift", "noise"],
-        "nonlinearity": ["tanh", "sin", "lin", "relu"],
-        "alt_nonlinearity": ["sin"],
+        "nonlinearity": ["lin", "tanh", "sin"],
+        "mechanism_change_fraction": [0.0],
+        "mechanism_shift_scale": [0.0],
     },
     "algo": {
         "name": ["linc"],
-        "score_type": ["gam"],
-        # algo hypparams
-        "context_col": ["context"],  # "tau_max": [2],
+        "score_type": ["lin", "spline"],
     },
-    "scoring": {},
 }
-
-BENCHMARK_GRID_SPACETIME = {
+GRID_LINC_CONTEXT_CHANGES = {
     "data": {
-        "setting": ["time", "time-contexts"],
-        "n_nodes": [3],
+        "setting": ["multi"],
+        "n_nodes": [5, 10],
         "edge_prob": [0.3],
-        "seed": [42],
-        "n_samples": [400],
-        "n_contexts": [3],
-        "n_samples_per_context": [400],
-        "n_context_clusters": [1],
+        "n_contexts": [4, 6],
+        "n_samples_per_context": [300, 700],
+        "n_context_clusters": [2, 3],
         "context_col": ["context"],
-        "tau_max": [1],
-        "n_changepoints": [0],
-        "n_regimes": [1],
-        "min_segment_length": [50],
-        "nonlinearity": ["lin"],
-        "mechanism_change_fraction": [0.0],
-        "mechanism_shift_scale": [0.0],
+        "nonlinearity": ["lin", "tanh", "sin"],
+        "mechanism_change_fraction": [0.25, 0.5, 0.75],
+        "mechanism_shift_scale": [0.5, 1.0],
+    },
+    "algo": {
+        "name": ["linc"],
+        "score_type": ["lin", "spline"],
+    },
+}
+GRID_SPACETIME_ORACLE_TIME = {
+    "data": {
+        "setting": ["time"],
+        "n_nodes": [3, 5, 10],
+        "edge_prob": [0.3],
+        "n_samples": [500, 1000],
+        "tau_max": [1, 2],
+        "n_changepoints": [1, 2],
+        "n_regimes": [2, 3],
+        "min_segment_length": [80],
+        "nonlinearity": ["lin", "tanh"],
+        "mechanism_change_fraction": [0.25, 0.5],
+        "mechanism_shift_scale": [0.75],
         "allow_self_lag": [True],
     },
     "algo": {
         "name": ["spacetime"],
-        "score_type": ["ff"],
+        "score_type": ["lin"],
+        "changepoint_mode": ["oracle"],
+    },
+}
+GRID_SPACETIME_ORACLE_CONTEXTS = {
+    "data": {
+        "setting": ["time-contexts"],
+        "n_nodes": [3, 5],
+        "edge_prob": [0.3],
+        "n_contexts": [3, 5],
+        "n_samples_per_context": [500],
+        "n_context_clusters": [1, 2],
+        "context_col": ["context"],
+        "tau_max": [1, 2],
+        "n_changepoints": [1, 2],
+        "n_regimes": [2, 3],
+        "min_segment_length": [80],
+        "nonlinearity": ["lin", "tanh"],
+        "mechanism_change_fraction": [0.25, 0.5],
+        "mechanism_shift_scale": [0.75],
+        "allow_self_lag": [True],
+    },
+    "algo": {
+        "name": ["spacetime"],
+        "score_type": ["lin"],
+        "changepoint_mode": ["oracle"],
+    },
+}
+GRID_SPACETIME_DETECT_SMALL = {
+    "data": {
+        "setting": ["time", "time-contexts"],
+        "n_nodes": [3, 5],
+        "edge_prob": [0.3],
+        "n_samples": [700],
+        "n_contexts": [3],
+        "n_samples_per_context": [700],
+        "n_context_clusters": [1, 2],
+        "context_col": ["context"],
+        "tau_max": [1],
+        "n_changepoints": [1, 2],
+        "n_regimes": [2, 3],
+        "min_segment_length": [100],
+        "nonlinearity": ["lin"],
+        "mechanism_change_fraction": [0.5],
+        "mechanism_shift_scale": [1.0],
+        "allow_self_lag": [True],
+    },
+    "algo": {
+        "name": ["spacetime"],
+        "score_type": ["lin"],
+        "changepoint_mode": ["detect"],
     },
 }

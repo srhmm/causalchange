@@ -98,24 +98,34 @@ def file_name_from_cfg(cfg) -> str:
 
 
 def bench_name_from_cfg(cfg) -> str:
-    d = cfg.model_dump()
-    data = d["data"]
-    algo = d["algo"]
+    data = cfg.data
+    algo = cfg.algo
 
     parts = [
-        algo["name"],
-        data["setting"],
-        data["nonlinearity"],
+        algo.name,
+        data.setting,
+        f"fun-{data.nonlinearity}",
+        f"score-{algo.score_type}",
+        f"nn-{data.n_nodes}",
+        f"p-{data.edge_prob}",
     ]
 
-    if data["setting"] == "multi":
-        parts.append(f"iv-{data.get('intervention_type')}")
-    elif data["setting"] in {"time", "time-contexts"}:
-        parts.append(f"tau-{data.get('tau_max')}")
-        parts.append(f"cp-{data.get('n_changepoints')}")
+    if hasattr(data, "n_samples"):
+        parts.append(f"n-{data.n_samples}")
+
+    if hasattr(data, "n_samples_per_context"):
+        parts.append(f"nctx-{data.n_samples_per_context}")
+
+    if hasattr(data, "n_contexts"):
+        parts.append(f"ctx-{data.n_contexts}")
+
+    if hasattr(data, "tau_max"):
+        parts.append(f"tau-{data.tau_max}")
+
+    if hasattr(data, "n_changepoints"):
+        parts.append(f"cp-{data.n_changepoints}")
 
     return "_".join(str(p) for p in parts)
-
 
 def summarize_groups(
     groups: dict[tuple[tuple[str, Any], ...], dict[str, Any]],
@@ -153,3 +163,49 @@ def to_json_safe(x):
     if hasattr(x, "__dict__"):
         return to_json_safe(vars(x))
     return x
+
+
+
+def _fmt(value: float | None, digits: int = 3) -> str:
+    if value is None:
+        return "n/a"
+    if isinstance(value, float) and math.isnan(value):
+        return "n/a"
+    return f"{value:.{digits}f}"
+
+def _short_config_label(config: dict[str, Any]) -> str:
+    data = config["data"]
+    algo = config["algo"]
+
+    parts = [
+        str(algo.get("name")),
+        str(data.get("setting")),
+        f"fun={data.get('nonlinearity')}",
+        f"score={algo.get('score_type')}",
+        f"nn={data.get('n_nodes')}",
+        f"p={data.get('edge_prob')}",
+    ]
+
+    if "n_samples" in data:
+        parts.append(f"n={data.get('n_samples')}")
+
+    if "n_samples_per_context" in data:
+        parts.append(f"nctx={data.get('n_samples_per_context')}")
+
+    if "n_contexts" in data:
+        parts.append(f"ctx={data.get('n_contexts')}")
+
+    if "tau_max" in data:
+        parts.append(f"tau={data.get('tau_max')}")
+
+    if "n_changepoints" in data:
+        parts.append(f"cp={data.get('n_changepoints')}")
+
+    return " | ".join(parts)
+
+def _format_mean_std(mean: float, std: float, n: int) -> str:
+    if math.isnan(mean):
+        return f"n/a (n={n})"
+    if math.isnan(std):
+        return f"{mean:.4f} ± n/a (n={n})"
+    return f"{mean:.4f} ± {std:.4f} (n={n})"

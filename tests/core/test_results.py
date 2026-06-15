@@ -107,8 +107,9 @@ def test_temporal_scm_clustering_supports_context_specific_intervals():
         score_type=ScoreType.LIN,
         changepoint_mode=ChangepointMode.ORACLE,
         changepoint_scope=ChangepointScope.PER_CONTEXT,
-        clustering_scope=MechanismClusteringScope.REGIMES_CONTEXTS,
-        clustering_method=MechanismClusteringMethod.TESTING,
+        fixed_changepoints=[2],
+        clustering_scope=MechanismClusteringScope.SKIP,
+        clustering_method=MechanismClusteringMethod.SKIP,
         testing_method=StatisticalTestingMethod.SKIP,
     )
 
@@ -143,4 +144,4 @@ def test_temporal_scm_clustering_supports_context_specific_intervals():
         GridCell(dataset_id="b", interval_id=1): 0,
     }
 
-    assert result.diagnostics["mode"] == "testing_skipped"
+    assert result.diagnostics["mode"] == "skip"

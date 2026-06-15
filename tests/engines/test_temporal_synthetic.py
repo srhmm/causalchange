@@ -62,13 +62,20 @@ class NoChangepoints:
 
 
 class NoMechanismClustering:
-    def fit_predict(self, *, panel, graph=None, changepoints=None):
+    def fit_predict(
+        self,
+        *,
+        panel,
+        graph,
+        changepoints,
+        changepoints_by_context=None,
+        scorer=None,
+    ):
         return SCMClusteringResult(
-            contexts={target: {dataset_id: 0 for dataset_id in panel.dataset_ids} for target in panel.variables},
-            regimes={target: {0: 0} for target in panel.variables},
-            diagnostics={"mode": "skip", "intervals": [(0, len(panel.first_dataset()))]},
+            cell_clusters={},
+            intervals_by_context={},
+            diagnostics={"mode": "skip"},
         )
-
 
 def test_temporal_engine_synthetic_recovers_expected_lagged_edge_and_postprocessing():
     scoring = SyntheticTemporalScoring()

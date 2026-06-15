@@ -156,10 +156,13 @@ class TemporalDiscoveryEngine(
 
             self.changepoint_diagnostics_ = self.changepoint_detection.diagnostics_
 
-            self.scoring.set_time_windows(
-                n_raw_samples=len(self.panel_.first_dataset()),
-                changepoints=self.changepoints_,
-            )
+            if self.changepoint_scope == ChangepointScope.PER_CONTEXT:
+                self.scoring.clear_time_windows()
+            else:
+                self.scoring.set_time_windows(
+                    n_raw_samples=len(self.panel_.first_dataset()),
+                    changepoints=self.changepoints_,
+                )
 
             t_part0 = perf_counter()
             self.partitions_ = self.scm_clustering.fit_predict(

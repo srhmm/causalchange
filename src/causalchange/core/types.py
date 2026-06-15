@@ -158,7 +158,8 @@ class LowerIsBetterScoreMixin:
         return False
 
     def gain_threshold(self, n: int) -> float:
-        return 0.5 * np.log(max(n, 2))
+        # One BIC/MDL parameter penalty in bits.
+        return 0.5 * np.log(max(n, 2)) / np.log(2.0)
 
     def transition_gain(self, old_score: float, new_score: float) -> float:
         # Positive means improvement.
@@ -213,7 +214,7 @@ class StatisticalTestingMethod(str, Enum):
 
 @dataclass(frozen=True)
 class ContextCombinationKwargs:
-    method: Literal["components", "agglomerative"] = "components"
+    method: Literal["components", "agglomerative"] = "agglomerative"
     gain_threshold: float = 0.0
 
 

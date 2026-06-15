@@ -21,11 +21,17 @@ def skeleton_edges(G: nx.DiGraph) -> set[Undir]:
 
 
 def prf(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
-    p = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-    r = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-    f1 = (2 * p * r) / (p + r) if (p + r) > 0 else 0.0
-    return p, r, f1
+    n_pred = tp + fp
+    n_true = tp + fn
 
+    if n_true == 0 and n_pred == 0:
+        return 1.0, 1.0, 1.0
+
+    p = tp / n_pred if n_pred > 0 else 0.0
+    r = tp / n_true if n_true > 0 else 0.0
+    f1 = (2 * p * r) / (p + r) if (p + r) > 0 else 0.0
+
+    return p, r, f1
 
 @dataclass(frozen=True)
 class GraphMetrics:

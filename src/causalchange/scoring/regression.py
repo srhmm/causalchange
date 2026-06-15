@@ -1043,16 +1043,16 @@ def fit_score_spln(Xtr, ytr, return_residuals: bool = False, **params):
     )
     reg = Ridge(alpha=alpha) if model_type == "ridge" else LinearRegression()
     model = make_pipeline(StandardScaler(), spline, reg)
-    print(
-        "X finite:",
-        np.isfinite(X).all(),
-        "n_nan:",
-        np.isnan(X).sum(),
-        "n_inf:",
-        np.isinf(X).sum(),
-        "col_nan_counts:",
-        np.isnan(X).sum(axis=0),
-    )
+    #print(
+    #    "X finite:",
+    #    np.isfinite(X).all(),
+    #    "n_nan:",
+    #    np.isnan(X).sum(),
+    #    "n_inf:",
+    #    np.isinf(X).sum(),
+    #    "col_nan_counts:",
+    #    np.isnan(X).sum(axis=0),
+    #)
 
     model.fit(X, y)
 

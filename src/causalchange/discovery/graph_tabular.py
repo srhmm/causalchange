@@ -190,38 +190,54 @@ class GraphSearchTabularTopological:
                 graph=graph,
                 score_oracle=score_fun,
             )
-            for parent, diff in cand:
-                meta.append({"from": parent, "to": source, "diff": float(diff)})
 
-            if removed_parent is None:
+            for parent, keep_gain, removable in cand:
+                meta.append(
+                    {
+                        "from": parent,
+                        "to": source,
+                        "keep_gain": float(keep_gain),
+                        "removable": bool(removable),
+                    }
+                )
+
+            if not removed_found:
                 break
 
             graph.remove_edge(removed_parent, source)
-            parents.remove(removed_parent)
-            pruned_edges.append({"from": removed_parent, "to": source, "diff": float(best_gain)})
+            pruned_edges.append(
+                {
+                    "from": removed_parent,
+                    "to": source,
+                    "keep_gain": float(best_gain),
+                }
+            )
+            parents = list(graph.predecessors(source))
 
         return pruned_edges, meta
 
     def _find_removable_edge(self, *, parents, child, graph: nx.DiGraph, score_oracle: TabularScoreFunction):
-        old_score = float(score_oracle(child, tuple(parents)))
+        full_score = float(score_oracle(child, tuple(parents)))
 
         best_parent = None
-        best_gain = float("-inf")
+        weakest_keep_gain = float("inf")
         candidate_stats = []
 
         for parent in parents:
-            new_parents = tuple(p for p in parents if p != parent)
-            new_score = float(score_oracle(child, new_parents))
-            gain_remove = float(self.transition_gain(old_score, new_score))
-            candidate_stats.append((parent, float(gain_remove)))
+            reduced_parents = tuple(p for p in parents if p != parent)
+            reduced_score = float(score_oracle(child, reduced_parents))
 
-            if self.score_significant(gain_remove) and (
-                best_parent is None or self.gain_is_better(gain_remove, best_gain)
-            ):
-                best_gain = float(gain_remove)
+            # Improvement from adding this parent back to the reduced parent set.
+            keep_gain = float(self.transition_gain(reduced_score, full_score))
+            removable = not self.score_significant(keep_gain)
+
+            candidate_stats.append((parent, keep_gain, removable))
+
+            if removable and keep_gain < weakest_keep_gain:
+                weakest_keep_gain = keep_gain
                 best_parent = parent
 
         if best_parent is None:
             return False, None, float("inf"), candidate_stats
 
-        return True, best_parent, float(best_gain), candidate_stats
+        return True, best_parent, float(weakest_keep_gain), candidate_stats

@@ -315,7 +315,15 @@ def run_algo(sample: BenchmarkSample, data_cfg: DataConfig, algo_cfg: AlgoConfig
         sample.spacetime.changepoints if changepoint_mode == "fixed" and sample.spacetime is not None else None
     )
     regimes = bool(getattr(temporal_data_cfg, "n_changepoints", 0))
-    clustering_scope = _public_clustering_scope(contexts=data_mode.is_context(), regimes=regimes)
+    contexts = (
+            data_mode.is_context()
+            and getattr(temporal_data_cfg, "n_context_clusters", 1) > 1
+    )
+
+    clustering_scope = _public_clustering_scope(
+        contexts=contexts,
+        regimes=regimes,
+    )
     clustering_method = "mechanism-clustering" if clustering_scope != "skip" else "skip"
 
     return SpaceTime(

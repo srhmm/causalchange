@@ -48,13 +48,12 @@ class DummyChangepointDetection:
 
 
 class DummyClustering:
-    def fit_predict(self, X=None, *, panel=None, graph=None, changepoints=None):
+    def fit_predict(self, *args, **kwargs):
         return SCMClusteringResult(
-            contexts={"x": {0: 0}},
-            regimes={"x": {0: 0}},
-            diagnostics={"mode": "dummy"},
+            cell_clusters={},
+            intervals_by_context={},
+            diagnostics={},
         )
-
 
 class DummyTemporalSearch:
     def run(self, *, variables, tau_max, allowed_edge, score_fun):
