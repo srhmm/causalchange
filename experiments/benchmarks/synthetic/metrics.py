@@ -42,6 +42,7 @@ class GraphMetrics:
     skel_recall: float
     skel_f1: float
     shd: int
+    norm_shd: float
 
 
 def edge_f1(true_g: nx.DiGraph, est_g: nx.DiGraph) -> tuple[float, float, float]:
@@ -84,6 +85,13 @@ def shd(true_g: nx.DiGraph, est_g: nx.DiGraph) -> int:
 def compute_metrics(true_g: nx.DiGraph, est_g: nx.DiGraph) -> GraphMetrics:
     ep, er, ef1 = edge_f1(true_g, est_g)
     sp, sr, sf1 = skeleton_f1(true_g, est_g)
+
+    raw_shd = shd(true_g, est_g)
+    n_nodes = len(set(true_g.nodes) | set(est_g.nodes))
+    max_edges = n_nodes * (n_nodes - 1) / 2
+
+    norm_shd = raw_shd / max_edges if max_edges > 0 else 0.0
+
     return GraphMetrics(
         edge_precision=ep,
         edge_recall=er,
@@ -91,5 +99,6 @@ def compute_metrics(true_g: nx.DiGraph, est_g: nx.DiGraph) -> GraphMetrics:
         skel_precision=sp,
         skel_recall=sr,
         skel_f1=sf1,
-        shd=shd(true_g, est_g),
+        shd=raw_shd,
+        norm_shd=norm_shd,
     )

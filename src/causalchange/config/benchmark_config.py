@@ -4,19 +4,16 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-MetricName = Literal[
-    "shd",
-    "edge_f1",
-    "skel_f1",
-    "edge_precision",
-    "edge_recall",
-    "skel_precision",
-    "skel_recall",
-    "time_s",
-]
 Nonlinearity = Literal["lin", "tanh", "sin", "relu"]
 InterventionLinear = Literal["hard", "soft_weight", "shift", "noise"]
 InterventionNonlinear = Literal["hard", "soft_weight", "shift", "noise"]
+ChangepointMode = Literal["skip", "detect", "fixed"]
+ChangepointScope = Literal["skip", "global", "per-context"]
+ChangepointMethod = Literal["skip", "pelt"]
+
+ClusteringScope = Literal["skip", "contexts", "regimes", "regimes-contexts"]
+ClusteringMethod = Literal["skip", "mechanism-clustering", "testing"]
+TestingMethod = Literal["skip", "kernel"]
 
 
 class DataConfigBase(BaseModel):
@@ -191,13 +188,63 @@ class TopicAlgoConfig(BaseModel):
 
 class SpaceTimeAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
     name: Literal["spacetime"] = "spacetime"
-    score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
+    score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "lin"
+
     tau_max: int | None = Field(default=None, ge=1)
+    d_min: int | None = Field(default=None, ge=1)
 
-    changepoint_mode: Literal["none", "detect", "oracle"] = "detect"
-    # todo add new enum types
+    changepoint_mode: ChangepointMode = "skip"
+    changepoint_scope: ChangepointScope = "skip"
+    changepoint_method: ChangepointMethod = "skip"
+    fixed_changepoints: list[int] | None = None
 
+    clustering_scope: ClusteringScope = "skip"
+    clustering_method: ClusteringMethod = "skip"
+    testing_method: TestingMethod = "skip"
+
+    @model_validator(mode="after")
+    def _validate_spacetime_algo_config(self):
+        if self.changepoint_mode == "skip":
+            if self.changepoint_scope != "skip" or self.changepoint_method != "skip":
+                raise ValueError(
+                    "changepoint_scope and changepoint_method must be 'skip' "
+                    "when changepoint_mode='skip'."
+                )
+
+        if self.changepoint_mode == "detect":
+            if self.changepoint_scope == "skip":
+                raise ValueError("changepoint_scope must not be 'skip' when changepoint_mode='detect'.")
+            if self.changepoint_method == "skip":
+                raise ValueError("changepoint_method must not be 'skip' when changepoint_mode='detect'.")
+
+        if self.changepoint_mode == "fixed":
+            if self.changepoint_scope == "skip":
+                raise ValueError("changepoint_scope must not be 'skip' when changepoint_mode='fixed'.")
+            if self.changepoint_method != "skip":
+                raise ValueError("changepoint_method should be 'skip' when changepoint_mode='fixed'.")
+
+        if self.clustering_scope == "skip":
+            if self.clustering_method != "skip" or self.testing_method != "skip":
+                raise ValueError(
+                    "clustering_method and testing_method must be 'skip' "
+                    "when clustering_scope='skip'."
+                )
+
+        if self.clustering_method == "mechanism-clustering":
+            if self.clustering_scope == "skip":
+                raise ValueError("clustering_scope must not be 'skip' for mechanism clustering.")
+            if self.testing_method != "skip":
+                raise ValueError("testing_method should be 'skip' for mechanism clustering.")
+
+        if self.clustering_method == "testing":
+            if self.clustering_scope == "skip":
+                raise ValueError("clustering_scope must not be 'skip' for statistical testing.")
+            if self.testing_method == "skip":
+                raise ValueError("testing_method must not be 'skip' when clustering_method='testing'.")
+
+        return self
 
 AlgoConfig = Annotated[
     LincAlgoConfig | ChainAlgoConfig | TopicAlgoConfig | SpaceTimeAlgoConfig,
@@ -228,3 +275,7 @@ class BenchmarkConfig(BaseModel):
             raise ValueError(f"algo={self.algo.name!r} is only valid with " f"data.setting in {sorted(allowed)}.")
 
         return self
+
+TemporalDataConfig = SingleTemporalDataConfig | MultiTemporalDataConfig
+ContextDataConfig = MultiDataConfig | MultiTemporalDataConfig | MixedDataConfig
+

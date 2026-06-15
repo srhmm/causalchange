@@ -1,8 +1,12 @@
+import dataclasses
 import math
 from dataclasses import dataclass
 from typing import Any
 
 import networkx as nx
+
+from causalchange import CausalChange
+from core.results import GridCell
 
 
 def _pgmpy_graph_to_nx(dag: Any) -> nx.DiGraph:
@@ -173,33 +177,42 @@ def _fmt(value: float | None, digits: int = 3) -> str:
         return "n/a"
     return f"{value:.{digits}f}"
 
-def _short_config_label(config: dict[str, Any]) -> str:
+def _get_config_label(config: dict[str, Any]) -> str:
     data = config["data"]
     algo = config["algo"]
 
-    parts = [
-        str(algo.get("name")),
-        str(data.get("setting")),
-        f"fun={data.get('nonlinearity')}",
-        f"score={algo.get('score_type')}",
-        f"nn={data.get('n_nodes')}",
-        f"p={data.get('edge_prob')}",
+    fields = [
+        (algo, "name", None),
+        (data, "setting", None),
+        (data, "nonlinearity", "fun"),
+        (algo, "score_type", "score"),
+        (algo, "changepoint_mode", "cpm"),
+        (data, "n_nodes", "nn"),
+        (data, "edge_prob", "p"),
+        (data, "n_samples", "n"),
+        (data, "n_samples_per_context", "nctx"),
+        (data, "n_contexts", "ctx"),
+        (data, "n_context_clusters", "ctxcl"),
+        (data, "tau_max", "tau"),
+        (data, "n_changepoints", "cp"),
+        (data, "n_regimes", "reg"),
+        (data, "mechanism_change_fraction", "mcf"),
+        (data, "mechanism_shift_scale", "shift"),
     ]
 
-    if "n_samples" in data:
-        parts.append(f"n={data.get('n_samples')}")
+    parts = []
+    for source, key, label in fields:
+        if key not in source:
+            continue
 
-    if "n_samples_per_context" in data:
-        parts.append(f"nctx={data.get('n_samples_per_context')}")
+        value = source[key]
+        if value is None:
+            continue
 
-    if "n_contexts" in data:
-        parts.append(f"ctx={data.get('n_contexts')}")
-
-    if "tau_max" in data:
-        parts.append(f"tau={data.get('tau_max')}")
-
-    if "n_changepoints" in data:
-        parts.append(f"cp={data.get('n_changepoints')}")
+        if label is None:
+            parts.append(str(value))
+        else:
+            parts.append(f"{label}={value}")
 
     return " | ".join(parts)
 
@@ -209,3 +222,113 @@ def _format_mean_std(mean: float, std: float, n: int) -> str:
     if math.isnan(std):
         return f"{mean:.4f} ± n/a (n={n})"
     return f"{mean:.4f} ± {std:.4f} (n={n})"
+
+
+
+def _metrics_to_float_dict(metrics_obj: Any) -> dict[str, float]:
+    raw = dataclasses.asdict(metrics_obj)
+    return {str(key): float(value) for key, value in raw.items()}
+
+
+def _node_to_summary_var(node) -> str:
+    if isinstance(node, tuple):
+        return str(node[0])
+
+    text = str(node)
+
+    if ":" in text:
+        return text.split(":", 1)[0]
+    if "_lag" in text:
+        return text.split("_lag", 1)[0]
+
+    return text
+
+
+def _compact_signatures(signatures: dict[Any, tuple[Any, ...]]) -> dict[Any, int]:
+    label_by_signature: dict[tuple[Any, ...], int] = {}
+    labels: dict[Any, int] = {}
+
+    for key, signature in signatures.items():
+        if signature not in label_by_signature:
+            label_by_signature[signature] = len(label_by_signature)
+        labels[key] = label_by_signature[signature]
+
+    return labels
+
+
+def _estimated_context_labels_by_target(est: CausalChange) -> dict[str, dict[int, int]]:
+    """Project cell clusters to one context label per target for benchmark metrics."""
+    result = est.get_result()
+    partitions = result.grid_clusters
+
+    if partitions is None:
+        return {}
+
+    out: dict[str, dict[int, int]] = {}
+
+    for target, mapping in partitions.cell_clusters.items():
+        signatures: dict[Any, tuple[int, ...]] = {}
+
+        for dataset_id, intervals in partitions.intervals_by_context.items():
+            signatures[dataset_id] = tuple(
+                int(mapping[GridCell(dataset_id=dataset_id, interval_id=interval_id)])
+                for interval_id in range(len(intervals))
+            )
+
+        out[str(target)] = {
+            int(dataset_id): int(label) for dataset_id, label in _compact_signatures(signatures).items()
+        }
+
+    return out
+
+
+def _estimated_regime_labels_by_target(est: CausalChange) -> dict[str, dict[int, int]]:
+    """Project cell clusters to one regime/interval label per target for benchmark metrics."""
+    result = est.get_result()
+    partitions = result.grid_clusters
+
+    if partitions is None:
+        return {}
+
+    max_intervals = max(
+        (len(intervals) for intervals in partitions.intervals_by_context.values()),
+        default=0,
+    )
+    out: dict[str, dict[int, int]] = {}
+
+    for target, mapping in partitions.cell_clusters.items():
+        signatures: dict[int, tuple[tuple[str, int], ...]] = {}
+
+        for interval_id in range(max_intervals):
+            signatures[interval_id] = tuple(
+                (
+                    repr(dataset_id),
+                    int(mapping[GridCell(dataset_id=dataset_id, interval_id=interval_id)]),
+                )
+                for dataset_id, intervals in partitions.intervals_by_context.items()
+                if interval_id < len(intervals)
+            )
+
+        out[str(target)] = {
+            int(interval_id): int(label) for interval_id, label in _compact_signatures(signatures).items()
+        }
+
+    return out
+
+
+def _project_temporal_graph_to_summary(graph: nx.DiGraph) -> nx.DiGraph:
+    summary = nx.DiGraph()
+
+    for node in graph.nodes():
+        summary.add_node(_node_to_summary_var(node))
+
+    for u, v in graph.edges():
+        uu = _node_to_summary_var(u)
+        vv = _node_to_summary_var(v)
+
+        # Summary DAG metrics usually ignore self-lag edges.
+        if uu != vv:
+            summary.add_edge(uu, vv)
+
+    return summary
+
