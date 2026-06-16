@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from typing import Any, Protocol, cast
 
 import numpy as np
 import pandas as pd
 
 from causalchange.config.causal_change_config import CausalChangeConfigBase
-from causalchange.core.types import DataMode, GPType, ScoreType
+from causalchange.core.types import DataMode, MissingMode, ScoreType
 from causalchange.scoring.regression import (
     fit_score_functional_model,
     fit_score_gam,
@@ -33,12 +32,13 @@ class ScoreConventionProtocol(Protocol):
     def score_significant(self, gain: float, n: int) -> bool: ...
 
 
-class BaseLocalScorer(ABC):
-    """high-level scoring, shared logic for tabular and temporal."""
+class BaseLocalScorer:  # ABC):
+    """High-level scoring, shared logic for tabular and temporal."""
 
     def __init__(self, cfg: CausalChangeConfigBase):
         self.data_mode: DataMode = cfg.data_mode
         self.score_type: ScoreConventionProtocol = cast(ScoreConventionProtocol, cfg.score_type)
+        self.missing_mode: MissingMode = cfg.missing_mode
         self.score_params: dict[str, Any] = dict(cfg.score_kwargs or {})
         self._global_n_samples: int | None = None
 
@@ -59,6 +59,42 @@ class BaseLocalScorer(ABC):
         n = self._require_global_n_samples("score_significant")
         return bool(self.score_type.score_significant(gain, n))
 
+    def local_gain(
+        self,
+        df: pd.DataFrame,
+        effect: Any,
+        base_parents: Iterable[Any],
+        candidate_parent: Any,
+    ) -> float:
+        """Score gain from adding candidate_parent to base_parents.
+
+        Observed-data scorers use ordinary local-score differences.
+        Missing-aware scorers should override this method.
+        """
+
+        if self.missing_mode == MissingMode.MISSING:
+            raise NotImplementedError(
+                f"{type(self).__name__} has missing_mode='missing'. "
+                "Standalone local_score differences are not valid; override local_gain()."
+            )
+
+        base_parents_t = tuple(base_parents)
+        full_parents_t = (*base_parents_t, candidate_parent)
+
+        old_score = self.local_score(df, effect, base_parents_t)
+        new_score = self.local_score(df, effect, full_parents_t)
+
+        return self.transition_gain(old_score, new_score)
+
+    def local_score(self, *args: Any, **kwargs: Any) -> float | Any:
+        if self.missing_mode == MissingMode.MISSING:
+            raise NotImplementedError(
+                f"{type(self).__name__} has missing_mode='missing'. "
+                "local_score() is not meaningful for paired missing-aware scoring."
+            )
+
+        raise NotImplementedError(f"{type(self).__name__} must implement local_score().")
+
     def _set_global_n_samples(self, n_samples: int) -> None:
         self._global_n_samples = int(n_samples)
 
@@ -74,11 +110,6 @@ class BaseLocalScorer(ABC):
         df.columns = [str(c) for c in df.columns]
         return df
 
-    @abstractmethod
-    def local_score(self, *args: Any, **kwargs: Any) -> float | Any:
-        """Score one local mechanism/family."""
-        ...
-
 
 class SCMScore:
     """low-level scoring"""
@@ -86,7 +117,7 @@ class SCMScore:
     def __init__(
         self,
         data_mode: DataMode,
-        score_type: ScoreType | GPType,
+        score_type: ScoreType,
         **scoring_params: Any,
     ):
         self.data_mode = data_mode
@@ -117,10 +148,10 @@ class SCMScore:
             if self.score_type == ScoreType.KRR
             else (
                 fit_score_gp
-                if self.score_type.value == GPType.EXACT.value
+                if self.score_type.value == ScoreType.GP.value
                 else (
                     fit_score_rff
-                    if self.score_type.value == GPType.FOURIER.value
+                    if self.score_type.value == ScoreType.FF.value
                     else (
                         fit_score_gam
                         if self.score_type == ScoreType.GAM

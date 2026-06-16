@@ -76,6 +76,39 @@ class SCMClusteringResult:
 
 
 @dataclass
+class CMMTargetMixtureResult:
+    """Mixture components for one final local mechanism target | parents."""
+
+    target: Any
+    parents: tuple[Any, ...]
+    labels: list[int]
+    responsibilities: list[list[float]]
+    component_weights: list[float] = field(default_factory=list)
+    score: float | None = None
+    n_components: int | None = None
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class CMMMixtureResult:
+    """Mixture components learned by CMM under the final graph."""
+
+    target_components: dict[Any, CMMTargetMixtureResult] = field(default_factory=dict)
+    global_labels: list[int] | None = None
+    global_responsibilities: list[list[float]] | None = None
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+    def labels_for(self, target: Any) -> list[int]:
+        return self.target_components[target].labels
+
+    def responsibilities_for(self, target: Any) -> list[list[float]]:
+        return self.target_components[target].responsibilities
+
+    def parents_for(self, target: Any) -> tuple[Any, ...]:
+        return self.target_components[target].parents
+
+
+@dataclass
 class PostProcessingResult:
     """Returned by postprocessing steps."""
 
@@ -147,6 +180,12 @@ class CausalChangeResult:
 @dataclass
 class TabularResult(CausalChangeResult):
     """returned by the tabular engine"""
+
+    mechanism_mixture: CMMMixtureResult | None = None
+
+    @property
+    def mixture_components(self) -> CMMMixtureResult | None:
+        return self.mechanism_mixture
 
 
 @dataclass

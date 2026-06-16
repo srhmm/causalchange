@@ -12,7 +12,7 @@ from causalchange.core.protocols import (
     TabularScoringProtocol,
     TabularSearchProtocol,
 )
-from causalchange.core.results import ContextCombinationResult, TabularResult
+from causalchange.core.results import CMMMixtureResult, ContextCombinationResult, TabularResult
 from causalchange.core.types import DataMode, PostprocessingMode
 from causalchange.engines.base import BaseDiscoveryEngine
 
@@ -98,10 +98,25 @@ class TabularDiscoveryEngine(BaseDiscoveryEngine[TabularDomainProtocol, TabularS
             score_fun=self.local_score,
         )
 
+        mechanism_mixture = self._final_mixture_components(graph_search_result.graph)
+
         return TabularResult(
             graph_search=graph_search_result,
+            mechanism_mixture=mechanism_mixture,
             history=graph_search_result.history,
             diagnostics={
                 "score_cache_size": len(self._score_cache),
+                "has_mixture_components": mechanism_mixture is not None,
             },
         )
+
+    def _final_mixture_components(self, graph) -> CMMMixtureResult | None:
+        if self.X0_ is None:
+            raise RuntimeError("Engine not fitted. Call fit() first.")
+
+        extractor = getattr(self.scoring, "fit_final_mixture_components", None)
+
+        if extractor is None or not callable(extractor):
+            return None
+
+        return extractor(self.X0_, graph)

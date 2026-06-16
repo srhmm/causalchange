@@ -13,7 +13,9 @@ from causalchange.config.causal_change_config import (
 )
 from causalchange.core.results import (
     CausalChangeResult,
+    CMMMixtureResult,
     ContextCombinationResult,
+    TabularResult,
     TemporalResult,
 )
 from causalchange.core.types import DataMode
@@ -33,8 +35,8 @@ class CausalChange:
       multiple contexts (``TAB_CONTEXTS``); one time series (``TIME``)
       or time series from multiple contexts (``TIME_CONTEXTS``).
     * *graph_search* (``GraphSearch``) -- search algorithm for DAGs / temporal graphs
-    * *score_type* (``ScoreType | GPType``) -- regressor and corresponding scoring criterion,
-      e.g.,``ScoreType.LIN`` or ``GPType.FOURIER``
+    * *score_type* (``ScoreType ``) -- regressor and corresponding scoring criterion,
+      e.g.,``ScoreType.LIN`` or ``ScoreType.GAM``
     * *mix_type* (``MixedSCMType``) -- regressor and scoring for mixtures of SCMs, e.g.,``MixedSCMType.LIN``
     * *context_mode* (``TabularContextMode``) -- no contexts, hidden or observed
     * *context_method* (``TabularContextMethod``) -- algo to combine contexts
@@ -235,6 +237,19 @@ class CausalChange:
         if not self.cfg.data_mode.is_temporal():
             return None
         return cast(TemporalResult, result).grid_clusters
+
+    @property
+    def mixture_components_(self) -> CMMMixtureResult | None:
+        result = self.get_result()
+
+        if self.cfg.data_mode.is_temporal():
+            return None
+
+        return cast(TabularResult, result).mixture_components
+
+    @property
+    def cmm_components_(self) -> CMMMixtureResult | None:
+        return self.mixture_components_
 
     @property
     def last_context_combo_(self) -> ContextCombinationResult | None:

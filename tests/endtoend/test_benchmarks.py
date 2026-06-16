@@ -1,4 +1,4 @@
-from experiments.benchmarks.run_methods import iter_valid_configs, run_on_config
+from experiments.benchmarks.run import iter_valid_configs, run_on_config
 
 
 def test_benchmark_grid_single_topic_smoke():

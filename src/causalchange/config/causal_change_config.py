@@ -10,10 +10,10 @@ from causalchange.core.types import (
     ChangepointScope,
     ContextCombinationKwargs,
     DataMode,
-    GPType,
     GraphSearch,
     MechanismClusteringMethod,
     MechanismClusteringScope,
+    MissingMode,
     MixedSCMType,
     PostprocessingMode,
     ScoreType,
@@ -37,7 +37,7 @@ class CausalChangeConfigBase(BaseModel):
 
     data_mode: DataMode
     graph_search: GraphSearch
-    score_type: ScoreType | GPType
+    score_type: ScoreType
     postprocessing_mode: PostprocessingMode = PostprocessingMode.SKIP
     score_kwargs: dict[str, Any] = Field(default_factory=dict)
     seed: NonNegativeInt = 42
@@ -52,11 +52,6 @@ class CausalChangeConfigBase(BaseModel):
 
         if self.score_type == ScoreType.SKIP:
             raise ValueError("score_type is required.")
-
-        # ScoreType.GP is a category placeholder in the current enum design.
-        # Callers should pick a concrete GPType instead.
-        if self.score_type == ScoreType.GP:
-            raise ValueError("Use GPType.EXACT or GPType.FOURIER instead of ScoreType.GP.")
 
         if self.data_mode not in self.graph_search.compatible_data_modes():
             raise ValueError(f"{self.graph_search=} is not compatible with {self.data_mode=}.")
@@ -73,6 +68,7 @@ class CausalChangeConfigTabular(CausalChangeConfigBase):
     context_combination_method: TabularContextMethod = TabularContextMethod.SKIP
     context_combination_kwargs: ContextCombinationKwargs = Field(default_factory=ContextCombinationKwargs)
 
+    missing_mode: MissingMode = MissingMode.OBSERVED
     context_col: ContextColumn = "context"
 
     @model_validator(mode="after")
@@ -123,6 +119,8 @@ class CausalChangeConfigTemporal(CausalChangeConfigBase):
     clustering_scope: MechanismClusteringScope = MechanismClusteringScope.SKIP
     clustering_method: MechanismClusteringMethod = MechanismClusteringMethod.SKIP
     testing_method: StatisticalTestingMethod = StatisticalTestingMethod.SKIP
+
+    missing_mode: MissingMode = MissingMode.OBSERVED
 
     tau_max: PositiveInt = 1
     d_min: PositiveInt = 30

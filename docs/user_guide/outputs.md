@@ -21,6 +21,9 @@ Temporal Results
 |---|---|
 | `changepoints_` | Detected or fixed changepoints |
 | `changepoints_by_context_` | Per-context changepoints when `changepoint_scope="per-context"` |
+| `changepoint_diagnostics_` | Changepoint detection diagnostics |
 | `partitions_` | Context/regime mechanism partition result |
-| `result_.changepoint_diagnostics` | Changepoint detection diagnostics |
-| `result_.grid_clusters` | Same partition object as `partitions_` |
+| `result_.changepoint` | Full changepoint result object |
+| `result_.changepoint.diagnostics` | Changepoint detection diagnostics in the result object |
+| `result_.mechanism_clustering` | Mechanism clustering / partition result object |
+| `result_.diagnostics` | Temporal engine diagnostics |

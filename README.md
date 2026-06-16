@@ -42,24 +42,25 @@ print("Edges:", sorted(cc.graph_.edges()))
 
 ### Further Examples
 
-The `notebooks/` show basic usage on small synthetic examples,
-*   [TOPIC](notebooks/01_topic_tutorial.ipynb), for score-based causal DAG discovery from tabular data in topological order [2],
-*   [LINC](notebooks/02_linc_tutorial.ipynb), for causal discovery from multiple contexts, i.e., multiple tabular datasets with distribution shifts [1],
+See the `notebooks/` show basic usage on small synthetic examples,
+*   [TOPIC](notebooks/01_topic_tutorial.ipynb), for score-based causal DAG discovery from tabular data in topological order [1],
+*   [LINC](notebooks/02_linc_tutorial.ipynb), for causal discovery from multiple contexts, i.e., multiple tabular datasets under latent distribution shifts/interventions [2],
 *   [SpaceTime](notebooks/03_spacetime_tutorial.ipynb), for temporal causal discovery and changepoint detection in time series or multi-context time series [3].
+*   [CMM](notebooks/03_spacetime_tutorial.ipynb), for score-based tabular causal discovery from latent mixtures, i.e., a tabular dataset cmopof populations/contexts/interventions [4].
 
 ---
 ### Documentation
 
-See [docs/](docs/) for additional documentation.
+See the [docs/](docs/) for additional documentation.
 
 
 ---
 
 >**References**
 >
->[1] Mameche, S., Kaltenpoth, D., and Vreeken, J. *Learning Causal Models under Independent Changes.* NeurIPS, 2023.
+> [1] Xu, S., Mameche, S., and Vreeken, J. *Information-theoretic Causal Discovery in Topological Order.* AISTATS, 2025.
 >
-> [2] Xu, S., Mameche, S., and Vreeken, J. *Information-theoretic Causal Discovery in Topological Order.* AISTATS, 2025.
+> [2] Mameche, S., Kaltenpoth, D., and Vreeken, J. *Learning Causal Models under Independent Changes.* NeurIPS, 2023.
 >
 > [3] Mameche, S., Cornanguer, L., Ninad, U., and Vreeken, J. *SpaceTime: Causal Discovery from Non-stationary Time Series.* AAAI, 2025.
 >

@@ -5,7 +5,7 @@
 
 ### Tabular causal discovery with TOPIC [[1]](references.md)
 
-**Notebook** [`02_topic_tutorial.ipynb`](../../notebooks/01_topic_tutorial.ipynb)
+**Notebook** [`01_topic_tutorial.ipynb`](../../notebooks/01_topic_tutorial.ipynb)
 
 
 
@@ -13,12 +13,11 @@
 
 ```python
 import pandas as pd
-
-from causalchange import Topic, ScoreType
+from causalchange import Topic
 
 X = pd.DataFrame(...)
 
-cc = Topic(score_type=ScoreType.LIN)
+cc = Topic(score_type="lin")
 
 cc.fit(X)
 print(cc.graph_.edges())
@@ -29,18 +28,19 @@ print(cc.graph_.edges())
 
 ### Multi-context tabular data with LINC  [[2]](references.md)
 
-**Notebook** [`03_linc_tutorial.ipynb`](../../notebooks/02_linc_tutorial.ipynb)
+**Notebook** [`02_linc_tutorial.ipynb`](../../notebooks/02_linc_tutorial.ipynb)
 
 **Example usage**
 
 ```python
-from causalchange import Linc, ScoreType
+import pandas as pd
+from causalchange import Linc
 
+X = pd.DataFrame(...)
 cc = Linc(
-    score_type=ScoreType.LIN,
+    score_type="lin",
     context_col="context",
 )
-
 cc.fit(X)
 ```
 
@@ -49,44 +49,56 @@ cc.fit(X)
 
 ### Time series causal discovery with SpaceTime  [[3]](references.md)
 
-**Notebook** [`04_spacetime_tutorial.ipynb`](../../notebooks/03_spacetime_tutorial.ipynb)
+**Notebook** [`03_spacetime_tutorial.ipynb`](../../notebooks/03_spacetime_tutorial.ipynb)
 
 **Example usage**
 
 ```python
-from causalchange import (
-    SpaceTime,
-    DataMode,
-    ScoreType,
-    ChangepointMode,
-    ChangepointScope,
-    ChangepointMethod,
-    MechanismClusteringScope,
-    MechanismClusteringMethod,
-    StatisticalTestingMethod,
-)
+import pandas as pd
+from causalchange import SpaceTime
 
+X = pd.DataFrame(...)
 cc = SpaceTime(
-    data_mode=DataMode.TIME_CONTEXTS,
-    score_type=ScoreType.LIN,
+    data_mode="time-contexts",
+    score_type="lin",
     context_col="context",
     tau_max=2,
-    changepoint_mode=ChangepointMode.DETECT,
-    changepoint_scope=ChangepointScope.GLOBAL,
-    changepoint_method=ChangepointMethod.PELT,
-    clustering_scope=MechanismClusteringScope.REGIMES_CONTEXTS,
-    clustering_method=MechanismClusteringMethod.TESTING,
-    testing_method=StatisticalTestingMethod.KERNEL,
+    changepoint_mode="detect",
+    changepoint_scope="global",
+    changepoint_method="pelt",
+    clustering_scope="regimes-contexts",
+    clustering_method="statistical-testing",
+    testing_method="kernel",
 )
-
 cc.fit(X)
 ```
 
-SpaceTime uses temporal nodes of the form `("x0", 0)` (current time), `("x0", 1)` (lag 1), `("x0", 2)` (lag 2) and
-learns directed edges of the form `(("x0", 1), ("x1", 0))` meaning `x0(t-1) -> x1(t)`.
-For `ChangepointMode.DETECT`, install `ruptures` via `pip install "causalchange[spacetime]"`. For kernel mechanism testing with `testing_method=StatisticalTestingMethod.KERNEL`, install the full SpaceTime extras, which include `hyppo`.
+For `changepoint_mode="detect"`, install `ruptures`.
+For kernel mechanism testing with `testing_method="kernel"`, install `hyppo`.
+Both are included in `pip install "causalchange[spacetime]"`.
 
 ---
 
 ### Causal Clustering with CMMs  [[4]](references.md)
-Under construction.
+**Notebook** [`04_cmm_tutorial.ipynb`](../../notebooks/04_cmm_tutorial.ipynb)
+
+**Example usage**
+```python
+import pandas as pd
+from causalchange import CMM
+
+X = pd.DataFrame(...)
+model = CMM(
+    score_type="lin",
+    mix_type="lin",
+    k_max=2,
+    lambda_mix=0.0,
+    hybrid_mixing=False,
+    seed=0,
+)
+
+model.fit(X)
+```
+
+---
+See also the [Inputs](inputs.md) and [Outputs](outputs.md) documentation.

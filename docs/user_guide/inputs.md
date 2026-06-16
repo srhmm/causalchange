@@ -40,3 +40,16 @@
 | `mechanism_test_alpha` |                                         `float` in `(0, 1)` |                  `0.05` | Significance level for mechanism equality tests.                            |
 | `postprocessing_mode`  |                                `"skip"`, `"edge-strengths"` |                `"skip"` | Optional postprocessing after graph discovery.                              |
 | `score_kwargs`         |                                    `dict[str, Any] \| None` |                  `None` | Additional keyword arguments passed to the scoring method.                  |
+
+
+### `CMM`
+
+| Parameter             | Type / values                                             | Default | Description                                                     |
+| --------------------- | ---------------------------------------------------------: | ------: | --------------------------------------------------------------- |
+| `score_type`          | `"lin"`, `"gam"`, `"spline"`, `"krr"`, `"gp"`, `"ff"`     | `"lin"` | Base scoring or regression model used for local causal scores. |
+| `mix_type`            | `"lin"`, `"quadratic"`, `"cubic"`, `"nspline"`, `"bspline"` | `"lin"` | Mixture-regression model family used by the CMM local score.   |
+| `k_max`               | positive `int`                                            |     `5` | Maximum number of mixture components considered.                |
+| `lambda_mix`          | non-negative `float`                                      |   `1.0` | Regularization strength for mixture scoring.                    |
+| `hybrid_mixing`       | `bool`                                                    |  `True` | Whether to use hybrid mixture scoring.                          |
+| `postprocessing_mode` | `"skip"`, `"edge-strengths"`                              | `"skip"` | Optional postprocessing after graph discovery.                  |
+| `score_kwargs`        | `dict[str, Any] \| None`                                  |  `None` | Additional keyword arguments passed to the scoring method.      |

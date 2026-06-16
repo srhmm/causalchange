@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from scoring.cmm import SCMScoreCMM
-
 from causalchange.config.causal_change_config import (
     CausalChangeConfig,
     CausalChangeConfigTabular,
@@ -23,6 +21,7 @@ from causalchange.domain.tabular import TabularDomain
 from causalchange.domain.temporal import TemporalDomain
 from causalchange.engines.tabular import TabularDiscoveryEngine
 from causalchange.engines.temporal import TemporalDiscoveryEngine
+from causalchange.scoring.cmm import SCMScoreCMM
 from causalchange.scoring.tabular import SCMScoreTabular
 from causalchange.scoring.temporal import SCMScoreTemporal
 

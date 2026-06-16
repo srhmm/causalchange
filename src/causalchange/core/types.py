@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from enum import Enum, EnumMeta
+from enum import Enum
 from typing import Literal
 
 import numpy as np
@@ -62,10 +62,10 @@ class MechanismClusteringMethod(str, Enum):  # or -Partitioning
     CLUSTERING = "mechanism-clustering"
 
 
-# %% TAB_CONTEXTS, TAB_MIXED
+# %% Contexts, Mixed
 
 
-# not strictly necessary
+# check necessary
 class TabularContextMode(str, Enum):
     SKIP = "skip"
     ORACLE = "fixed"
@@ -111,6 +111,12 @@ class TabularContextMethod(str, Enum):
 
     def is_compatible_with(self, data_mode):
         return data_mode in self.compatible_data_modes()
+
+
+# sample missingness
+class MissingMode(str, Enum):
+    OBSERVED = "observed"
+    MISSING = "missing"
 
 
 # %% Search
@@ -177,12 +183,6 @@ class LowerIsBetterScoreMixin:
         return gain > self.gain_threshold(n)
 
 
-# consider flattening these
-class GPType(LowerIsBetterScoreMixin, Enum):
-    EXACT = "gp"
-    FOURIER = "ff"
-
-
 class MixedSCMType(LowerIsBetterScoreMixin, Enum):
     LIN = "lin"
     QUADRATIC = "quadratic"
@@ -196,13 +196,13 @@ class MixedSCMType(LowerIsBetterScoreMixin, Enum):
         return str(self.value)
 
 
-class ScoreType(LowerIsBetterScoreMixin, Enum):
+class ScoreType(LowerIsBetterScoreMixin, str, Enum):
     LIN = "lin"
     GAM = "gam"
     SPLINE = "spline"
     KRR = "krr"
-    GP = GPType
-    MIX = MixedSCMType
+    GP = "gp"
+    FF = "ff"
     SKIP = "skip"
 
 
@@ -218,12 +218,8 @@ class ContextCombinationKwargs:
     gain_threshold: float = 0.0
 
 
-def util_score_type_get_all():
-    variants = []
-    for st in ScoreType:
-        if isinstance(st.value, EnumMeta):
-            for sub in st.value:
-                variants.append(sub)
-        else:
-            variants.append(st)
-    return variants
+def util_score_type_get_all(include_skip: bool = False):
+    values = list(ScoreType)
+    if include_skip:
+        return values
+    return [v for v in values if v != ScoreType.SKIP]

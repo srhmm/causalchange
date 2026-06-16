@@ -10,7 +10,6 @@ from causalchange.config.causal_change_config import (
 from causalchange.core.types import (
     ChangepointMode,
     DataMode,
-    GPType,
     GraphSearch,
     MixedSCMType,
     ScoreType,
@@ -70,17 +69,12 @@ def test_context_detection_requires_mixing_type():
         )
 
 
-def test_gp_score_type_must_be_concrete():
-    with pytest.raises(ValidationError):
-        CausalChangeConfigTabular(
-            data_mode=DataMode.TABULAR,
-            graph_search=GraphSearch.TOPIC,
-            score_type=ScoreType.GP,
-        )
-
-    cfg = CausalChangeConfigTemporal(
-        data_mode=DataMode.TIME,
-        graph_search=GraphSearch.GLOBE,
-        score_type=GPType.FOURIER,
+def test_gp_score_type():
+    cfg = CausalChangeConfigTabular(
+        data_mode=DataMode.TABULAR,
+        graph_search=GraphSearch.TOPIC,
+        score_type=ScoreType.GP,
     )
-    assert cfg.score_type is GPType.FOURIER
+    assert cfg.score_type is ScoreType.GP
+    cfg = CausalChangeConfigTemporal(data_mode=DataMode.TIME, graph_search=GraphSearch.GLOBE, score_type=ScoreType.FF)
+    assert cfg.score_type is ScoreType.FF

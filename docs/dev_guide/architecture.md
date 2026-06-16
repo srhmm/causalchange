@@ -5,7 +5,7 @@
 structure of `causalchange`
 
 ```text
-Topic / Linc / SpaceTime wrappers
+Topic / Linc / SpaceTime / CMM wrappers
 --> CausalChange (general API)
 --> config (input params)
 --> engine factory (workflow high-level)
