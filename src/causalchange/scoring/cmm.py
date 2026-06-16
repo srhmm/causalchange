@@ -10,6 +10,7 @@ import pandas as pd
 from causalchange.config.causal_change_config import CausalChangeConfigBase
 from causalchange.core.results import CMMMixtureResult, CMMTargetMixtureResult
 from causalchange.core.types import MixedSCMType
+from causalchange.scoring.regression import fit_conditional_mixture
 from causalchange.scoring.tabular import SCMScoreTabular
 
 
@@ -37,25 +38,12 @@ class SCMScoreCMM(SCMScoreTabular):
         effect: str,
         parents: tuple[str, ...],
     ) -> float:
-        df = self._stringify_columns(df)
-        self._ensure_bound(df)
-
-        if self._edges is None:
-            raise RuntimeError("CMM scorer is not bound. Call fit(...) first.")
-
-        effect = str(effect)
-        parents = tuple(str(p) for p in parents)
-
-        j = self._col_index[effect]
-        pa = [self._col_index[p] for p in parents]
-
-        return float(
-            self._edges.local_score(
-                j=j,
-                pa=pa,
-                ret_full_result=False,
-            )
+        fit = self._fit_mixture_family(
+            X=df,
+            effect=effect,
+            parents=parents,
         )
+        return float(fit.score)
 
     def fit_final_mixture_components(
         self,
@@ -150,109 +138,43 @@ class SCMScoreCMM(SCMScoreTabular):
         j = self._col_index[effect]
         pa = [self._col_index[p] for p in parents]
 
-        raw = self._edges.local_score(
-            j=j,
-            pa=pa,
-            ret_full_result=True,
+        res = fit_conditional_mixture(
+            mty=self.mix_type,
+            X=self._edges.X,
+            node_i=j,
+            pa_i=pa,
+            range_k=range(1, int(self.k_max) + 1),
+            resid=None,
+            true_idl=None,
+            lg=None,
+            vb=0,
         )
 
-        return self._coerce_cmm_fit(raw, n_samples=int(X.shape[0]))
+        score = float(res.get("bic", res.get("score", res.get("loss"))))
 
-    def _coerce_cmm_fit(self, raw: Any, *, n_samples: int) -> _CMMFit:
-        if isinstance(raw, tuple):
-            if len(raw) == 4:
-                score, labels, responsibilities, component_weights = raw
-                diagnostics = {}
-            elif len(raw) == 3:
-                score, labels, responsibilities = raw
-                component_weights = None
-                diagnostics = {}
-            elif len(raw) == 2:
-                score, diagnostics = raw
-                labels = None
-                responsibilities = None
-                component_weights = None
-            else:
-                raise TypeError(
-                    "Expected CMM full result tuple of length 2, 3, or 4: "
-                    "(score, diagnostics), (score, labels, responsibilities), or "
-                    "(score, labels, responsibilities, component_weights)."
-                )
+        labels = res.get("idl", res.get("labels", res.get("assignments")))
+        responsibilities = res.get("pproba", res.get("responsibilities", res.get("posterior")))
 
-            return self._make_cmm_fit(
-                score=score,
-                labels=labels,
-                responsibilities=responsibilities,
-                component_weights=component_weights,
-                diagnostics=diagnostics,
-                n_samples=n_samples,
+        if labels is None and responsibilities is None:
+            raise ValueError(
+                "CMM backend did not return labels/responsibilities. "
+                "Expected keys 'idl' and/or 'pproba' from fit_conditional_mixture()."
             )
 
-        score = getattr(raw, "score", None)
-        if score is None:
-            score = getattr(raw, "local_score", None)
-        if score is None:
-            score = getattr(raw, "bic", None)
-        if score is None:
-            score = getattr(raw, "loss", None)
-
-        labels = getattr(raw, "labels", None)
-        if labels is None:
-            labels = getattr(raw, "z", None)
-        if labels is None:
-            labels = getattr(raw, "classes", None)
-        if labels is None:
-            labels = getattr(raw, "assignments", None)
-
-        responsibilities = getattr(raw, "responsibilities", None)
-        if responsibilities is None:
-            responsibilities = getattr(raw, "resp", None)
-        if responsibilities is None:
-            responsibilities = getattr(raw, "posterior", None)
-        if responsibilities is None:
-            responsibilities = getattr(raw, "proba", None)
-
-        component_weights = getattr(raw, "component_weights", None)
-        if component_weights is None:
-            component_weights = getattr(raw, "weights", None)
-        if component_weights is None:
-            component_weights = getattr(raw, "pi", None)
-
-        diagnostics = getattr(raw, "diagnostics", {})
-
-        if score is not None or labels is not None or responsibilities is not None:
-            return self._make_cmm_fit(
-                score=score,
-                labels=labels,
-                responsibilities=responsibilities,
-                component_weights=component_weights,
-                diagnostics=diagnostics,
-            )
-
-        if isinstance(raw, tuple):
-            if len(raw) == 4:
-                score, labels, responsibilities, component_weights = raw
-            elif len(raw) == 3:
-                score, labels, responsibilities = raw
-                component_weights = None
-            else:
-                raise TypeError(
-                    "Expected CMM full result tuple of length 3 or 4: "
-                    "(score, labels, responsibilities[, component_weights])."
-                )
-
-            return self._make_cmm_fit(
-                score=score,
-                labels=labels,
-                responsibilities=responsibilities,
-                component_weights=component_weights,
-                diagnostics={},
-            )
-
-        raise TypeError(
-            "Could not interpret CMM full result. Expected dict, object with "
-            "score/labels/responsibilities attributes, or tuple."
+        fit = self._make_cmm_fit(
+            score=score,
+            labels=labels,
+            responsibilities=responsibilities,
+            component_weights=None,
+            diagnostics={
+                key: value
+                for key, value in res.items()
+                if key not in {"idl", "labels", "assignments", "pproba", "responsibilities", "posterior"}
+            },
+            n_samples=int(X.shape[0]),
         )
+
+        return fit
 
     def _make_cmm_fit(
         self,
@@ -268,24 +190,7 @@ class SCMScoreCMM(SCMScoreTabular):
             raise ValueError("CMM full result does not contain a score.")
 
         if labels is None and responsibilities is None:
-            labels_arr = np.zeros(n_samples, dtype=int)
-            responsibilities_arr = np.ones((n_samples, 1), dtype=float)
-
-            if not isinstance(diagnostics, dict):
-                diagnostics = {"raw_diagnostics": diagnostics}
-
-            diagnostics = dict(diagnostics)
-            diagnostics["mixture_fallback"] = "backend_returned_score_without_labels_or_responsibilities"
-
-            component_weights_arr = np.ones(1, dtype=float)
-
-            return _CMMFit(
-                score=float(score),
-                labels=labels_arr,
-                responsibilities=responsibilities_arr,
-                component_weights=component_weights_arr,
-                diagnostics=diagnostics,
-            )
+            raise ValueError("CMM fit did not return labels or responsibilities.")
 
         if responsibilities is None:
             labels_arr = np.asarray(labels, dtype=int)
@@ -302,8 +207,16 @@ class SCMScoreCMM(SCMScoreTabular):
             else:
                 labels_arr = np.asarray(labels, dtype=int)
 
+        if len(labels_arr) != n_samples:
+            raise ValueError(f"CMM labels length mismatch: got {len(labels_arr)}, expected {n_samples}.")
+
+        if responsibilities_arr.shape[0] != n_samples:
+            raise ValueError(
+                f"CMM responsibilities row mismatch: got {responsibilities_arr.shape[0]}, expected {n_samples}."
+            )
+
         if component_weights is None:
-            component_weights_arr = None
+            component_weights_arr = responsibilities_arr.mean(axis=0)
         else:
             component_weights_arr = np.asarray(component_weights, dtype=float)
 

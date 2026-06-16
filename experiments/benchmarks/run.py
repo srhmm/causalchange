@@ -38,6 +38,8 @@ from experiments.benchmarks.synthetic.metrics_time import (
     compute_target_regime_partition_metrics_over_time,
 )
 from experiments.benchmarks.utils import (
+    _compute_cmm_mixture_metrics,
+    _estimated_cmm_labels_by_target,
     _estimated_context_labels_by_target,
     _estimated_regime_labels_by_target,
     _metrics_to_float_dict,
@@ -61,11 +63,22 @@ def run_sampling(config: DataConfig) -> BenchmarkSample:
 
     result = sampling_fun(config)
 
+    result = sampling_fun(config)
+
     if config.setting in {"time", "time-contexts"}:
         return BenchmarkSample(
             df=result.df,
             true_summary_dag=result.true_summary_dag,
             spacetime=result,
+            mixed=None,
+        )
+
+    if config.setting == "mixed":
+        return BenchmarkSample(
+            df=result.df,
+            true_summary_dag=result.true_summary_dag,
+            spacetime=None,
+            mixed=result,
         )
 
     df, true_g = result
@@ -73,6 +86,7 @@ def run_sampling(config: DataConfig) -> BenchmarkSample:
         df=df,
         true_summary_dag=true_g,
         spacetime=None,
+        mixed=None,
     )
 
 
@@ -151,6 +165,14 @@ def run_scoring(
 
     for key, value in summary_metrics.items():
         metrics[f"summary_{key}"] = value
+
+    if sample.mixed is not None:
+        cmm_metrics = _compute_cmm_mixture_metrics(
+            true_labels_by_target=sample.mixed.labels_by_target,
+            estimated_labels_by_target=_estimated_cmm_labels_by_target(est),
+            targets=sample.mixed.mixed_targets,
+        )
+        metrics.update(cmm_metrics)
 
     spacetime_sample = sample.spacetime
     if spacetime_sample is not None:

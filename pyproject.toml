@@ -30,6 +30,10 @@ spacetime = [
   "causal-learn",
 ]
 
+cmm = [
+  "rpy2",
+]
+
 plotting = [
   "matplotlib",
 ]

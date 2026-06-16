@@ -5,9 +5,11 @@ from enum import Enum
 from typing import Any
 
 import networkx as nx
+import numpy as np
 
 from causalchange import CausalChange
 from causalchange.core.results import GridCell
+from experiments.benchmarks.synthetic.metrics_time import compute_partition_metrics
 
 
 def _pgmpy_graph_to_nx(dag: Any) -> nx.DiGraph:
@@ -250,6 +252,68 @@ def _compact_signatures(signatures: dict[Any, tuple[Any, ...]]) -> dict[Any, int
         labels[key] = label_by_signature[signature]
 
     return labels
+
+
+def _estimated_cmm_labels_by_target(est: CausalChange) -> dict[str, list[int]]:
+    components = getattr(est, "mixture_components_", None)
+
+    if components is None:
+        return {}
+
+    out: dict[str, list[int]] = {}
+
+    for target, target_result in components.target_components.items():
+        out[str(target)] = [int(label) for label in target_result.labels]
+
+    return out
+
+
+def _compute_cmm_mixture_metrics(
+    *,
+    true_labels_by_target: dict[str, list[int]],
+    estimated_labels_by_target: dict[str, list[int]],
+    targets: list[str] | None = None,
+) -> dict[str, float]:
+    if targets is None:
+        targets = sorted(true_labels_by_target)
+
+    metrics: dict[str, float] = {}
+    ari_values: list[float] = []
+    ami_values: list[float] = []
+    nmi_values: list[float] = []
+
+    for target in targets:
+        if target not in true_labels_by_target:
+            continue
+        if target not in estimated_labels_by_target:
+            continue
+
+        true_labels = [int(x) for x in true_labels_by_target[target]]
+        estimated_labels = [int(x) for x in estimated_labels_by_target[target]]
+
+        if len(true_labels) != len(estimated_labels):
+            metrics[f"cmm_mixture_{target}_valid"] = 0.0
+            continue
+
+        scores = compute_partition_metrics(true_labels, estimated_labels)
+
+        metrics[f"cmm_mixture_{target}_ari"] = float(scores.ari)
+        metrics[f"cmm_mixture_{target}_ami"] = float(scores.ami)
+        metrics[f"cmm_mixture_{target}_nmi"] = float(scores.nmi)
+        metrics[f"cmm_mixture_{target}_n_true_clusters"] = float(len(set(true_labels)))
+        metrics[f"cmm_mixture_{target}_n_est_clusters"] = float(len(set(estimated_labels)))
+        metrics[f"cmm_mixture_{target}_valid"] = 1.0
+
+        ari_values.append(float(scores.ari))
+        ami_values.append(float(scores.ami))
+        nmi_values.append(float(scores.nmi))
+
+    metrics["cmm_mixture_ari"] = float(np.nanmean(ari_values)) if ari_values else float("nan")
+    metrics["cmm_mixture_ami"] = float(np.nanmean(ami_values)) if ami_values else float("nan")
+    metrics["cmm_mixture_nmi"] = float(np.nanmean(nmi_values)) if nmi_values else float("nan")
+    metrics["cmm_mixture_n_targets"] = float(len(ari_values))
+
+    return metrics
 
 
 def _estimated_context_labels_by_target(est: CausalChange) -> dict[str, dict[int, int]]:

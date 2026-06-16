@@ -7,10 +7,8 @@ from typing import Any
 import numpy as np
 from numpy.linalg import inv
 from scipy.special import comb
-from sklearn.cluster import DBSCAN, KMeans, SpectralClustering
 from sklearn.kernel_ridge import KernelRidge
 from sklearn.linear_model import LinearRegression, Ridge
-from sklearn.metrics import adjusted_mutual_info_score, silhouette_score
 from sklearn.mixture import GaussianMixture
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import SplineTransformer, StandardScaler
@@ -1127,195 +1125,99 @@ def to_params(params_r):
     return param_list
 
 
-def mix_regression_params_kn_assgn(X, y, idl):
-    K = np.unique(idl).size
-    beta_l, sigma_l = [], []
+def _require_rpy2_flexmix():
+    try:
+        import rpy2.robjects as robjects
+        from rpy2.robjects import Formula, default_converter, numpy2ri
+        from rpy2.robjects.conversion import localconverter
+        from rpy2.robjects.packages import importr
+    except ImportError as exc:
+        raise ImportError(
+            "requires 'rpy2'. "
+            'Install it with `pip install "causalchange[cmm]"`. '
+            "You also need R and the R package 'flexmix'."
+        ) from exc
 
-    for k in range(K):
-        X_k, y_k = X[idl == k], y[idl == k]
+    try:
+        flexmix = importr("flexmix")
+    except Exception as exc:
+        raise ImportError(
+            "requires the R package 'flexmix'. " 'Install it in R with `install.packages("flexmix")`.'
+        ) from exc
 
-        if len(y_k) == 0:
-            beta_l.append(np.full(X.shape[1], np.nan))
-            sigma_l.append(np.nan)
-            continue
-
-        model = LinearRegression(fit_intercept=False)  # todo intercept no right?
-        model.fit(X_k, y_k)
-        beta_k = model.coef_
-
-        residuals = y_k - X_k @ beta_k
-        sigma_k = np.sqrt(np.mean(residuals**2))
-
-        beta_l.append(beta_k)
-        sigma_l.append(sigma_k)
-
-    return beta_l, sigma_l
+    return robjects, Formula, default_converter, numpy2ri, localconverter, flexmix
 
 
-def mix_regression_bic(X, y, idl, beta_l, sigma_l):
-    N, D = X.shape
-    K = len(beta_l)
-
-    log_likelihood = 0.0
-    mixture_counts = np.array([np.sum(idl == k) for k in range(K)])
-    mixture_weights = mixture_counts / N
-
-    for k in range(K):
-        X_k = X[idl == k]
-        y_k = y[idl == k]
-        beta_k = beta_l[k]
-        sigma_k = sigma_l[k]
-
-        if len(y_k) == 0:
-            continue
-
-        residuals = y_k - X_k @ beta_k
-        log_likelihood += np.sum(-0.5 * np.log(2 * np.pi * sigma_k**2) - 0.5 * (residuals**2) / sigma_k**2)
-        log_likelihood += len(y_k) * np.log(mixture_weights[k] + 1e-12)
-    num_params = K * D + K + (K - 1)
-
-    bic = -2 * log_likelihood + num_params * np.log(N)
-    return bic
-
-
-def fit_conditional_mixture(mty: MixedSCMType, **kwargs):
-    assert mty.value != MixedSCMType.SKIP.value
-
-    if mty.value.startswith("mix"):
-        method = (
-            "quad"
-            if mty.value == "mixQuad"
-            else (
-                "cub"
-                if mty.value == "mixCub"
-                else ("ns" if mty.value == "mixNS" else "bs" if mty.value == "mixBS" else "lin")
-            )
-        )
-        return fit_functional_mixture(**kwargs, method=method)
-    elif mty.value.startswith("resid"):
-        return fit_resid_mixture(mty, **kwargs)
-    elif mty.value.startswith("clus"):
-        return fit_marginal_mixture(mty, **kwargs)
-    else:
-        raise ValueError(mty)
-
-
-def _fit_best_mixture(X, range_k, true_idl, sim_score=adjusted_mutual_info_score, sim_min=-np.inf):
-    best_ami = sim_min
-    best_arg = None
-    for mty in [
-        MixedSCMType.BASE_GMM,
-        MixedSCMType.BASE_KMEANS,
-        MixedSCMType.BASE_SPECTRAL,
-        MixedSCMType.BASE_DBSCAN,
-    ]:
-        idl, pproba, div = fit_mixture_model(mty, X, range_k, None)
-        ami = sim_score(true_idl, idl)
-        if ami > best_ami:
-            best_ami = ami
-            best_arg = idl, pproba, div
-    res_dict = dict(
-        bic=0,
-        idl=best_arg[0],
-        pproba=best_arg[1],
-    )
-    return res_dict
-
-
-def fit_mixture_model(
-    mty,
+def fit_conditional_mixture(
+    mty: MixedSCMType,
     X,
+    node_i,
+    pa_i,
     range_k,
-    true_idl=None,
-    kchoice_score=silhouette_score,
-    kchoice_threshold=0.5,
-    kchoice_min=-1,
+    resid,
+    true_idl,
+    lg=None,
+    vb=0,
+    degree=3,
 ):
-    if mty == MixedSCMType.BASE_RANDOM_SPLIT:
-        assert true_idl is not None
-        true_k = len(np.unique(true_idl))
-        # sample random labels with true k
-        rand_split = np.random.choice(true_k, size=len(true_idl))
-        res_dict = dict(bic=0, idl=rand_split)
-        return rand_split, None, dict()
+    if mty == MixedSCMType.SKIP:
+        raise ValueError("fit_conditional_mixture requires a concrete mix_type.")
 
-    elif mty == MixedSCMType._BASE_BEST:
-        assert true_idl is not None
-        return _fit_best_mixture(X, range_k, true_idl)
-
-    elif mty in [MixedSCMType.BASE_GMM, MixedSCMType.BASE_GMM_GLOB]:
-        mm = GaussianMixture
-        best_bic, best_m = np.inf, None
-        for k in range_k:
-            gm = mm(k)
-            gm.fit(X)
-            bic_k = gm.bic(X)
-            if bic_k < best_bic:
-                best_bic, best_m = bic_k, gm
-
-        res_dict = dict(bic=best_bic, idl=best_m.predict(X), pproba=best_m.predict_proba(X))
-        return res_dict
-
-    elif mty == MixedSCMType.BASE_DBSCAN:
-        mm = DBSCAN().fit(X)
-        res_dict = dict(idl=mm.labels_)
-        return res_dict
-    elif mty == MixedSCMType.BASE_HDBSCAN:
-        from sklearn.cluster import HDBSCAN
-
-        mm = HDBSCAN().fit(X)
-        res_dict = dict(idl=mm.labels_)
-        return res_dict
+    if mty == MixedSCMType.LIN:
+        method = "lin"
+    elif mty == MixedSCMType.QUADRATIC:
+        method = "quad"
+    elif mty == MixedSCMType.CUBIC:
+        method = "cub"
+    elif mty == MixedSCMType.N_SPLINE:
+        method = "ns"
+    elif mty == MixedSCMType.B_SPLINE:
+        method = "bs"
     else:
-        model = (
-            KMeans
-            if mty == MixedSCMType.BASE_KMEANS
-            else SpectralClustering
-            if mty == MixedSCMType.BASE_SPECTRAL
-            else None
-        )
-        if model is None:
-            raise ValueError(mty)
-        best_s, best_idl = kchoice_min, None
+        raise ValueError(f"Unsupported mix_type: {mty!r}")
+
+    X = np.asarray(X, dtype=float)
+    node_i = int(node_i)
+    pa_i = [int(p) for p in pa_i]
+
+    if not pa_i:
+        y_only = X[:, node_i].reshape(-1, 1)
+
+        best_bic = np.inf
+        best_model = None
+
         for k in range_k:
-            if k == 1:
-                continue
-            mm = model(n_clusters=k, random_state=42)
-            idl = mm.fit_predict(X)
-            s = kchoice_score(X, idl)
-            if s > best_s:
-                best_s, best_idl = s, idl
-        if best_s < kchoice_threshold:
-            best_idl = model(n_clusters=1, random_state=42).fit_predict(X)
-        res_dict = dict(idl=best_idl)
-        return res_dict
+            gm = GaussianMixture(n_components=int(k), random_state=42)
+            gm.fit(y_only)
 
+            bic_k = gm.bic(y_only)
+            if bic_k < best_bic:
+                best_bic = bic_k
+                best_model = gm
 
-def fit_marginal_mixture(mty, X, node_i, pa_i, range_k, resid, true_idl, **kwargs):
-    X = np.hstack([X[:, pa_i], X[:, node_i].reshape(-1, 1)]) if len(pa_i) > 0 else X[:, node_i].reshape(-1, 1)
-    return fit_mixture_model(mty, X, range_k, true_idl)
+        if best_model is None:
+            raise RuntimeError("Failed to fit any marginal mixture model.")
 
+        return {
+            "bic": float(best_bic),
+            "idl": best_model.predict(y_only),
+            "pproba": best_model.predict_proba(y_only),
+            "best_k": int(best_model.n_components),
+        }
 
-def fit_resid_mixture(mty, X, node_i, pa_i, range_k, resid, true_idl):
-    return fit_mixture_model(mty, resid, range_k)
-
-
-def fit_functional_mixture(X, node_i, pa_i, range_k, resid, true_idl, lg=None, vb=0, degree=3, method="lin"):
-    if not len(pa_i):
-        return fit_marginal_mixture(MixedSCMType.BASE_GMM, X, node_i, pa_i, range_k, resid, true_idl)
     if lg is not None and vb > 0:
         lg.info(f"Fitting mixture ({method})")
 
-    import numpy as np
-    import rpy2.robjects as robjects
-    from rpy2.robjects import Formula, default_converter, numpy2ri
-    from rpy2.robjects.conversion import localconverter
-    from rpy2.robjects.packages import importr
+    (
+        robjects,
+        Formula,
+        default_converter,
+        numpy2ri,
+        localconverter,
+        flexmix,
+    ) = _require_rpy2_flexmix()
 
     with localconverter(default_converter + numpy2ri.converter):
-        flexmix = importr("flexmix")
-        # splines = importr("splines")
-
         y = X[:, node_i].reshape(-1, 1)
         X_pa = X[:, pa_i]
 
@@ -1325,24 +1227,24 @@ def fit_functional_mixture(X, node_i, pa_i, range_k, resid, true_idl, lg=None, v
             nrow=data_np.shape[0],
             ncol=data_np.shape[1],
         )
+
         robjects.r.assign("data_r", data_r)
         r_df = robjects.r["data.frame"](x=data_r)
 
-        # build RHS terms depending on method
         rhs_terms = []
         for i in range(X_pa.shape[1]):
             xi = f"x.{i + 2}"
+
             if method == "quad":
-                rhs_terms.append(f"poly({xi}, {2})")
+                rhs_terms.append(f"poly({xi}, 2)")
             elif method == "cub":
-                degree = 3
-                rhs_terms.append(f"poly({xi}, {degree})")
+                rhs_terms.append(f"poly({xi}, 3)")
             elif method == "ns":
                 rhs_terms.append(f"ns({xi}, df={degree})")
             elif method == "bs":
                 rhs_terms.append(f"bs({xi}, df={degree})")
             else:
-                rhs_terms.append(xi)  # linear
+                rhs_terms.append(xi)
 
         formula_str = "x.1 ~ " + " + ".join(rhs_terms)
         formula = Formula(formula_str)
@@ -1355,44 +1257,31 @@ def fit_functional_mixture(X, node_i, pa_i, range_k, resid, true_idl, lg=None, v
         best_k = None
 
         for k in range_k:
-            m = flexmix.flexmix(formula, data=r_df, k=k)
-            bic = robjects.r["BIC"](m)[0]
+            model = flexmix.flexmix(formula, data=r_df, k=int(k))
+            bic = float(robjects.r["BIC"](model)[0])
+
             if vb:
                 print(f"k={k}, BIC={bic}")
+
             if bic < best_bic:
                 best_bic = bic
-                best_model = m
-                best_k = k
+                best_model = model
+                best_k = int(k)
 
-        post_probs = np.array(robjects.r["posterior"](best_model))
-        hard_assign = post_probs.argmax(axis=1)
+        if best_model is None or best_k is None:
+            raise RuntimeError("Failed to fit any conditional mixture model.")
+
+        post_probs = np.asarray(robjects.r["posterior"](best_model), dtype=float)
+        hard_assign = post_probs.argmax(axis=1).astype(int)
 
     def post_entropy(p_proba, eps=1e-12):
         p_safe = np.clip(p_proba, eps, 1.0)
         return -np.sum(p_safe * np.log(p_safe), axis=1)
 
-    ent_idl = post_entropy(post_probs.reshape(1, -1))
-    res_dict = dict(
-        bic=best_bic,
-        idl=hard_assign,
-        pproba=post_probs,
-        entropy=ent_idl,
-        best_k=best_k,
-    )
-    return res_dict
-
-
-def conditional_mixture_known_assgn(X, node_i, pa_i, true_idl, **scoring_params):
-    """fit regresssions for a known mix assignment, pproba from log liks of those regressions"""
-    if len(pa_i) > 0:
-        (Xx, y) = (X[:, pa_i], X[:, node_i])
-        beta_l, sig_l = mix_regression_params_kn_assgn(Xx, y, true_idl)
-        bic = mix_regression_bic(Xx, y, true_idl, beta_l, sig_l)
-        pproba = None
-        ent_idl = 0
-    else:
-        pproba = None
-        bic = 0
-        ent_idl = 0
-    res_dict = dict(bic=bic, idl=true_idl, pproba=pproba, ent_idl=ent_idl)
-    return res_dict
+    return {
+        "bic": float(best_bic),
+        "idl": hard_assign,
+        "pproba": post_probs,
+        "entropy": post_entropy(post_probs),
+        "best_k": int(best_k),
+    }

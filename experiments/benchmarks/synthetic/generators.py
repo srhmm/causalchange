@@ -13,7 +13,7 @@ from causalchange.config.benchmark_config import (
     SingleDataConfig,
     SingleTemporalDataConfig,
 )
-from experiments.benchmarks.synthetic.generator_time import sample_spacetime_synthetic
+from experiments.benchmarks.synthetic.generator_time import MixedSyntheticResult, sample_spacetime_synthetic
 
 
 def sample_single_continuous(config: SingleDataConfig):
@@ -91,7 +91,7 @@ def sample_latent_mixed_continuous(
     weight_scale_intervened: float = 2.0,
     shift_scale: float = 2.0,
     noise_scale_intervened: float | None = None,
-) -> tuple[pd.DataFrame, nx.DiGraph]:
+) -> MixedSyntheticResult:
     """Generate data from a mixed SCM without observed mixture labels.
 
     One invariant DAG is sampled. A subset of variables has multiple latent
@@ -185,7 +185,27 @@ def sample_latent_mixed_continuous(
     df = df.iloc[perm].reset_index(drop=True)
 
     true_g = nx.relabel_nodes(g_base, {i: cols[i] for i in range(n_nodes)}, copy=True)
-    return df, true_g
+
+    labels_by_target = {cols[node]: labels_by_node[node][perm].astype(int).tolist() for node in range(n_nodes)}
+
+    mixed_targets = [cols[node] for node in sorted(mixed_nodes)]
+
+    return MixedSyntheticResult(
+        df=df,
+        true_summary_dag=true_g,
+        labels_by_target=labels_by_target,
+        mixed_targets=mixed_targets,
+        cluster_mode=cluster_mode,
+        n_mechanisms=int(n_mechanisms),
+        metadata={
+            "mixed_nodes": [int(node) for node in sorted(mixed_nodes)],
+            "mixed_targets": mixed_targets,
+            "cluster_mode": cluster_mode,
+            "n_mechanisms": int(n_mechanisms),
+            "n_mixed_variables": int(n_mixed_variables),
+            "mechanism_change": mechanism_change,
+        },
+    )
 
 
 def _sample_mixed_labels(
