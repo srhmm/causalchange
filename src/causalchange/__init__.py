@@ -1,4 +1,4 @@
-from causalchange.api import Linc, SpaceTime, Topic
+from causalchange.api import CMM, Linc, SpaceTime, Topic
 from causalchange.causal_change import CausalChange
 from causalchange.core.types import (
     ChangepointMethod,
@@ -24,6 +24,7 @@ __all__ = [
     "CausalChange",
     "Topic",
     "Linc",
+    "CMM",
     "SpaceTime",
     "TOPIC",
     "LINC",

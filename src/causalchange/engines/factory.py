@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from scoring.cmm import SCMScoreCMM
+
 from causalchange.config.causal_change_config import (
     CausalChangeConfig,
     CausalChangeConfigTabular,
@@ -10,7 +12,7 @@ from causalchange.config.causal_change_config import (
 from causalchange.core.protocols import (
     TabularScoringProtocol,
 )
-from causalchange.core.types import GraphSearch, TabularContextMethod
+from causalchange.core.types import GraphSearch, MixedSCMType, TabularContextMethod, TabularContextMode
 from causalchange.discovery.changepoints import ChangepointDetection
 from causalchange.discovery.context_combination import CHAINContextCombination, LINCContextCombination, SkipCombination
 from causalchange.discovery.graph_tabular import GraphSearchTabularGreedy, GraphSearchTabularTopological
@@ -42,7 +44,13 @@ class EngineFactory:
     @staticmethod
     def _make_tabular_engine(cfg: CausalChangeConfigTabular) -> TabularDiscoveryEngine:
         domain = TabularDomain()
-        scoring: TabularScoringProtocol = SCMScoreTabular(cfg=cfg)
+
+        scoring: TabularScoringProtocol = (
+            SCMScoreCMM(cfg=cfg)
+            if cfg.mix_type != MixedSCMType.SKIP and cfg.context_mode == TabularContextMode.SKIP
+            else SCMScoreTabular(cfg=cfg)
+        )
+
         search = (
             GraphSearchTabularTopological(scoring=scoring)
             if cfg.graph_search == GraphSearch.TOPIC
@@ -106,4 +114,3 @@ class EngineFactory:
             max_iter=cfg.max_iter,
             postprocessing_mode=cfg.postprocessing_mode,
         )
-

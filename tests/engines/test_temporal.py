@@ -55,6 +55,7 @@ class DummyClustering:
             diagnostics={},
         )
 
+
 class DummyTemporalSearch:
     def run(self, *, variables, tau_max, allowed_edge, score_fun):
         graph = nx.DiGraph()

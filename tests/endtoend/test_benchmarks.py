@@ -39,11 +39,7 @@ def test_benchmark_grid_spacetime_smoke_no_changepoints():
             "mechanism_shift_scale": [0.0],
             "allow_self_lag": [True],
         },
-        "algo": {
-            "name": ["spacetime"],
-            "score_type": ["lin"],
-            "changepoint_mode": ["none"],
-        },
+        "algo": {"name": ["spacetime"], "score_type": ["lin"], "changepoint_mode": ["skip"]},
     }
 
     cfg = next(iter_valid_configs(grid))

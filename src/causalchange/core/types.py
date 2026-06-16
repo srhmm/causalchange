@@ -11,7 +11,7 @@ class DataMode(str, Enum):
     SKIP = "skip"
     TABULAR = "tabular-single"
     TAB_CONTEXTS = "tabular-contexts"
-    TIME = "time-single"
+    TIME = "time"
     TIME_CONTEXTS = "time-contexts"
 
     def is_context(self):

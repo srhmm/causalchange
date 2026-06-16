@@ -5,15 +5,16 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from experiments.benchmarks.run_methods import iter_valid_configs, run_on_config
+from experiments.benchmarks.grids import GRIDS
+from experiments.benchmarks.run import iter_valid_configs, run_on_config
 from experiments.benchmarks.utils import (
+    _fmt,
+    _get_config_label,
     bench_name_from_cfg,
     config_group_key,
     summarize_groups,
-    to_json_safe, _get_config_label, _fmt,
+    to_json_safe,
 )
-from experiments.benchmarks.benchmark_grids import GRIDS
-
 
 if __name__ == "__main__":
     BASE_SEED = 42
@@ -21,9 +22,7 @@ if __name__ == "__main__":
     OUT_DIR = Path(__file__).resolve().parent / "_results"
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-
     for BENCHMARK_NAME, BENCHMARK_GRID in GRIDS.items():
-
         print(f"\nRunning benchmark {BENCHMARK_NAME} ...")
 
         groups = {}
@@ -33,7 +32,6 @@ if __name__ == "__main__":
         n_valid = len(valid_configs)
 
         for cfg0 in tqdm(valid_configs, desc=BENCHMARK_NAME, unit="cfg", leave=True):
-
             for r in range(N_REPEATS):
                 n_runs += 1
                 seed = BASE_SEED + r
@@ -44,6 +42,7 @@ if __name__ == "__main__":
                 metrics = run_on_config(cfg)
                 key = config_group_key(cfg)
 
+                print(metrics["edge_f1"])
                 if key not in groups:
                     example = cfg.model_dump()
                     example["data"].pop("seed", None)
@@ -58,9 +57,9 @@ if __name__ == "__main__":
                     fv = float(value)
                     groups[key]["metrics"].setdefault(metric_name, []).append(fv)
 
-
         rows = summarize_groups(groups)
-        if not rows: raise RuntimeError( "No valid benchmark configs" )
+        if not rows:
+            raise RuntimeError("No valid benchmark configs")
 
         print(f"\n\n================ RESULTS {BENCHMARK_NAME} ================")
 
@@ -80,11 +79,7 @@ if __name__ == "__main__":
 
         label_width = max([90] + [len(label) for label in grouped])
         header = (
-            f"{'config':{label_width}s} "
-            f"{'edge_f1':>10s} "
-            f"{'skel_f1':>10s} "
-            f"{'nshd':>10s} "
-            f"{'time_s':>10s}"
+            f"{'config':{label_width}s} " f"{'edge_f1':>10s} " f"{'skel_f1':>10s} " f"{'nshd':>10s} " f"{'time_s':>10s}"
         )
         print(header)
         print("-" * len(header))
@@ -94,18 +89,17 @@ if __name__ == "__main__":
 
             edge = metrics.get("summary_edge_f1") or metrics.get("edge_f1")
             skel = metrics.get("summary_skel_f1") or metrics.get("skel_f1")
-            #shd = metrics.get("summary_shd") or metrics.get("shd")
+            # shd = metrics.get("summary_shd") or metrics.get("shd")
             norm_shd = metrics.get("summary_norm_shd") or metrics.get("norm_shd")
             time_s = metrics.get("time_s")
             print(
                 f"{label:{label_width}s} "
                 f"{_fmt(edge.mean if edge else None):>10s} "
                 f"{_fmt(skel.mean if skel else None):>10s} "
-                #f"{_fmt(shd.mean if shd else None):>10s} "
+                # f"{_fmt(shd.mean if shd else None):>10s} "
                 f"{_fmt(norm_shd.mean if norm_shd else None):>10s} "
                 f"{_fmt(time_s.mean if time_s else None):>10s}"
             )
-
 
         out_path = OUT_DIR / f"{BENCHMARK_NAME}.json"
 

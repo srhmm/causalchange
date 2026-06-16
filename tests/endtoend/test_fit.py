@@ -3,7 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from causalchange import Linc, SpaceTime, Topic
+from causalchange import CMM, Linc, SpaceTime, Topic
+from causalchange.core.types import MixedSCMType
 
 
 def make_chain_data(n: int = 300, seed: int = 0) -> pd.DataFrame:
@@ -81,3 +82,21 @@ def test_spacetime_fit_tiny_time_series_without_optional_extras():
     assert ("X", 1) in cc.graph_.nodes
     assert ("Y", 0) in cc.graph_.nodes
     assert cc.topological_order_ is not None
+
+
+def test_cmm_wrapper_fits_small_dataframe():
+    rng = np.random.default_rng(0)
+    n = 80
+
+    x0 = rng.normal(size=n)
+    z = rng.integers(0, 2, size=n)
+    x1 = (1.0 + z) * x0 + rng.normal(scale=0.2, size=n)
+    x2 = x1 + rng.normal(scale=0.2, size=n)
+
+    df = pd.DataFrame({"X0": x0, "X1": x1, "X2": x2})
+
+    est = CMM(mix_type="lin", k_max=2, score_type="lin").fit(df)
+
+    assert est.graph_ is not None
+    assert set(est.graph_.nodes()) == {"X0", "X1", "X2"}
+    assert est.public_config_.to_causal_change_config().mix_type == MixedSCMType.LIN

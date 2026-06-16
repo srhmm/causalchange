@@ -33,6 +33,7 @@ def prf(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
 
     return p, r, f1
 
+
 @dataclass(frozen=True)
 class GraphMetrics:
     edge_precision: float

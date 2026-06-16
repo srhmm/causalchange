@@ -1,43 +1,31 @@
 from __future__ import annotations
 
-import dataclasses
 import time
 from collections.abc import Iterable
 from itertools import product
 from typing import Any, cast
 
 import networkx as nx
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
-from causalchange import Linc, SpaceTime, Topic
+from causalchange import CMM, Linc, SpaceTime, Topic
 from causalchange.causal_change import CausalChange
 from causalchange.config.benchmark_config import (
     AlgoConfig,
     BenchmarkConfig,
-    ChainAlgoConfig,
+    CmmAlgoConfig,
+    ContextDataConfig,
     DataConfig,
-    LincAlgoConfig,
-    MixedDataConfig,
-    MultiDataConfig,
     MultiTemporalDataConfig,
-    SingleDataConfig,
-    SingleTemporalDataConfig,
     SpaceTimeAlgoConfig,
-    TopicAlgoConfig, ContextDataConfig, TemporalDataConfig,
+    TemporalDataConfig,
 )
-from causalchange.config.causal_change_config import CausalChangeConfigTabular
-from causalchange.core.results import GridCell
 from causalchange.core.types import (
-    DataMode,
-    GPType,
-    GraphSearch,
     MechanismClusteringScope,
-    ScoreType,
-    TabularContextMethod,
-    TabularContextMode,
 )
 from experiments.benchmarks.synthetic.generator_time import BenchmarkSample
 from experiments.benchmarks.synthetic.generators import (
+    sample_mixed_continuous,
     sample_multi_continuous,
     sample_multi_temporal,
     sample_single_continuous,
@@ -49,27 +37,27 @@ from experiments.benchmarks.synthetic.metrics_time import (
     compute_target_partition_metrics,
     compute_target_regime_partition_metrics_over_time,
 )
-from experiments.benchmarks.utils import _pgmpy_graph_to_nx, _project_temporal_graph_to_summary, _metrics_to_float_dict, \
-    _estimated_context_labels_by_target, _estimated_regime_labels_by_target
+from experiments.benchmarks.utils import (
+    _estimated_context_labels_by_target,
+    _estimated_regime_labels_by_target,
+    _metrics_to_float_dict,
+    _project_temporal_graph_to_summary,
+)
 
 
 def run_sampling(config: DataConfig) -> BenchmarkSample:
-    sampling_fun = (
-        sample_single_continuous
-        if config.setting == "single"
-        else (
-            sample_multi_continuous
-            if config.setting == "multi"
-            else (
-                sample_single_temporal
-                if config.setting == "time"
-                else (sample_multi_temporal if config.setting == "time-contexts" else None)
-            )
-        )
-    )
+    sampler_by_setting = {
+        "single": sample_single_continuous,
+        "multi": sample_multi_continuous,
+        "mixed": sample_mixed_continuous,
+        "time": sample_single_temporal,
+        "time-contexts": sample_multi_temporal,
+    }
 
-    if sampling_fun is None:
-        raise NotImplementedError(f"Unknown sampling fun for {config.setting!r}")
+    try:
+        sampling_fun = sampler_by_setting[config.setting]
+    except KeyError as exc:
+        raise NotImplementedError(f"Unknown sampling fun for {config.setting!r}") from exc
 
     result = sampling_fun(config)
 
@@ -92,6 +80,22 @@ def run_algo(sample: BenchmarkSample, data_cfg: DataConfig, algo_cfg: AlgoConfig
     if algo_cfg.name == "topic":
         return Topic(score_type=algo_cfg.score_type).fit(sample.df)
 
+    if algo_cfg.name == "cmm":
+        cmm_cfg = cast(CmmAlgoConfig, algo_cfg)
+        return CMM(
+            score_type=cmm_cfg.score_type,
+            mix_type=cmm_cfg.mix_type,
+            k_max=cmm_cfg.k_max,
+            lambda_mix=cmm_cfg.lambda_mix,
+            hybrid_mixing=cmm_cfg.hybrid_mixing,
+            score_kwargs={
+                "max_em_iter": cmm_cfg.max_em_iter,
+                "n_init": cmm_cfg.n_init,
+                "tol": cmm_cfg.tol,
+                "ridge": cmm_cfg.ridge,
+            },
+        ).fit(sample.df)
+
     if algo_cfg.name == "linc":
         context_cfg = cast(ContextDataConfig, data_cfg)
         return Linc(
@@ -99,15 +103,10 @@ def run_algo(sample: BenchmarkSample, data_cfg: DataConfig, algo_cfg: AlgoConfig
             context_col=context_cfg.context_col,
         ).fit(sample.df)
 
-    if algo_cfg.name == "chain":
-        raise NotImplementedError
-
     if algo_cfg.name != "spacetime":
         raise ValueError(f"invalid: {algo_cfg.name}")
 
-    if data_cfg.setting not in {"time", "time-contexts"}:
-        raise ValueError("SpaceTime benchmarks require temporal data.")
-
+    assert data_cfg.setting in {"time", "time-contexts"}
     spacetime_algo_cfg = cast(SpaceTimeAlgoConfig, algo_cfg)
     temporal_data_cfg = cast(TemporalDataConfig, data_cfg)
 
@@ -220,41 +219,12 @@ def run_on_config(
     return metrics
 
 
-def _filter_to_model_fields(model_cls: type[BaseModel], data: dict[str, Any]) -> dict[str, Any]:
-    allowed = set(model_cls.model_fields.keys())
-    return {k: v for k, v in data.items() if k in allowed}
-
-
 def _product_dict(d: dict[str, list[Any]]) -> Iterable[dict[str, Any]]:
     keys = list(d.keys())
     vals = [d[k] for k in keys]
     for combo in product(*vals):
         yield dict(zip(keys, combo, strict=False))
 
-DATA_MODELS = (
-    SingleDataConfig,
-    MultiDataConfig,
-    MixedDataConfig,
-    SingleTemporalDataConfig,
-    MultiTemporalDataConfig,
-)
-
-ALGO_MODELS = (
-    TopicAlgoConfig,
-    LincAlgoConfig,
-    ChainAlgoConfig,
-    SpaceTimeAlgoConfig,
-)
-
-DATA_MODEL_BY_SETTING = {
-    model.model_fields["setting"].default: model
-    for model in DATA_MODELS
-}
-
-ALGO_MODEL_BY_NAME = {
-    model.model_fields["name"].default: model
-    for model in ALGO_MODELS
-}
 
 def iter_valid_configs(grid: dict[str, Any]):
     data_grid = grid.get("data", {})

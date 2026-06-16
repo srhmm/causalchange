@@ -77,6 +77,7 @@ class NoMechanismClustering:
             diagnostics={"mode": "skip"},
         )
 
+
 def test_temporal_engine_synthetic_recovers_expected_lagged_edge_and_postprocessing():
     scoring = SyntheticTemporalScoring()
 

@@ -86,11 +86,23 @@ class CausalChangeConfigTabular(CausalChangeConfigBase):
         if self.data_mode not in self.context_combination_method.compatible_data_modes():
             raise ValueError(f"{self.context_combination_method=} is not compatible with {self.data_mode=}.")
 
-        if self.context_mode == TabularContextMode.DETECT and self.mix_type == MixedSCMType.SKIP:
+        uses_hidden_context_detection = self.context_mode == TabularContextMode.DETECT
+
+        uses_cmm_scoring = (
+            self.data_mode == DataMode.TABULAR
+            and self.graph_search == GraphSearch.TOPIC
+            and self.context_mode == TabularContextMode.SKIP
+            and self.mix_type != MixedSCMType.SKIP
+        )
+
+        if uses_hidden_context_detection and self.mix_type == MixedSCMType.SKIP:
             raise ValueError("mix_type is required when context_mode=DETECT.")
 
-        if self.context_mode != TabularContextMode.DETECT and self.mix_type != MixedSCMType.SKIP:
-            raise ValueError("mix_type is only valid when context_mode=DETECT.")
+        if self.mix_type != MixedSCMType.SKIP and not uses_hidden_context_detection and not uses_cmm_scoring:
+            raise ValueError(
+                "mix_type is only valid for context_mode=DETECT or for CMM-style "
+                "TOPIC scoring on single tabular data."
+            )
 
         if (
             self.context_combination_method != TabularContextMethod.SKIP

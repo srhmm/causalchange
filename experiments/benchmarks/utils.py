@@ -1,12 +1,13 @@
 import dataclasses
 import math
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 import networkx as nx
 
 from causalchange import CausalChange
-from core.results import GridCell
+from causalchange.core.results import GridCell
 
 
 def _pgmpy_graph_to_nx(dag: Any) -> nx.DiGraph:
@@ -131,6 +132,7 @@ def bench_name_from_cfg(cfg) -> str:
 
     return "_".join(str(p) for p in parts)
 
+
 def summarize_groups(
     groups: dict[tuple[tuple[str, Any], ...], dict[str, Any]],
 ) -> list[SummaryRow]:
@@ -169,7 +171,6 @@ def to_json_safe(x):
     return x
 
 
-
 def _fmt(value: float | None, digits: int = 3) -> str:
     if value is None:
         return "n/a"
@@ -177,44 +178,40 @@ def _fmt(value: float | None, digits: int = 3) -> str:
         return "n/a"
     return f"{value:.{digits}f}"
 
-def _get_config_label(config: dict[str, Any]) -> str:
-    data = config["data"]
-    algo = config["algo"]
 
-    fields = [
-        (algo, "name", None),
-        (data, "setting", None),
-        (data, "nonlinearity", "fun"),
-        (algo, "score_type", "score"),
-        (algo, "changepoint_mode", "cpm"),
-        (data, "n_nodes", "nn"),
-        (data, "edge_prob", "p"),
-        (data, "n_samples", "n"),
-        (data, "n_samples_per_context", "nctx"),
-        (data, "n_contexts", "ctx"),
-        (data, "n_context_clusters", "ctxcl"),
-        (data, "tau_max", "tau"),
-        (data, "n_changepoints", "cp"),
-        (data, "n_regimes", "reg"),
-        (data, "mechanism_change_fraction", "mcf"),
-        (data, "mechanism_shift_scale", "shift"),
-    ]
+def _v(x):
+    return x.value if isinstance(x, Enum) else x
 
+
+def _flatten_dict(d: dict, *, prefix: str = "") -> list[str]:
     parts = []
-    for source, key, label in fields:
-        if key not in source:
-            continue
 
-        value = source[key]
-        if value is None:
-            continue
+    for key in sorted(d):
+        value = d[key]
+        full_key = f"{prefix}.{key}" if prefix else key
 
-        if label is None:
-            parts.append(str(value))
+        if isinstance(value, dict):
+            parts.extend(_flatten_dict(value, prefix=full_key))
+        elif isinstance(value, list):
+            parts.append(f"{full_key}=[{','.join(map(str, value))}]")
         else:
-            parts.append(f"{label}={value}")
+            parts.append(f"{full_key}={value}")
 
-    return " | ".join(parts)
+    return parts
+
+
+def _get_config_label(config) -> str:
+    d = config.model_dump(mode="json", exclude_none=True)
+
+    d.get("data", {}).pop("seed", None)
+
+    algo_name = d.get("algo", {}).pop("name", "algo")
+    setting = d.get("data", {}).pop("setting", "data")
+
+    fields = _flatten_dict(d)
+
+    return " | ".join([str(algo_name), str(setting), *fields])
+
 
 def _format_mean_std(mean: float, std: float, n: int) -> str:
     if math.isnan(mean):
@@ -222,7 +219,6 @@ def _format_mean_std(mean: float, std: float, n: int) -> str:
     if math.isnan(std):
         return f"{mean:.4f} ± n/a (n={n})"
     return f"{mean:.4f} ± {std:.4f} (n={n})"
-
 
 
 def _metrics_to_float_dict(metrics_obj: Any) -> dict[str, float]:
@@ -331,4 +327,3 @@ def _project_temporal_graph_to_summary(graph: nx.DiGraph) -> nx.DiGraph:
             summary.add_edge(uu, vv)
 
     return summary
-

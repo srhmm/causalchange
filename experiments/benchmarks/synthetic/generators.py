@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from causalchange.config.benchmark_config import (
+    MixedDataConfig,
     MultiDataConfig,
     MultiTemporalDataConfig,
     SingleDataConfig,
@@ -51,6 +52,248 @@ def sample_multi_continuous(config: MultiDataConfig):
         shift_scale=config.shift_scale,
         noise_scale_intervened=config.noise_scale_intervened,
     )
+
+
+def sample_mixed_continuous(config: MixedDataConfig):
+    return sample_latent_mixed_continuous(
+        nonlinearity=config.nonlinearity,
+        alt_nonlinearity=config.alt_nonlinearity,
+        n_samples_per_mechanism=config.n_samples_per_mechanism,
+        n_nodes=config.n_nodes,
+        edge_prob=config.edge_prob,
+        n_mechanisms=config.n_mechanisms,
+        n_mixed_variables=config.n_mixed_variables,
+        cluster_mode=config.cluster_mode,
+        seed=config.seed,
+        weight_scale=config.weight_scale,
+        noise_scale=config.noise_scale,
+        mechanism_change=config.mechanism_change,
+        weight_scale_intervened=config.weight_scale_intervened,
+        shift_scale=config.shift_scale,
+        noise_scale_intervened=config.noise_scale_intervened,
+    )
+
+
+def sample_latent_mixed_continuous(
+    *,
+    n_samples_per_mechanism: int,
+    n_nodes: int,
+    edge_prob: float,
+    n_mechanisms: int,
+    n_mixed_variables: int,
+    cluster_mode: str,
+    seed: int,
+    weight_scale: float = 2.0,
+    noise_scale: float = 0.7,
+    nonlinearity: str = "tanh",
+    alt_nonlinearity: str | None = None,
+    mechanism_change: str = "soft-weight",
+    weight_scale_intervened: float = 2.0,
+    shift_scale: float = 2.0,
+    noise_scale_intervened: float | None = None,
+) -> tuple[pd.DataFrame, nx.DiGraph]:
+    """Generate data from a mixed SCM without observed mixture labels.
+
+    One invariant DAG is sampled. A subset of variables has multiple latent
+    causal mechanisms.
+
+    In global mode, all mixed variables share one latent row clustering.
+    In local mode, each mixed variable has its own latent row clustering.
+    """
+
+    if cluster_mode not in {"global", "local"}:
+        raise ValueError(f"Unknown cluster_mode: {cluster_mode}")
+
+    if mechanism_change not in {"soft-weight", "soft-mechanism", "shift", "noise"}:
+        raise ValueError(f"Unknown mechanism_change: {mechanism_change}")
+
+    if mechanism_change == "soft-mechanism" and alt_nonlinearity is None:
+        alt_nonlinearity = "sin" if nonlinearity != "sin" else "tanh"
+
+    rng = np.random.default_rng(seed)
+
+    g_base = _random_dag(n_nodes=n_nodes, edge_prob=edge_prob, rng=rng)
+    topo = list(nx.topological_sort(g_base))
+
+    W_base = np.zeros((n_nodes, n_nodes), dtype=float)
+    for u, v in g_base.edges():
+        w = rng.normal(loc=0.0, scale=weight_scale)
+        if abs(w) < 0.1:
+            w = 0.1 if w >= 0 else -0.1
+        W_base[u, v] = w
+
+    n_mixed = min(n_mixed_variables, n_nodes)
+    mixed_nodes = set(rng.choice(n_nodes, size=n_mixed, replace=False).tolist())
+
+    n_samples = n_samples_per_mechanism * n_mechanisms
+
+    f_base = _act(nonlinearity)
+    f_alt = _act(alt_nonlinearity) if alt_nonlinearity is not None else f_base
+
+    labels_by_node = _sample_mixed_labels(
+        n_samples=n_samples,
+        n_nodes=n_nodes,
+        n_mechanisms=n_mechanisms,
+        mixed_nodes=mixed_nodes,
+        cluster_mode=cluster_mode,
+        rng=rng,
+    )
+
+    mechanism_params = _sample_node_mixture_parameters(
+        g_base=g_base,
+        W_base=W_base,
+        mixed_nodes=mixed_nodes,
+        n_mechanisms=n_mechanisms,
+        mechanism_change=mechanism_change,
+        weight_scale_intervened=weight_scale_intervened,
+        shift_scale=shift_scale,
+        noise_scale=noise_scale,
+        noise_scale_intervened=noise_scale_intervened,
+        f_base=f_base,
+        f_alt=f_alt,
+        rng=rng,
+    )
+
+    X = np.zeros((n_samples, n_nodes), dtype=float)
+    eps = rng.normal(loc=0.0, scale=1.0, size=(n_samples, n_nodes))
+
+    for v in topo:
+        parents = list(g_base.predecessors(v))
+        labels_v = labels_by_node[v]
+
+        for z in range(n_mechanisms):
+            idx = np.flatnonzero(labels_v == z)
+            if len(idx) == 0:
+                continue
+
+            params = mechanism_params[v][z]
+            weights_v = params["weights"]
+            shift_v = params["shift"]
+            noise_v = params["noise_scale"]
+            f_v = params["function"]
+
+            if parents:
+                lin = X[np.ix_(idx, parents)] @ weights_v[parents]
+                X[idx, v] = f_v(lin) + shift_v + noise_v * eps[idx, v]
+            else:
+                X[idx, v] = shift_v + noise_v * eps[idx, v]
+
+    cols = [f"X{i}" for i in range(n_nodes)]
+    df = pd.DataFrame(X, columns=cols)
+
+    perm = rng.permutation(len(df))
+    df = df.iloc[perm].reset_index(drop=True)
+
+    true_g = nx.relabel_nodes(g_base, {i: cols[i] for i in range(n_nodes)}, copy=True)
+    return df, true_g
+
+
+def _sample_mixed_labels(
+    *,
+    n_samples: int,
+    n_nodes: int,
+    n_mechanisms: int,
+    mixed_nodes: set[int],
+    cluster_mode: str,
+    rng: np.random.Generator,
+) -> dict[int, np.ndarray]:
+    labels_by_node = {node: np.zeros(n_samples, dtype=int) for node in range(n_nodes)}
+
+    if cluster_mode == "global":
+        global_labels = _balanced_labels(
+            n_samples=n_samples,
+            n_clusters=n_mechanisms,
+            rng=rng,
+        )
+
+        for node in mixed_nodes:
+            labels_by_node[node] = global_labels.copy()
+
+    elif cluster_mode == "local":
+        for node in mixed_nodes:
+            labels_by_node[node] = _balanced_labels(
+                n_samples=n_samples,
+                n_clusters=n_mechanisms,
+                rng=rng,
+            )
+
+    else:
+        raise ValueError(f"Unknown cluster_mode: {cluster_mode}")
+
+    return labels_by_node
+
+
+def _balanced_labels(
+    *,
+    n_samples: int,
+    n_clusters: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    reps = int(np.ceil(n_samples / n_clusters))
+    labels = np.tile(np.arange(n_clusters, dtype=int), reps)[:n_samples]
+    rng.shuffle(labels)
+    return labels
+
+
+def _sample_node_mixture_parameters(
+    *,
+    g_base: nx.DiGraph,
+    W_base: np.ndarray,
+    mixed_nodes: set[int],
+    n_mechanisms: int,
+    mechanism_change: str,
+    weight_scale_intervened: float,
+    shift_scale: float,
+    noise_scale: float,
+    noise_scale_intervened: float | None,
+    f_base,
+    f_alt,
+    rng: np.random.Generator,
+) -> dict[int, list[dict[str, object]]]:
+    n_nodes = W_base.shape[0]
+    mechanism_params: dict[int, list[dict[str, object]]] = {}
+
+    for node in range(n_nodes):
+        node_params: list[dict[str, object]] = []
+
+        for z in range(n_mechanisms):
+            weights = W_base[:, node].copy()
+            shift = 0.0
+            noise = noise_scale
+            function = f_base
+
+            if node in mixed_nodes and z > 0:
+                if mechanism_change == "soft-weight":
+                    for parent in list(g_base.predecessors(node)):
+                        factor = rng.normal(loc=weight_scale_intervened, scale=0.25)
+                        if abs(factor) < 0.2:
+                            factor = 0.2 if factor >= 0 else -0.2
+                        weights[parent] = weights[parent] * factor
+
+                elif mechanism_change == "soft-mechanism":
+                    function = f_alt
+
+                elif mechanism_change == "shift":
+                    shift = float(rng.normal(loc=0.0, scale=shift_scale))
+
+                elif mechanism_change == "noise":
+                    noise = float(noise_scale_intervened) if noise_scale_intervened is not None else 2.0 * noise_scale
+
+                else:
+                    raise ValueError(f"Unknown mechanism_change: {mechanism_change}")
+
+            node_params.append(
+                {
+                    "weights": weights,
+                    "shift": shift,
+                    "noise_scale": noise,
+                    "function": function,
+                }
+            )
+
+        mechanism_params[node] = node_params
+
+    return mechanism_params
 
 
 def sample_single_temporal(config: SingleTemporalDataConfig):
@@ -296,7 +539,7 @@ def sample_multicontext_linear_gaussian_interventional(
     n_intervened_per_context: int = 1,
     weight_scale: float = 2.0,
     noise_scale: float = 0.7,
-    intervention_type: str = "soft_weight",  # "hard"|"soft_weight"|"shift"|"noise"
+    intervention_type: str = "soft-weight",  # "hard"|"soft-weight"|"shift"|"noise"
     weight_scale_intervened: float = 2.0,
     shift_scale: float = 2.0,
     noise_scale_intervened: float | None = None,
@@ -312,7 +555,7 @@ def sample_multicontext_linear_gaussian_interventional(
             w = 0.1 if w >= 0 else -0.1
         W_base[u, v] = w
 
-    if intervention_type not in {"hard", "soft_weight", "shift", "noise"}:
+    if intervention_type not in {"hard", "soft-weight", "shift", "noise"}:
         raise ValueError(f"Unknown intervention_type: {intervention_type}")
 
     contexts = list(range(n_contexts))
@@ -336,7 +579,7 @@ def sample_multicontext_linear_gaussian_interventional(
         shift = np.zeros(n_nodes, dtype=float)
         noise_vec = np.full(n_nodes, noise_scale, dtype=float)
 
-        if intervention_type == "soft_weight":
+        if intervention_type == "soft-weight":
             for t in targets:
                 for p in list(g_base.predecessors(t)):
                     W_c[p, t] = W_c[p, t] * weight_scale_intervened
@@ -390,7 +633,7 @@ def sample_multicontext_nonlinear_additive_interventional(
     weight_scale: float = 2.0,
     noise_scale: float = 0.7,
     nonlinearity: str = "tanh",
-    intervention_type: str = "soft_mechanism",  # "hard"|"soft_weight"|"soft_mechanism"|"shift"|"noise"
+    intervention_type: str = "soft-mechanism",  # "hard"|"soft-weight"|"soft-mechanism"|"shift"|"noise"
     weight_scale_intervened: float = 2.0,
     alt_nonlinearity: str = "sin",
     shift_scale: float = 2.0,
@@ -408,8 +651,8 @@ def sample_multicontext_nonlinear_additive_interventional(
 
     if intervention_type not in {
         "hard",
-        "soft_weight",
-        "soft_mechanism",
+        "soft-weight",
+        "soft-mechanism",
         "shift",
         "noise",
     }:
@@ -451,12 +694,12 @@ def sample_multicontext_nonlinear_additive_interventional(
         # node-specific mechanisms: default f_base, optionally f_alt for targets
         node_f = [f_base for _ in range(n_nodes)]
 
-        if intervention_type == "soft_weight":
+        if intervention_type == "soft-weight":
             for t in targets:
                 for p in list(g_base.predecessors(t)):
                     W_c[p, t] = W_c[p, t] * weight_scale_intervened
 
-        elif intervention_type == "soft_mechanism":
+        elif intervention_type == "soft-mechanism":
             for t in targets:
                 node_f[t] = f_alt
 

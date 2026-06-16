@@ -553,11 +553,11 @@ class GraphSearchTemporalTopological:
         return pruned_edges, meta
 
     def _find_removable_edge(
-            self,
-            *,
-            parents: list[TemporalNode],
-            child: TemporalNode,
-            score_fun: TemporalScoreFunction,
+        self,
+        *,
+        parents: list[TemporalNode],
+        child: TemporalNode,
+        score_fun: TemporalScoreFunction,
     ):
         full_score = float(score_fun(child, tuple(parents)))
 

@@ -5,8 +5,8 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Nonlinearity = Literal["lin", "tanh", "sin", "relu"]
-InterventionLinear = Literal["hard", "soft_weight", "shift", "noise"]
-InterventionNonlinear = Literal["hard", "soft_weight", "shift", "noise"]
+InterventionLinear = Literal["hard", "soft-weight", "shift", "noise"]
+InterventionNonlinear = Literal["hard", "soft-weight", "soft-mechanism", "shift", "noise"]
 ChangepointMode = Literal["skip", "detect", "fixed"]
 ChangepointScope = Literal["skip", "global", "per-context"]
 ChangepointMethod = Literal["skip", "pelt"]
@@ -14,6 +14,7 @@ ChangepointMethod = Literal["skip", "pelt"]
 ClusteringScope = Literal["skip", "contexts", "regimes", "regimes-contexts"]
 ClusteringMethod = Literal["skip", "mechanism-clustering", "testing"]
 TestingMethod = Literal["skip", "kernel"]
+MixType = Literal["lin", "quadratic", "cubic", "nspline", "bspline"]
 
 
 class DataConfigBase(BaseModel):
@@ -47,25 +48,29 @@ class MultiDataConfig(DataConfigBase):
     shift_scale: float = 2.0
     noise_scale_intervened: float | None = None
 
-    intervention_type: InterventionNonlinear = "soft_weight"
+    intervention_type: InterventionNonlinear = "soft-weight"
     alt_nonlinearity: Nonlinearity | None = None
 
     @model_validator(mode="after")
     def _alt_required_for_soft_mechanism(self):
-        if self.intervention_type == "soft_mechanism" and self.alt_nonlinearity is None:
-            raise ValueError("alt_nonlinearity is required when intervention_type='soft_mechanism'.")
+        if self.intervention_type == "soft-mechanism" and self.alt_nonlinearity is None:
+            raise ValueError("alt_nonlinearity is required when intervention_type='soft-mechanism'.")
         return self
+
+
+ClusterMode = Literal["global", "local"]
+MixedMechanismChange = Literal["soft-weight", "soft-mechanism", "shift", "noise"]
 
 
 class MixedDataConfig(DataConfigBase):
     setting: Literal["mixed"] = "mixed"
 
-    context_col: str = "context"
-    n_contexts: int = Field(..., ge=1)
-    n_samples_per_context: int = Field(..., ge=1)
-    n_intervened_per_context: int = Field(1, ge=0)
+    n_mechanisms: int = Field(..., ge=1)
+    n_samples_per_mechanism: int = Field(..., ge=1)
+    n_mixed_variables: int = Field(1, ge=0)
+    cluster_mode: ClusterMode = "local"
 
-    intervention_type: InterventionNonlinear = "soft_weight"
+    mechanism_change: MixedMechanismChange = "soft-weight"
 
     weight_scale_intervened: float = 2.0
     shift_scale: float = 2.0
@@ -75,9 +80,13 @@ class MixedDataConfig(DataConfigBase):
     alt_nonlinearity: Nonlinearity | None = None
 
     @model_validator(mode="after")
-    def _alt_required_for_soft_mechanism(self):
-        if self.intervention_type == "soft_mechanism" and self.alt_nonlinearity is None:
-            raise ValueError("alt_nonlinearity is required when intervention_type='soft_mechanism'.")
+    def _validate_mixed_data_config(self):
+        if self.n_mixed_variables > self.n_nodes:
+            raise ValueError("n_mixed_variables cannot exceed n_nodes.")
+
+        if self.mechanism_change == "soft-mechanism" and self.alt_nonlinearity is None:
+            raise ValueError("alt_nonlinearity is required when mechanism_change='soft-mechanism'.")
+
         return self
 
 
@@ -173,17 +182,25 @@ class LincAlgoConfig(BaseModel):
     score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
 
 
-class ChainAlgoConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    name: Literal["chain"] = "chain"
-    context_col: str = "context"
-    score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
-
-
 class TopicAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Literal["topic"] = "topic"
     score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
+
+
+class CmmAlgoConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Literal["cmm"] = "cmm"
+    score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "lin"
+    mix_type: MixType = "lin"
+    k_max: int = Field(5, ge=1)
+    lambda_mix: float = Field(0.0, ge=0.0)
+    hybrid_mixing: bool = False
+    max_em_iter: int = Field(100, ge=1)
+    n_init: int = Field(3, ge=1)
+    tol: float = Field(1e-5, gt=0.0)
+    ridge: float = Field(1e-8, ge=0.0)
 
 
 class SpaceTimeAlgoConfig(BaseModel):
@@ -209,8 +226,7 @@ class SpaceTimeAlgoConfig(BaseModel):
         if self.changepoint_mode == "skip":
             if self.changepoint_scope != "skip" or self.changepoint_method != "skip":
                 raise ValueError(
-                    "changepoint_scope and changepoint_method must be 'skip' "
-                    "when changepoint_mode='skip'."
+                    "changepoint_scope and changepoint_method must be 'skip' " "when changepoint_mode='skip'."
                 )
 
         if self.changepoint_mode == "detect":
@@ -227,10 +243,7 @@ class SpaceTimeAlgoConfig(BaseModel):
 
         if self.clustering_scope == "skip":
             if self.clustering_method != "skip" or self.testing_method != "skip":
-                raise ValueError(
-                    "clustering_method and testing_method must be 'skip' "
-                    "when clustering_scope='skip'."
-                )
+                raise ValueError("clustering_method and testing_method must be 'skip' " "when clustering_scope='skip'.")
 
         if self.clustering_method == "mechanism-clustering":
             if self.clustering_scope == "skip":
@@ -246,8 +259,9 @@ class SpaceTimeAlgoConfig(BaseModel):
 
         return self
 
+
 AlgoConfig = Annotated[
-    LincAlgoConfig | ChainAlgoConfig | TopicAlgoConfig | SpaceTimeAlgoConfig,
+    LincAlgoConfig | CmmAlgoConfig | TopicAlgoConfig | SpaceTimeAlgoConfig,
     Field(discriminator="name"),
 ]
 
@@ -261,12 +275,12 @@ class BenchmarkConfig(BaseModel):
     @model_validator(mode="after")
     def _couple_algo_and_data(self):
         allowed_settings_by_algo = {
-            "topic": {"single"},
+            "topic": {"single", "mixed"},
+            "cmm": {"single", "mixed"},
             "linc": {"multi"},
             "chain": {"multi"},
             "spacetime": {"time", "time-contexts"},
         }
-
         allowed = allowed_settings_by_algo.get(self.algo.name)
         if allowed is None:
             raise ValueError(f"Unknown benchmark algo: {self.algo.name!r}")
@@ -276,6 +290,6 @@ class BenchmarkConfig(BaseModel):
 
         return self
 
+
 TemporalDataConfig = SingleTemporalDataConfig | MultiTemporalDataConfig
 ContextDataConfig = MultiDataConfig | MultiTemporalDataConfig | MixedDataConfig
-
