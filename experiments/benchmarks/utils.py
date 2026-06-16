@@ -255,7 +255,7 @@ def _compact_signatures(signatures: dict[Any, tuple[Any, ...]]) -> dict[Any, int
 
 
 def _estimated_cmm_labels_by_target(est: CausalChange) -> dict[str, list[int]]:
-    components = getattr(est, "mixture_components_", None)
+    components = getattr(est, "cmm_components", None)
 
     if components is None:
         return {}

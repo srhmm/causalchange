@@ -21,7 +21,7 @@ from causalchange.domain.tabular import TabularDomain
 from causalchange.domain.temporal import TemporalDomain
 from causalchange.engines.tabular import TabularDiscoveryEngine
 from causalchange.engines.temporal import TemporalDiscoveryEngine
-from causalchange.scoring.cmm import SCMScoreCMM
+from causalchange.scoring.regression_mixtures import SCMScoreCMM
 from causalchange.scoring.tabular import SCMScoreTabular
 from causalchange.scoring.temporal import SCMScoreTemporal
 

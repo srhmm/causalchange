@@ -32,19 +32,18 @@
 
 | Attribute                                                         | Meaning                                                         |
 | ----------------------------------------------------------------- | --------------------------------------------------------------- |
-| `mixture_components_`                                             | Final-graph mixture assignments and responsibilities per target |
-| `cmm_components_`                                                 | Alias for `mixture_components_`                                 |
+| `cmm_components_`                                             | Final-graph mixture assignments and responsibilities per target |
 | `cmm_labels_`                                                     | Hard component labels per target                                |
-| `mixture_components_.target_components[target].labels`            | Hard component assignment for each row for one target mechanism |
-| `mixture_components_.target_components[target].responsibilities`  | Posterior component probabilities for each row and component    |
-| `mixture_components_.target_components[target].component_weights` | Estimated component weights for one target mechanism            |
-| `mixture_components_.target_components[target].parents`           | Final parent set used for that target mechanism                 |
-| `mixture_components_.target_components[target].score`             | Final local mixture score for that target mechanism             |
-| `mixture_components_.target_components[target].n_components`      | Number of selected mixture components for that target mechanism |
-| `mixture_components_.target_components[target].diagnostics`       | Target-level mixture diagnostics                                |
-| `mixture_components_.global_labels`                               | Optional global component labels, if available                  |
-| `mixture_components_.global_responsibilities`                     | Optional global component responsibilities, if available        |
-| `mixture_components_.diagnostics`                                 | Overall CMM mixture extraction diagnostics                      |
+| `cmm_components_.target_components[target].labels`            | Hard component assignment for each row for one target mechanism |
+| `cmm_components_.target_components[target].responsibilities`  | Posterior component probabilities for each row and component    |
+| `cmm_components_.target_components[target].component_weights` | Estimated component weights for one target mechanism            |
+| `cmm_components_.target_components[target].parents`           | Final parent set used for that target mechanism                 |
+| `cmm_components_.target_components[target].score`             | Final local mixture score for that target mechanism             |
+| `cmm_components_.target_components[target].n_components`      | Number of selected mixture components for that target mechanism |
+| `cmm_components_.target_components[target].diagnostics`       | Target-level mixture diagnostics                                |
+| `cmm_components_.global_labels`                               | Optional global component labels, if available                  |
+| `cmm_components_.global_responsibilities`                     | Optional global component responsibilities, if available        |
+| `cmm_components_.diagnostics`                                 | Overall CMM mixture extraction diagnostics                      |
 
 ---
 

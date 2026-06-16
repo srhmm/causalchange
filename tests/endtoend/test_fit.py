@@ -3,10 +3,10 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from scoring.regression import fit_conditional_mixture
 
 from causalchange import CMM, Linc, SpaceTime, Topic
 from causalchange.core.types import MixedSCMType
+from causalchange.scoring.regression import fit_regression_mixture
 from tests.util import has_rpy2_flexmix
 
 
@@ -137,10 +137,10 @@ def test_cmm_wrapper_exposes_mixture_components():
     ).fit(df)
 
     assert est.graph_ is not None
-    assert est.mixture_components_ is not None
-    assert est.cmm_components_ is est.mixture_components_
+    assert est.cmm_components_ is not None
+    assert est.cmm_components_ is est.cmm_components_
 
-    mixture = est.mixture_components_
+    mixture = est.cmm_components_
 
     assert mixture.global_labels is None
     assert mixture.global_responsibilities is None
@@ -172,7 +172,7 @@ def test_fit_conditional_mixture_without_parents_returns_labels_and_responsibili
     x1 = 2.0 * x0 + rng.normal(scale=0.1, size=n)
     X = np.column_stack([x0, x1])
 
-    res = fit_conditional_mixture(
+    res = fit_regression_mixture(
         MixedSCMType.LIN,
         X=X,
         node_i=0,
@@ -210,7 +210,7 @@ def test_cmm_mixture_result_helpers():
         seed=1,
     ).fit(df)
 
-    mixture = est.mixture_components_
+    mixture = est.cmm_components_
     assert mixture is not None
 
     target = next(iter(mixture.target_components))
@@ -233,5 +233,5 @@ def test_topic_wrapper_has_no_mixture_components():
     est = Topic(score_type="lin", seed=0).fit(df)
 
     assert est.graph_ is not None
-    assert est.mixture_components_ is None
+    assert est.cmm_components_ is None
     assert est.cmm_components_ is None

@@ -16,7 +16,7 @@ from sklearn.preprocessing import SplineTransformer, StandardScaler
 from causalchange.core.types import MixedSCMType
 
 
-def fit_score_functional_model(
+def fit_regression_score(
     X: np.ndarray,
     pa: Sequence[int],
     target: int,
@@ -50,7 +50,6 @@ def fit_score_gp(Xtr, ytr, return_residuals=False, **params):
     """
     GP refined-MDL score for a local causal mechanism.
 
-    This implements the SPACETIME-style local score:
 
         -log p(y | f, sigma^2) + ||f||_K^2
         + 0.5 log det(I + sigma^{-2} K)
@@ -111,9 +110,7 @@ def fit_score_gp(Xtr, ytr, return_residuals=False, **params):
     min_noise_var = float(params.get("min_noise_var", 1e-8))
     norm_weight = float(params.get("rkhs_norm_weight", 1.0))
 
-    # Optional small hyperparameter coding cost. Default False because the
-    # paper's displayed refined-MDL score already contains the GP complexity
-    # term through the log determinant.
+    # unnecessary
     use_bic = bool(params.get("bic_penalty", False))
     k_params = int(params.get("k_params", 3))
 
@@ -1148,7 +1145,7 @@ def _require_rpy2_flexmix():
     return robjects, Formula, default_converter, numpy2ri, localconverter, flexmix
 
 
-def fit_conditional_mixture(
+def fit_regression_mixture(
     mty: MixedSCMType,
     X,
     node_i,

@@ -23,19 +23,19 @@ from causalchange.config.benchmark_config import (
 from causalchange.core.types import (
     MechanismClusteringScope,
 )
-from experiments.benchmarks.synthetic.generator_time import BenchmarkSample
-from experiments.benchmarks.synthetic.generators import (
-    sample_mixed_continuous,
-    sample_multi_continuous,
-    sample_multi_temporal,
-    sample_single_continuous,
-    sample_single_temporal,
-)
 from experiments.benchmarks.synthetic.metrics import compute_metrics
 from experiments.benchmarks.synthetic.metrics_time import (
     compute_changepoint_metrics,
     compute_target_partition_metrics,
     compute_target_regime_partition_metrics_over_time,
+)
+from experiments.benchmarks.synthetic.sample import BenchmarkSample
+from experiments.benchmarks.synthetic.sample_tabular import (
+    sample_mixed_continuous,
+    sample_multi_continuous,
+    sample_multi_temporal,
+    sample_single_continuous,
+    sample_single_temporal,
 )
 from experiments.benchmarks.utils import (
     _compute_cmm_mixture_metrics,
@@ -60,8 +60,6 @@ def run_sampling(config: DataConfig) -> BenchmarkSample:
         sampling_fun = sampler_by_setting[config.setting]
     except KeyError as exc:
         raise NotImplementedError(f"Unknown sampling fun for {config.setting!r}") from exc
-
-    result = sampling_fun(config)
 
     result = sampling_fun(config)
 

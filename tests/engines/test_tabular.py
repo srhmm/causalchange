@@ -81,7 +81,6 @@ def test_tabular_engine_fit_local_score_and_discover():
     engine.fit(pd.DataFrame({"x": [1, 2], "y": [3, 4]}))
 
     assert engine.local_score("y", ("x",)) == 0.0
-    assert engine.last_context_combo_ is not None
 
     result = engine.discover()
     assert isinstance(result, TabularResult)

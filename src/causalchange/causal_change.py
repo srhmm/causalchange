@@ -14,7 +14,6 @@ from causalchange.config.causal_change_config import (
 from causalchange.core.results import (
     CausalChangeResult,
     CMMMixtureResult,
-    ContextCombinationResult,
     TabularResult,
     TemporalResult,
 )
@@ -37,11 +36,7 @@ class CausalChange:
         lg: logging.Logger | None = None,
         vb: int = 0,
     ):
-        if not isinstance(cfg, (CausalChangeConfigTabular | CausalChangeConfigTemporal)):
-            raise TypeError(
-                "cfg must be a CausalChangeConfigTabular or CausalChangeConfigTemporal instance. "
-                "Use CausalChange.tabular(...), CausalChange.temporal(...), or pass a validated config."
-            )
+        assert isinstance(cfg, (CausalChangeConfigTabular | CausalChangeConfigTemporal))
 
         self.cfg = cfg
         self.lg = lg
@@ -66,7 +61,7 @@ class CausalChange:
         vb: int = 0,
         **config_kwargs: Any,
     ) -> CausalChange:
-        """Build a tabular estimator from CausalChangeConfigTabular fields."""
+        """CausalChangeConfigTabular to tabular estimator"""
         cfg = CausalChangeConfigTabular.model_validate(config_kwargs)
         return cls(cfg, var_nms=var_nms, lg=lg, vb=vb)
 
@@ -79,7 +74,7 @@ class CausalChange:
         vb: int = 0,
         **config_kwargs: Any,
     ) -> CausalChange:
-        """Build a temporal estimator from CausalChangeConfigTemporal fields."""
+        """CausalChangeConfigTemporal to temporal estimator"""
         cfg = CausalChangeConfigTemporal.model_validate(config_kwargs)
         return cls(cfg, var_nms=var_nms, lg=lg, vb=vb)
 
@@ -92,7 +87,7 @@ class CausalChange:
         lg: logging.Logger | None = None,
         vb: int = 0,
     ) -> CausalChange:
-        """Build an estimator from a dict-like object using data_mode to choose the config class."""
+        """estimator from a dict-like object using data_mode to choose the config class."""
         if "data_mode" not in data:
             raise ValueError("data_mode is required to choose tabular vs temporal config.")
 
@@ -103,6 +98,7 @@ class CausalChange:
         return cls(cfg, var_nms=var_nms, lg=lg, vb=vb)
 
     def fit(self, X: pd.DataFrame) -> CausalChange:
+        """main fit function"""
         X_checked = self.check_input(X)
 
         self.engine_ = EngineFactory.from_config(self.cfg)
@@ -200,21 +196,13 @@ class CausalChange:
         return cast(TemporalResult, result).grid_clusters
 
     @property
-    def mixture_components_(self) -> CMMMixtureResult | None:
+    def cmm_components_(self) -> CMMMixtureResult | None:
         result = self.get_result()
 
         if self.cfg.data_mode.is_temporal():
             return None
 
         return cast(TabularResult, result).mixture_components
-
-    @property
-    def cmm_components_(self) -> CMMMixtureResult | None:
-        return self.mixture_components_
-
-    @property
-    def last_context_combo_(self) -> ContextCombinationResult | None:
-        return None if self.engine_ is None else getattr(self.engine_, "last_context_combo_", None)
 
     def _require_fitted(self) -> None:
         if self.engine_ is None or self.result_ is None:

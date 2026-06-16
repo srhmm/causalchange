@@ -13,7 +13,8 @@ from causalchange.config.benchmark_config import (
     SingleDataConfig,
     SingleTemporalDataConfig,
 )
-from experiments.benchmarks.synthetic.generator_time import MixedSyntheticResult, sample_spacetime_synthetic
+from experiments.benchmarks.synthetic.sample import MixedSyntheticResult
+from experiments.benchmarks.synthetic.sample_time import sample_spacetime_synthetic
 
 
 def sample_single_continuous(config: SingleDataConfig):

@@ -10,7 +10,7 @@ import pandas as pd
 from causalchange.config.causal_change_config import CausalChangeConfigBase
 from causalchange.core.results import CMMMixtureResult, CMMTargetMixtureResult
 from causalchange.core.types import MixedSCMType
-from causalchange.scoring.regression import fit_conditional_mixture
+from causalchange.scoring.regression import fit_regression_mixture
 from causalchange.scoring.tabular import SCMScoreTabular
 
 
@@ -138,7 +138,7 @@ class SCMScoreCMM(SCMScoreTabular):
         j = self._col_index[effect]
         pa = [self._col_index[p] for p in parents]
 
-        res = fit_conditional_mixture(
+        res = fit_regression_mixture(
             mty=self.mix_type,
             X=self._edges.X,
             node_i=j,

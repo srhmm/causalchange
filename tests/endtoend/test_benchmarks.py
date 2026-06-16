@@ -75,15 +75,8 @@ def test_cmm_mixed_benchmark_reports_per_target_mixture_metrics():
             },
             "algo": {
                 "name": "cmm",
-                "score_type": "lin",
                 "mix_type": "lin",
                 "k_max": 2,
-                "lambda_mix": 0.0,
-                "hybrid_mixing": False,
-                "max_em_iter": 10,
-                "n_init": 1,
-                "tol": 1e-4,
-                "ridge": 1e-8,
             },
         }
     )

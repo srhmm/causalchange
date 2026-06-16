@@ -9,7 +9,7 @@ import pandas as pd
 from causalchange.config.causal_change_config import CausalChangeConfigBase
 from causalchange.core.types import DataMode, MissingMode, ScoreType
 from causalchange.scoring.regression import (
-    fit_score_functional_model,
+    fit_regression_score,
     fit_score_gam,
     fit_score_gp,
     fit_score_krr,
@@ -66,11 +66,7 @@ class BaseLocalScorer:  # ABC):
         base_parents: Iterable[Any],
         candidate_parent: Any,
     ) -> float:
-        """Score gain from adding candidate_parent to base_parents.
-
-        Observed-data scorers use ordinary local-score differences.
-        Missing-aware scorers should override this method.
-        """
+        """Score gain from adding candidate_parent to base_parents"""
 
         if self.missing_mode == MissingMode.MISSING:
             raise NotImplementedError(
@@ -188,7 +184,7 @@ class SCMScore:
             return (score, res) if ret_full_result else score
 
         score_fun = self.get_score_fun()
-        score, res = fit_score_functional_model(
+        score, res = fit_regression_score(
             self.X,
             pa=pa_key,
             target=j,
