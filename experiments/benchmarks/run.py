@@ -97,11 +97,8 @@ def run_algo(sample: BenchmarkSample, data_cfg: DataConfig, algo_cfg: AlgoConfig
     if algo_cfg.name == "cmm":
         cmm_cfg = cast(CmmAlgoConfig, algo_cfg)
         return CMM(
-            score_type=cmm_cfg.score_type,
             mix_type=cmm_cfg.mix_type,
             k_max=cmm_cfg.k_max,
-            lambda_mix=cmm_cfg.lambda_mix,
-            hybrid_mixing=cmm_cfg.hybrid_mixing,
             score_kwargs={
                 "max_em_iter": cmm_cfg.max_em_iter,
                 "n_init": cmm_cfg.n_init,

@@ -1,6 +1,8 @@
+import pytest
 from config.benchmark_config import BenchmarkConfig
 
 from experiments.benchmarks.run import iter_valid_configs, run_on_config
+from tests.util import has_rpy2_flexmix
 
 
 def test_benchmark_grid_single_topic_smoke():
@@ -52,6 +54,10 @@ def test_benchmark_grid_spacetime_smoke_no_changepoints():
     assert "time_s" in metrics
 
 
+@pytest.mark.skipif(
+    not has_rpy2_flexmix(),
+    reason="requires R, rpy2, and the R package flexmix",
+)
 def test_cmm_mixed_benchmark_reports_per_target_mixture_metrics():
     cfg = BenchmarkConfig.model_validate(
         {

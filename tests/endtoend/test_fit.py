@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
+from scoring.regression import fit_conditional_mixture
 
 from causalchange import CMM, Linc, SpaceTime, Topic
 from causalchange.core.types import MixedSCMType
+from tests.util import has_rpy2_flexmix
 
 
 def make_chain_data(n: int = 300, seed: int = 0) -> pd.DataFrame:
@@ -90,6 +93,10 @@ def test_spacetime_fit_tiny_time_series_without_optional_extras():
     assert cc.topological_order_ is not None
 
 
+@pytest.mark.skipif(
+    not has_rpy2_flexmix(),
+    reason="requires R, rpy2, and the R package flexmix",
+)
 def test_cmm_wrapper_fits_small_dataframe():
     rng = np.random.default_rng(0)
     n = 80
@@ -101,13 +108,17 @@ def test_cmm_wrapper_fits_small_dataframe():
 
     df = pd.DataFrame({"X0": x0, "X1": x1, "X2": x2})
 
-    est = CMM(mix_type="lin", k_max=2, score_type="lin").fit(df)
+    est = CMM(mix_type="lin", k_max=2).fit(df)
 
     assert est.graph_ is not None
     assert set(est.graph_.nodes()) == {"X0", "X1", "X2"}
     assert est.public_config_.mix_type == MixedSCMType.LIN
 
 
+@pytest.mark.skipif(
+    not has_rpy2_flexmix(),
+    reason="requires R, rpy2, and the R package flexmix",
+)
 def test_cmm_wrapper_exposes_mixture_components():
     rng = np.random.default_rng(0)
     n = 80
@@ -122,9 +133,6 @@ def test_cmm_wrapper_exposes_mixture_components():
     est = CMM(
         mix_type="lin",
         k_max=2,
-        score_type="lin",
-        lambda_mix=0.0,
-        hybrid_mixing=False,
         seed=0,
     ).fit(df)
 
@@ -155,6 +163,36 @@ def test_cmm_wrapper_exposes_mixture_components():
             assert np.isclose(sum(row), 1.0, atol=1e-6)
 
 
+def test_fit_conditional_mixture_without_parents_returns_labels_and_responsibilities():
+    rng = np.random.default_rng(0)
+    n = 60
+
+    z = rng.integers(0, 2, size=n)
+    x0 = rng.normal(loc=4.0 * z, scale=0.2)
+    x1 = 2.0 * x0 + rng.normal(scale=0.1, size=n)
+    X = np.column_stack([x0, x1])
+
+    res = fit_conditional_mixture(
+        MixedSCMType.LIN,
+        X=X,
+        node_i=0,
+        pa_i=[],
+        range_k=range(1, 3),
+        resid=None,
+        true_idl=None,
+    )
+
+    assert "idl" in res
+    assert "pproba" in res
+    assert res["idl"].shape == (n,)
+    assert res["pproba"].shape[0] == n
+    assert res["best_k"] >= 1
+
+
+@pytest.mark.skipif(
+    not has_rpy2_flexmix(),
+    reason="requires R, rpy2, and the R package flexmix",
+)
 def test_cmm_mixture_result_helpers():
     rng = np.random.default_rng(1)
     n = 80
@@ -169,9 +207,6 @@ def test_cmm_mixture_result_helpers():
     est = CMM(
         mix_type="lin",
         k_max=2,
-        score_type="lin",
-        lambda_mix=0.0,
-        hybrid_mixing=False,
         seed=1,
     ).fit(df)
 
