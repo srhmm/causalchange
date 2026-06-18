@@ -14,6 +14,7 @@ from causalchange.config.causal_change_config import (
 from causalchange.core.results import (
     CausalChangeResult,
     CMMMixtureResult,
+    MultiContextResult,
     TabularResult,
     TemporalResult,
 )
@@ -203,6 +204,9 @@ class CausalChange:
             return None
 
         return cast(TabularResult, result).mixture_components
+
+    def linc_components_(self) -> MultiContextResult:
+        return self.engine_.last_context_combo_
 
     def _require_fitted(self) -> None:
         if self.engine_ is None or self.result_ is None:

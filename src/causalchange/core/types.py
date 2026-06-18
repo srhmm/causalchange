@@ -1,6 +1,4 @@
-from dataclasses import dataclass
 from enum import Enum
-from typing import Literal
 
 import numpy as np
 
@@ -212,14 +210,14 @@ class StatisticalTestingMethod(str, Enum):
     NONE = "none"
 
 
-@dataclass(frozen=True)
-class ContextCombinationKwargs:
-    method: Literal["components", "agglomerative"] = "agglomerative"
-    gain_threshold: float = 0.0
+class ContextCombinationKwargs(str, Enum):
+    SKIP = "skip"
+    AGGLOMERATIVE = "agglomerative"
+    COMPONENTS = "components"
 
 
-def util_score_type_get_all(include_skip: bool = False):
-    values = list(ScoreType)
-    if include_skip:
-        return values
-    return [v for v in values if v != ScoreType.SKIP]
+# todo consider per Algo? or config per tabular/temporal?
+# @dataclass(frozen=True)
+# class LINCKwargs:
+#    method: Literal["components", "agglomerative"] = "components"
+#    ...

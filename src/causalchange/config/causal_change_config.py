@@ -66,7 +66,8 @@ class CausalChangeConfigTabular(CausalChangeConfigBase):
 
     context_mode: TabularContextMode = TabularContextMode.SKIP
     context_combination_method: TabularContextMethod = TabularContextMethod.SKIP
-    context_combination_kwargs: ContextCombinationKwargs = Field(default_factory=ContextCombinationKwargs)
+    context_combination_kwargs: ContextCombinationKwargs = ContextCombinationKwargs.SKIP
+    context_gain_threshold: float = 0.0
 
     missing_mode: MissingMode = MissingMode.OBSERVED
     context_col: ContextColumn = "context"

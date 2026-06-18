@@ -235,3 +235,34 @@ def test_topic_wrapper_has_no_mixture_components():
     assert est.graph_ is not None
     assert est.cmm_components_ is None
     assert est.cmm_components_ is None
+
+
+def test_linc_fit_runs_and_exposes_context_combination_result():
+    X = pd.DataFrame(
+        {
+            "context": [0, 0, 0, 1, 1, 1, 2, 2, 2],
+            "x": [0.0, 1.0, 2.0] * 3,
+            "y": [
+                0.0,
+                1.0,
+                2.0,  # context 0: y = x
+                0.0,
+                1.0,
+                2.0,  # context 1: y = x
+                0.0,
+                2.0,
+                4.0,  # context 2: y = 2x
+            ],
+        }
+    )
+
+    est = Linc(
+        score_type="lin",
+        context_col="context",
+        seed=0,
+    ).fit(X)
+
+    assert est.graph_ is not None
+    assert "context" not in est.graph_.nodes
+    assert est.linc_components_() is not None
+    assert "groups" in est.linc_components_().diagnostics

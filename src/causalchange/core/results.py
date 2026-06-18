@@ -30,7 +30,7 @@ class ChangepointResult:
 
 
 @dataclass(frozen=True)
-class ContextCombinationResult:
+class MultiContextResult:
     """returned by context combination algo"""
 
     total: float

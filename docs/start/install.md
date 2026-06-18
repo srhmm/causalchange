@@ -3,6 +3,8 @@
 ---
 **Core** `pip install causalchange`
 
+**CMM extras** `pip install "causalchange[cmm]"`
+
 **SpaceTime extras** `pip install "causalchange[spacetime]"`
 
 **Notebooks extras** `pip install "causalchange[notebooks]"`

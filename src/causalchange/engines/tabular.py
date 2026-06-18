@@ -12,7 +12,7 @@ from causalchange.core.protocols import (
     TabularScoringProtocol,
     TabularSearchProtocol,
 )
-from causalchange.core.results import CMMMixtureResult, ContextCombinationResult, TabularResult
+from causalchange.core.results import CMMMixtureResult, MultiContextResult, TabularResult
 from causalchange.core.types import DataMode, PostprocessingMode
 from causalchange.engines.base import BaseDiscoveryEngine
 
@@ -46,8 +46,8 @@ class TabularDiscoveryEngine(BaseDiscoveryEngine[TabularDomainProtocol, TabularS
 
         self.X0_: pd.DataFrame | None = None
         self.contexts_: dict[Hashable, pd.DataFrame] | None = None
-        self.last_context_combo_: ContextCombinationResult | None = None
-        self._score_cache: dict[tuple[Any, tuple[Any, ...]], ContextCombinationResult] = {}
+        self.last_context_combo_: MultiContextResult | None = None
+        self._score_cache: dict[tuple[Any, tuple[Any, ...]], MultiContextResult] = {}
 
     def fit(self, X: pd.DataFrame) -> TabularDiscoveryEngine:
         self.contexts_ = self.context_preproc.make_contexts(X)

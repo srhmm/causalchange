@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from causalchange.core.results import ContextCombinationResult
+from causalchange.core.results import MultiContextResult
 from causalchange.core.types import ContextCombinationKwargs
 
 
@@ -20,7 +20,7 @@ class SkipCombination:
         effect: Any,
         parents: tuple[Any, ...],
         score_ctx: Callable[[pd.DataFrame], float],
-    ) -> ContextCombinationResult:
+    ) -> MultiContextResult:
         if len(contexts) != 1:
             raise ValueError(
                 f"SkipCombination expects exactly one context, got {len(contexts)}. "
@@ -30,7 +30,7 @@ class SkipCombination:
         ctx, df = next(iter(contexts.items()))
         score = float(score_ctx(df))
 
-        return ContextCombinationResult(
+        return MultiContextResult(
             total=score,
             diagnostics={
                 "mode": "none",
@@ -43,8 +43,9 @@ class SkipCombination:
 
 
 class LINCContextCombination:
-    def __init__(self, *, grouping: ContextCombinationKwargs, higher_is_better: bool):
+    def __init__(self, *, grouping: ContextCombinationKwargs, gain_threshold: float, higher_is_better: bool):
         self.grouping = grouping
+        self.gain_threshold = gain_threshold
         self.higher_is_better = bool(higher_is_better)
         self.last_gain_matrix: np.ndarray | None = None
         self.last_gain_contexts: tuple[Hashable, ...] | None = None
@@ -53,7 +54,7 @@ class LINCContextCombination:
         return (new_score - old_score) if self.higher_is_better else (old_score - new_score)
 
     def score_significant(self, gain: float) -> bool:
-        return gain > float(self.grouping.gain_threshold)
+        return gain > float(self.gain_threshold)
 
     def combine_contexts(
         self,
@@ -62,18 +63,18 @@ class LINCContextCombination:
         effect: Any,
         parents: tuple[Any, ...],
         score_ctx: Callable[[pd.DataFrame], float],
-    ) -> ContextCombinationResult:
+    ) -> MultiContextResult:
         # effect/parents are unused for LINC (scoring is encapsulated by score_ctx)
         ctx_ids = list(contexts.keys())
         n = len(ctx_ids)
         if n == 0:
-            return ContextCombinationResult(total=0.0, diagnostics={})
+            raise ValueError("LINCContextCombination requires at least one context.")
 
         # per-context
         ctx_scores: dict[Hashable, float] = {c: float(score_ctx(contexts[c])) for c in ctx_ids}
 
         if n == 1:
-            return ContextCombinationResult(
+            return MultiContextResult(
                 total=float(ctx_scores[ctx_ids[0]]),
                 diagnostics={
                     "groups": [frozenset([ctx_ids[0]])],
@@ -81,9 +82,9 @@ class LINCContextCombination:
                 },
             )
 
-        if self.grouping.method == "agglomerative":
+        if self.grouping.value == ContextCombinationKwargs.AGGLOMERATIVE:
             total, diag = self._agglomerative(ctx_ids, contexts, score_ctx)
-            return ContextCombinationResult(total=float(total), diagnostics=diag)
+            return MultiContextResult(total=float(total), diagnostics=diag)
 
         # components method
         gain = np.zeros((n, n), dtype=float)
@@ -117,7 +118,7 @@ class LINCContextCombination:
             "groups": [frozenset(c) for c in components],
             "ctx_scores": ctx_scores,
         }
-        return ContextCombinationResult(total=float(total), diagnostics=diag)
+        return MultiContextResult(total=float(total), diagnostics=diag)
 
     def _agglomerative(self, ctx_ids, contexts, score_ctx):
         groups = [frozenset([c]) for c in ctx_ids]
@@ -203,10 +204,10 @@ class CHAINContextCombination:
         effect: Any,
         parents: tuple[Any, ...],
         score_ctx: Callable[[pd.DataFrame], float],
-    ) -> ContextCombinationResult:
+    ) -> MultiContextResult:
         ctx_ids = list(contexts.keys())
         if not ctx_ids:
-            return ContextCombinationResult(total=0.0, diagnostics={})
+            return MultiContextResult(total=0.0, diagnostics={})
 
         # fit term
         fit = 0.0
@@ -214,7 +215,7 @@ class CHAINContextCombination:
             fit += float(score_ctx(contexts[c]))
 
         if self.lambda_inv <= 0.0 or len(ctx_ids) <= 1:
-            return ContextCombinationResult(total=float(fit), diagnostics={"fit": float(fit), "penalty": 0.0})
+            return MultiContextResult(total=float(fit), diagnostics={"fit": float(fit), "penalty": 0.0})
 
         pen = float(self._invariance_penalty(contexts, effect, parents))
         if self.higher_is_better:
@@ -222,7 +223,7 @@ class CHAINContextCombination:
         else:
             total = float(fit + self.lambda_inv * pen)
 
-        return ContextCombinationResult(
+        return MultiContextResult(
             total=total,
             diagnostics={
                 "fit": float(fit),

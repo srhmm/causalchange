@@ -123,9 +123,9 @@ class Linc(CausalChange):
             score_type=ScoreType(score_type),
             context_mode=TabularContextMode.ORACLE,
             context_combination_method=TabularContextMethod.LINC,
-            context_combination_kwargs=(
-                ContextCombinationKwargs() if context_combination_kwargs is None else context_combination_kwargs
-            ),
+            context_combination_kwargs=context_combination_kwargs
+            if context_combination_kwargs is not None
+            else ContextCombinationKwargs.AGGLOMERATIVE,
             context_col=context_col,
             postprocessing_mode=PostprocessingMode(postprocessing_mode),
             score_kwargs={} if score_kwargs is None else dict(score_kwargs),

@@ -26,7 +26,7 @@ print(cc.graph_.edges())
 
 ---
 
-### Multi-context tabular data with LINC  [[2]](references.md)
+### Multi-context causal discovery with LINC  [[2]](references.md)
 
 **Notebook** [`02_linc_tutorial.ipynb`](../../notebooks/02_linc_tutorial.ipynb)
 
@@ -79,7 +79,7 @@ Both are included in `pip install "causalchange[spacetime]"`.
 
 ---
 
-### Causal Clustering with CMMs  [[4]](references.md)
+### Causal clustering/Discovering latent population mixtures with CMMs  [[4]](references.md)
 **Notebook** [`04_cmm_tutorial.ipynb`](../../notebooks/04_cmm_tutorial.ipynb)
 
 **Example usage**

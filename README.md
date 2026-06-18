@@ -1,15 +1,14 @@
 ## CausalChange
 
-causalchange provides causal discovery algorithms with focus on addressing different forms of
-distribution shifts.
+ `causalchange` provides implementations of some score-based algorithms for causal discovery,
+ with focus on addressing different forms of distribution shifts.
 
 ---
 
 ### Setup
 
- causalchange is available on PyPi. Install the core package with `pip install causalchange`, with additional
- dependencies needed for the SpaceTime algorithm using `pip install causalchange[spacetime]`, resp. notebooks using
- `pip install causalchange[notebooks]`.
+Install the core package with `pip install causalchange`, and with additional
+dependencies for the resp. algorithms using `pip install causalchange[spacetime]` and `pip install causalchange[cmm]`.
 
 ---
 
@@ -42,11 +41,11 @@ print("Edges:", sorted(cc.graph_.edges()))
 
 ### Further Examples
 
-See the `notebooks/` show basic usage on small synthetic examples,
+See the `notebooks/` for basic usage on small synthetic examples. The algorithms are
 *   [TOPIC](notebooks/01_topic_tutorial.ipynb), for score-based causal DAG discovery from tabular data in topological order [1],
-*   [LINC](notebooks/02_linc_tutorial.ipynb), for causal discovery from multiple contexts, i.e., multiple tabular datasets under latent distribution shifts/interventions [2],
-*   [SpaceTime](notebooks/03_spacetime_tutorial.ipynb), for temporal causal discovery and changepoint detection in time series or multi-context time series [3].
-*   [CMM](notebooks/03_spacetime_tutorial.ipynb), for score-based tabular causal discovery from latent mixtures, i.e., a tabular dataset cmopof populations/contexts/interventions [4].
+*   [LINC](notebooks/02_linc_tutorial.ipynb), for score-based causal discovery from multiple contexts, i.e., multiple tabular datasets under latent distribution shifts/interventions [2],
+*   [CMM](notebooks/03_spacetime_tutorial.ipynb), for score-based causal discovery from latent mixtures, i.e., a tabular dataset comprised of different hidden populations/contexts/interventions [3].
+*   [SpaceTime](notebooks/03_spacetime_tutorial.ipynb), for temporal causal discovery, changepoint detection, and causal clustering analysis in time series or multi-context time series [4].
 
 ---
 ### Documentation
@@ -62,6 +61,6 @@ See the [docs/](docs/) for additional documentation.
 >
 > [2] Mameche, S., Kaltenpoth, D., and Vreeken, J. *Learning Causal Models under Independent Changes.* NeurIPS, 2023.
 >
-> [3] Mameche, S., Cornanguer, L., Ninad, U., and Vreeken, J. *SpaceTime: Causal Discovery from Non-stationary Time Series.* AAAI, 2025.
+> [3] Mameche, S., Kalofolias, J., and Vreeken, J. *Causal Mixture Models: Characterization and Discovery.* NeurIPS, 2025.
 >
-> [4] Mameche, S., Kalofolias, J., and Vreeken, J. *Causal Mixture Models: Characterization and Discovery.* NeurIPS, 2025.
+> [4] Mameche, S., Cornanguer, L., Ninad, U., and Vreeken, J. *SpaceTime: Causal Discovery from Non-stationary Time Series.* AAAI, 2025.

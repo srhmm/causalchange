@@ -41,8 +41,7 @@ if __name__ == "__main__":
 
                 metrics = run_on_config(cfg)
                 key = config_group_key(cfg)
-                print(metrics)
-                print(metrics["edge_f1"])
+
                 if key not in groups:
                     example = cfg.model_dump()
                     example["data"].pop("seed", None)

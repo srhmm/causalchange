@@ -203,7 +203,7 @@ def _flatten_dict(d: dict, *, prefix: str = "") -> list[str]:
 
 
 def _get_config_label(config) -> str:
-    d = config.model_dump(mode="json", exclude_none=True)
+    d = config  # config.model_dump(mode="json", exclude_none=True)
 
     d.get("data", {}).pop("seed", None)
 

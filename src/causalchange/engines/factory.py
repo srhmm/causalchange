@@ -62,6 +62,7 @@ class EngineFactory:
         context_combination = (
             LINCContextCombination(
                 grouping=cfg.context_combination_kwargs,
+                gain_threshold=cfg.context_gain_threshold,
                 higher_is_better=scoring.higher_is_better,
             )
             if cfg.context_combination_method == TabularContextMethod.LINC
@@ -70,7 +71,7 @@ class EngineFactory:
                     higher_is_better=scoring.higher_is_better,
                     seed=cfg.seed,
                 )
-                if cfg.context_combination_method == TabularContextMethod.CHAIN
+                if cfg.context_combination_method == TabularContextMethod.CHAIN  # used?
                 else SkipCombination()
             )
         )
