@@ -22,6 +22,7 @@ from causalchange.core.types import (
     StatisticalTestingMethod,
     TabularContextMethod,
     TabularContextMode,
+    TabularMechanismClusteringMethod,
 )
 
 ScoreName = Literal["lin", "gam", "spline", "krr", "gp", "ff"]
@@ -36,6 +37,11 @@ ClusteringScopeName = Literal["skip", "regimes", "contexts", "regimes-contexts"]
 ClusteringMethodName = Literal["skip", "statistical-testing", "mechanism-clustering"]
 TestingMethodName = Literal["skip", "kernel", "none"]
 PeltPenaltyName = Literal["auto", "bic", "mbic"]
+TabularMechanismClusteringName = Literal[
+    "score-merge",
+    "statistical-testing",
+    "mechanism-clustering",
+]
 
 
 class Topic(CausalChange):
@@ -117,24 +123,48 @@ class Linc(CausalChange):
         context_col: str = "context",
         postprocessing_mode: PostprocessingName = "skip",
         context_combination_kwargs: ContextCombinationKwargs | None = None,
+        mechanism_clustering_method: TabularMechanismClusteringName = "score-merge",
+        testing_method: TestingMethodName | None = None,
+        mechanism_test_alpha: float = 0.05,
+        mechanism_clustering_n_clusters: int | None = None,
+        mechanism_clustering_distance_threshold: float | None = None,
         score_kwargs: dict[str, Any] | None = None,
         seed: int = 42,
         var_nms: list[str] | None = None,
     ):
+        resolved_method = TabularMechanismClusteringMethod(mechanism_clustering_method)
+
+        if testing_method is None:
+            resolved_testing_method = (
+                StatisticalTestingMethod.KERNEL
+                if resolved_method == TabularMechanismClusteringMethod.TESTING
+                else StatisticalTestingMethod.SKIP
+            )
+        else:
+            resolved_testing_method = StatisticalTestingMethod(testing_method)
+
         public_cfg = CausalChangeConfigTabular(
             data_mode=DataMode.TAB_CONTEXTS,
             graph_search=GraphSearch.TOPIC,
             score_type=ScoreType(score_type),
             context_mode=TabularContextMode.ORACLE,
             context_combination_method=TabularContextMethod.LINC,
-            context_combination_kwargs=context_combination_kwargs
-            if context_combination_kwargs is not None
-            else ContextCombinationKwargs.AGGLOMERATIVE,
+            context_combination_kwargs=(
+                context_combination_kwargs
+                if context_combination_kwargs is not None
+                else ContextCombinationKwargs.AGGLOMERATIVE
+            ),
             context_col=context_col,
+            mechanism_clustering_method=resolved_method,
+            testing_method=resolved_testing_method,
+            mechanism_test_alpha=mechanism_test_alpha,
+            mechanism_clustering_n_clusters=mechanism_clustering_n_clusters,
+            mechanism_clustering_distance_threshold=mechanism_clustering_distance_threshold,
             postprocessing_mode=PostprocessingMode(postprocessing_mode),
             score_kwargs={} if score_kwargs is None else dict(score_kwargs),
             seed=seed,
         )
+
         self.public_config_ = public_cfg
         super().__init__(public_cfg, var_nms=var_nms)
 

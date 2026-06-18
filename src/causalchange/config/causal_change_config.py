@@ -13,13 +13,13 @@ from causalchange.core.types import (
     GraphSearch,
     MechanismClusteringMethod,
     MechanismClusteringScope,
-    MissingMode,
     MixedSCMType,
     PostprocessingMode,
     ScoreType,
     StatisticalTestingMethod,
     TabularContextMethod,
     TabularContextMode,
+    TabularMechanismClusteringMethod,
 )
 
 Alpha = Annotated[float, Field(gt=0.0, lt=1.0)]
@@ -63,14 +63,17 @@ class CausalChangeConfigTabular(CausalChangeConfigBase):
     """configuration for tabular and multi-context tabular discovery"""
 
     mix_type: MixedSCMType = MixedSCMType.SKIP
-
     context_mode: TabularContextMode = TabularContextMode.SKIP
     context_combination_method: TabularContextMethod = TabularContextMethod.SKIP
-    context_combination_kwargs: ContextCombinationKwargs = ContextCombinationKwargs.SKIP
-    context_gain_threshold: float = 0.0
-
-    missing_mode: MissingMode = MissingMode.OBSERVED
+    context_combination_kwargs: ContextCombinationKwargs = Field(default_factory=ContextCombinationKwargs)
     context_col: ContextColumn = "context"
+    context_gain_threshold: float = Field(default=0.0)
+
+    mechanism_clustering_method: TabularMechanismClusteringMethod = TabularMechanismClusteringMethod.SCORE_MERGE
+    testing_method: StatisticalTestingMethod = StatisticalTestingMethod.SKIP
+    mechanism_test_alpha: Alpha = 0.05
+    mechanism_clustering_n_clusters: PositiveInt | None = None
+    mechanism_clustering_distance_threshold: PositiveFloat | None = None
 
     @model_validator(mode="after")
     def _validate_tabular_compatibility(self):
@@ -106,7 +109,32 @@ class CausalChangeConfigTabular(CausalChangeConfigBase):
             and self.context_mode != TabularContextMode.ORACLE
         ):
             raise ValueError("context_combination_method requires observed contexts: context_mode=ORACLE.")
+        if self.context_combination_method != TabularContextMethod.LINC:
+            if self.mechanism_clustering_method != TabularMechanismClusteringMethod.SCORE_MERGE:
+                raise ValueError("mechanism_clustering_method other than SCORE_MERGE is only valid for LINC.")
+            if self.testing_method != StatisticalTestingMethod.SKIP:
+                raise ValueError("testing_method is only valid for LINC statistical-testing.")
+            return self
 
+        if self.mechanism_clustering_method == TabularMechanismClusteringMethod.SCORE_MERGE:
+            if self.testing_method != StatisticalTestingMethod.SKIP:
+                raise ValueError(
+                    "testing_method is only valid when " "mechanism_clustering_method='statistical-testing'."
+                )
+
+        elif self.mechanism_clustering_method == TabularMechanismClusteringMethod.TESTING:
+            if self.testing_method == StatisticalTestingMethod.SKIP:
+                raise ValueError(
+                    "testing_method is required when " "mechanism_clustering_method='statistical-testing'."
+                )
+
+        elif self.mechanism_clustering_method == TabularMechanismClusteringMethod.CLUSTERING:
+            if self.testing_method != StatisticalTestingMethod.SKIP:
+                raise ValueError(
+                    "testing_method is only valid when " "mechanism_clustering_method='statistical-testing'."
+                )
+
+        return self
         return self
 
 
@@ -121,7 +149,7 @@ class CausalChangeConfigTemporal(CausalChangeConfigBase):
     clustering_method: MechanismClusteringMethod = MechanismClusteringMethod.SKIP
     testing_method: StatisticalTestingMethod = StatisticalTestingMethod.SKIP
 
-    missing_mode: MissingMode = MissingMode.OBSERVED
+    # missing_mode: MissingMode = MissingMode.OBSERVED
 
     tau_max: PositiveInt = 1
     d_min: PositiveInt = 30

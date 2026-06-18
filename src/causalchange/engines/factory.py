@@ -10,9 +10,9 @@ from causalchange.config.causal_change_config import (
 from causalchange.core.protocols import (
     TabularScoringProtocol,
 )
-from causalchange.core.types import GraphSearch, MixedSCMType, TabularContextMethod, TabularContextMode
+from causalchange.core.types import GraphSearch, MixedSCMType, TabularContextMode
 from causalchange.discovery.changepoints import ChangepointDetection
-from causalchange.discovery.context_combination import CHAINContextCombination, LINCContextCombination, SkipCombination
+from causalchange.discovery.context_combination import LINCContextCombination
 from causalchange.discovery.graph_tabular import GraphSearchTabularGreedy, GraphSearchTabularTopological
 from causalchange.discovery.graph_temporal import GraphSearchTemporalGreedy, GraphSearchTemporalTopological
 from causalchange.discovery.scm_clustering import TemporalSCMClustering
@@ -59,23 +59,26 @@ class EngineFactory:
         context_preprocessing = (
             MultiContextDomain(context_col=cfg.context_col) if cfg.data_mode.is_context() else SingleContextDomain()
         )
-        context_combination = (
-            LINCContextCombination(
-                grouping=cfg.context_combination_kwargs,
-                gain_threshold=cfg.context_gain_threshold,
-                higher_is_better=scoring.higher_is_better,
-            )
-            if cfg.context_combination_method == TabularContextMethod.LINC
-            else (
-                CHAINContextCombination(
-                    higher_is_better=scoring.higher_is_better,
-                    seed=cfg.seed,
-                )
-                if cfg.context_combination_method == TabularContextMethod.CHAIN  # used?
-                else SkipCombination()
-            )
+        context_combination = LINCContextCombination(
+            grouping=cfg.context_combination_kwargs,
+            gain_threshold=cfg.context_gain_threshold,
+            higher_is_better=scoring.higher_is_better,
+            mechanism_clustering_method=cfg.mechanism_clustering_method,
+            testing_method=cfg.testing_method,
+            mechanism_test_alpha=cfg.mechanism_test_alpha,
+            mechanism_clustering_n_clusters=cfg.mechanism_clustering_n_clusters,
+            mechanism_clustering_distance_threshold=cfg.mechanism_clustering_distance_threshold,
         )
-
+        # if cfg.context_combination_method == TabularContextMethod.LINC
+        # else (
+        #     CHAINContextCombination(
+        #         higher_is_better=scoring.higher_is_better,
+        #        seed=cfg.seed,
+        #    )
+        #    if cfg.context_combination_method == TabularContextMethod.CHAIN
+        #    else SkipCombination()
+        # )
+        # )
         return TabularDiscoveryEngine(
             data_mode=cfg.data_mode,
             domain=domain,

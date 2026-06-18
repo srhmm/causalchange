@@ -16,6 +16,7 @@ from causalchange.config.benchmark_config import (
     CmmAlgoConfig,
     ContextDataConfig,
     DataConfig,
+    LincAlgoConfig,
     MultiTemporalDataConfig,
     SpaceTimeAlgoConfig,
     TemporalDataConfig,
@@ -121,9 +122,16 @@ def run_algo(sample: BenchmarkSample, data_cfg: DataConfig, algo_cfg: AlgoConfig
 
     if algo_cfg.name == "linc":
         context_cfg = cast(ContextDataConfig, data_cfg)
+        linc_cfg = cast(LincAlgoConfig, algo_cfg)
+
         return Linc(
-            score_type=algo_cfg.score_type,
+            score_type=linc_cfg.score_type,
             context_col=context_cfg.context_col,
+            mechanism_clustering_method=linc_cfg.mechanism_clustering_method,
+            testing_method=linc_cfg.testing_method,
+            mechanism_test_alpha=linc_cfg.mechanism_test_alpha,
+            mechanism_clustering_n_clusters=linc_cfg.mechanism_clustering_n_clusters,
+            mechanism_clustering_distance_threshold=linc_cfg.mechanism_clustering_distance_threshold,
         ).fit(sample.df)
 
     if algo_cfg.name != "spacetime":
@@ -184,22 +192,35 @@ def run_scoring(
         metrics.update(cmm_metrics)
 
     if sample.multi is not None and getattr(est.cfg, "context_combination_method", None) == TabularContextMethod.LINC:
-        linc_context_partition_metrics = compute_target_partition_metrics(
-            sample.multi.context_labels_by_target,
-            _estimated_linc_context_labels_by_target(est),
+        estimated_context_labels_by_target = _estimated_linc_context_labels_by_target(est)
+        true_context_labels_by_target = sample.multi.context_labels_by_target
+
+        context_partition_metrics = compute_target_partition_metrics(
+            true_context_labels_by_target,
+            estimated_context_labels_by_target,
         )
 
-        metrics["context_partition_ari"] = linc_context_partition_metrics.ari_mean
-        metrics["context_partition_ami"] = linc_context_partition_metrics.ami_mean
-        metrics["context_partition_nmi"] = linc_context_partition_metrics.nmi_mean
+        metrics["context_partition_ari"] = context_partition_metrics.ari_mean
+        metrics["context_partition_ami"] = context_partition_metrics.ami_mean
+        metrics["context_partition_nmi"] = context_partition_metrics.nmi_mean
 
-        for target, value in linc_context_partition_metrics.ari_by_target.items():
-            metrics[f"context_partition_{target}_ari"] = float(value)
-        for target, value in linc_context_partition_metrics.ami_by_target.items():
-            metrics[f"context_partition_{target}_ami"] = float(value)
-        for target, value in linc_context_partition_metrics.nmi_by_target.items():
-            metrics[f"context_partition_{target}_nmi"] = float(value)
+        for target, value in context_partition_metrics.ari_by_target.items():
+            metrics[f"context_partition_{target}_ari"] = value
+        for target, value in context_partition_metrics.ami_by_target.items():
+            metrics[f"context_partition_{target}_ami"] = value
+        for target, value in context_partition_metrics.nmi_by_target.items():
+            metrics[f"context_partition_{target}_nmi"] = value
 
+        _print_context_partition_debug(
+            true_labels_by_target=true_context_labels_by_target,
+            estimated_labels_by_target=estimated_context_labels_by_target,
+            partition_metrics=context_partition_metrics,
+        )
+        _print_linc_partition_diagnostics(
+            est=est,
+            true_labels_by_target=true_context_labels_by_target,
+            only_bad=True,
+        )
     spacetime_sample = sample.spacetime
     if spacetime_sample is not None:
         wcg_metrics = _metrics_to_float_dict(compute_metrics(spacetime_sample.true_wcg, est_nx))
@@ -292,3 +313,101 @@ def iter_valid_configs(grid: dict[str, Any]):
                 print(candidate)
                 print(exc)
                 continue
+
+
+def _print_context_partition_debug(
+    *,
+    true_labels_by_target,
+    estimated_labels_by_target,
+    partition_metrics,
+) -> None:
+    print("\n--- context partition debug ---")
+
+    for target in sorted(true_labels_by_target):
+        true_map = true_labels_by_target[target]
+        est_map = estimated_labels_by_target.get(target, {})
+
+        ids = sorted(true_map.keys())
+        true_labels = [int(true_map[i]) for i in ids]
+        est_labels = [int(est_map.get(i, -1)) for i in ids]
+
+        ari = partition_metrics.ari_by_target.get(target, float("nan"))
+        ami = partition_metrics.ami_by_target.get(target, float("nan"))
+        nmi = partition_metrics.nmi_by_target.get(target, float("nan"))
+
+        print(f"{target}: ARI={ari:.3f}, AMI={ami:.3f}, NMI={nmi:.3f}")
+        print(f"  context ids: {ids}")
+        print(f"  true labels: {true_labels}")
+        print(f"  est  labels: {est_labels}")
+
+
+def _print_linc_partition_diagnostics(
+    *,
+    est: CausalChange,
+    true_labels_by_target,
+    only_bad: bool = True,
+) -> None:
+    result = est.get_result()
+    linc_mix = getattr(result, "linc_components", None)
+
+    if linc_mix is None:
+        linc_mix = getattr(result, "linc_mixture", None)
+
+    if linc_mix is None:
+        print("\n--- no LINC mixture diagnostics found ---")
+        return
+
+    print("\n--- LINC partition diagnostics ---")
+
+    for target in sorted(true_labels_by_target):
+        comp = linc_mix.target_components.get(target)
+        if comp is None:
+            print(f"{target}: no final LINC component")
+            continue
+
+        true_map = true_labels_by_target[target]
+        est_map = comp.labels_by_context
+
+        ids = sorted(true_map.keys())
+        true_labels = [int(true_map[i]) for i in ids]
+        est_labels = [int(est_map.get(i, -1)) for i in ids]
+
+        true_changed = len(set(true_labels)) > 1
+        est_changed = len(set(est_labels)) > 1
+        bad = true_changed != est_changed or true_labels != est_labels
+
+        if only_bad and not bad:
+            continue
+
+        diag = comp.diagnostics
+
+        print(f"\n{target} | parents={comp.parents}")
+        print(f"  true labels: {true_labels}")
+        print(f"  est  labels: {est_labels}")
+        print(f"  true_changed={true_changed}, est_changed={est_changed}")
+        print(f"  method={diag.get('method')}")
+        print(f"  groups={diag.get('groups')}")
+        print(f"  ctx_scores={diag.get('ctx_scores')}")
+
+        if "merge_history" in diag:
+            print("  merge_history:")
+            for step in diag["merge_history"]:
+                print(
+                    "   ",
+                    {
+                        "left": sorted(step["left"]),
+                        "right": sorted(step["right"]),
+                        "merged": sorted(step["merged"]),
+                        "gain": step["gain"],
+                        "score": step["score"],
+                    },
+                )
+
+        if "gain_contexts" in diag and "gain_matrix" in diag:
+            print(f"  gain_contexts={diag['gain_contexts']}")
+            print(f"  gain_matrix=\n{diag['gain_matrix']}")
+
+        if "stop_best_gain" in diag:
+            print(f"  stop_best_gain={diag['stop_best_gain']}")
+            print(f"  stop_best_pair={diag.get('stop_best_pair')}")
+            print(f"  gain_threshold={diag.get('gain_threshold')}")

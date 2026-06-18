@@ -63,6 +63,48 @@ GRID_LINC_SMALL_CONTEXT_CHANGES = {
     "algo": {
         "name": ["linc"],
         "score_type": ["gam"],
+        "mechanism_clustering_method": ["score-merge"],
+        "testing_method": ["skip"],
+    },
+}
+GRID_LINC_SMALL_TESTING = {
+    "data": {
+        "setting": ["multi"],
+        "n_nodes": [5],
+        "edge_prob": [0.4],
+        "n_contexts": [5, 10],
+        "n_samples_per_context": [700],
+        "n_intervened_per_context": [1],
+        "context_col": ["context"],
+        "nonlinearity": ["tanh", "sin", "lin", "relu"],
+        "intervention_type": ["soft-weight"],
+        "weight_scale_intervened": [2.0],
+    },
+    "algo": {
+        "name": ["linc"],
+        "score_type": ["gam"],
+        "mechanism_clustering_method": ["statistical-testing"],
+        "testing_method": ["kernel"],
+    },
+}
+GRID_LINC_SMALL_CLUSTERING = {
+    "data": {
+        "setting": ["multi"],
+        "n_nodes": [5],
+        "edge_prob": [0.4],
+        "n_contexts": [5, 10],
+        "n_samples_per_context": [700],
+        "n_intervened_per_context": [1],
+        "context_col": ["context"],
+        "nonlinearity": ["tanh", "sin", "lin", "relu"],
+        "intervention_type": ["soft-weight"],
+        "weight_scale_intervened": [2.0],
+    },
+    "algo": {
+        "name": ["linc"],
+        "score_type": ["gam"],
+        "mechanism_clustering_method": ["mechanism-clustering"],
+        "testing_method": ["skip"],
     },
 }
 
@@ -343,7 +385,9 @@ ALL_GRIDS = {
     "topic_medium": GRID_TOPIC_MEDIUM,
     # LINC
     "linc_small_no_change": GRID_LINC_SMALL_NO_CHANGE,
-    "linc_small_context_changes": GRID_LINC_SMALL_CONTEXT_CHANGES,
+    "linc_small_original": GRID_LINC_SMALL_CONTEXT_CHANGES,
+    "linc_small_testing": GRID_LINC_SMALL_TESTING,
+    "linc_small_clustering": GRID_LINC_SMALL_CLUSTERING,
     "linc_no_change": GRID_LINC_NO_CHANGE,
     "linc_context_changes": GRID_LINC_CONTEXT_CHANGES,
     # SpaceTime
@@ -358,10 +402,7 @@ ALL_GRIDS = {
 }
 
 
-SELECTED_GRIDS = [
-    "linc_small_context_changes"
-    # "cmm_small"
-]
+SELECTED_GRIDS = ["linc_small_original"]
 
 
 GRIDS = {name: ALL_GRIDS[name] for name in SELECTED_GRIDS}

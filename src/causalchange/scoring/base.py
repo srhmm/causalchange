@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from causalchange.config.causal_change_config import CausalChangeConfigBase
-from causalchange.core.types import DataMode, MissingMode, ScoreType
+from causalchange.core.types import DataMode, ScoreType
 from causalchange.scoring.regression import (
     fit_regression_score,
     fit_score_gam,
@@ -38,7 +38,7 @@ class BaseLocalScorer:  # ABC):
     def __init__(self, cfg: CausalChangeConfigBase):
         self.data_mode: DataMode = cfg.data_mode
         self.score_type: ScoreConventionProtocol = cast(ScoreConventionProtocol, cfg.score_type)
-        self.missing_mode: MissingMode = cfg.missing_mode
+        # self.missing_mode: MissingMode = cfg.missing_mode
         self.score_params: dict[str, Any] = dict(cfg.score_kwargs or {})
         self._global_n_samples: int | None = None
 
@@ -68,11 +68,11 @@ class BaseLocalScorer:  # ABC):
     ) -> float:
         """Score gain from adding candidate_parent to base_parents"""
 
-        if self.missing_mode == MissingMode.MISSING:
-            raise NotImplementedError(
-                f"{type(self).__name__} has missing_mode='missing'. "
-                "Standalone local_score differences are not valid; override local_gain()."
-            )
+        # if self.missing_mode == MissingMode.MISSING:
+        #    raise NotImplementedError(
+        #        f"{type(self).__name__} has missing_mode='missing'. "
+        #        "Standalone local_score differences are not valid; override local_gain()."
+        #    )
 
         base_parents_t = tuple(base_parents)
         full_parents_t = (*base_parents_t, candidate_parent)
@@ -83,11 +83,11 @@ class BaseLocalScorer:  # ABC):
         return self.transition_gain(old_score, new_score)
 
     def local_score(self, *args: Any, **kwargs: Any) -> float | Any:
-        if self.missing_mode == MissingMode.MISSING:
-            raise NotImplementedError(
-                f"{type(self).__name__} has missing_mode='missing'. "
-                "local_score() is not meaningful for paired missing-aware scoring."
-            )
+        # if self.missing_mode == MissingMode.MISSING:
+        #    raise NotImplementedError(
+        #        f"{type(self).__name__} has missing_mode='missing'. "
+        #        "local_score() is not meaningful for paired missing-aware scoring."
+        #    )
 
         raise NotImplementedError(f"{type(self).__name__} must implement local_score().")
 

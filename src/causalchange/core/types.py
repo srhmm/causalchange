@@ -89,6 +89,7 @@ class TabularContextMode(str, Enum):
         return data_mode in self.compatible_data_modes()
 
 
+# check necessary
 class TabularContextMethod(str, Enum):
     SKIP = "skip"
     CHAIN = "chain"
@@ -109,6 +110,12 @@ class TabularContextMethod(str, Enum):
 
     def is_compatible_with(self, data_mode):
         return data_mode in self.compatible_data_modes()
+
+
+class TabularMechanismClusteringMethod(str, Enum):
+    SCORE_MERGE = "score-merge"
+    TESTING = "statistical-testing"
+    CLUSTERING = "mechanism-clustering"
 
 
 # sample missingness

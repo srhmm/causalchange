@@ -131,7 +131,6 @@ class TabularDiscoveryEngine(BaseDiscoveryEngine[TabularDomainProtocol, TabularS
 
     def _extract_linc_components(self, graph) -> LincMixtureResult | None:
         extractor = getattr(self.context_comb, "fit_final_linc_components", None)
-
         if extractor is None or not callable(extractor):
             return None
 

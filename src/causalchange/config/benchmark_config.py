@@ -177,9 +177,24 @@ DataConfig = Annotated[
 
 class LincAlgoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
     name: Literal["linc"] = "linc"
-    context_col: str = "context"
     score_type: Literal["lin", "gam", "spline", "krr", "gp", "ff"] = "gam"
+
+    mechanism_clustering_method: Literal[
+        "score-merge",
+        "statistical-testing",
+        "mechanism-clustering",
+    ] = "score-merge"
+    testing_method: Literal[
+        "skip",
+        "kernel",
+        "mmd",
+        "kci",
+    ] = "skip"
+    mechanism_test_alpha: float = 0.05
+    mechanism_clustering_n_clusters: int | None = None
+    mechanism_clustering_distance_threshold: float | None = None
 
 
 class TopicAlgoConfig(BaseModel):
