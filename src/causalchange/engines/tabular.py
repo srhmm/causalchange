@@ -122,7 +122,7 @@ class TabularDiscoveryEngine(BaseDiscoveryEngine[TabularDomainProtocol, TabularS
         if self.X0_ is None:
             raise RuntimeError("Engine not fitted. Call fit() first.")
 
-        extractor = getattr(self.scoring, "fit_final_mixture_components", None)
+        extractor = getattr(self.scoring, "fit_mixture_components", None)
 
         if extractor is None or not callable(extractor):
             return None
@@ -130,7 +130,7 @@ class TabularDiscoveryEngine(BaseDiscoveryEngine[TabularDomainProtocol, TabularS
         return extractor(self.X0_, graph)
 
     def _extract_linc_components(self, graph) -> LincMixtureResult | None:
-        extractor = getattr(self.context_comb, "fit_final_linc_components", None)
+        extractor = getattr(self.context_comb, "fit_linc_components", None)
         if extractor is None or not callable(extractor):
             return None
 

@@ -211,16 +211,16 @@ def run_scoring(
         for target, value in context_partition_metrics.nmi_by_target.items():
             metrics[f"context_partition_{target}_nmi"] = value
 
-        _print_context_partition_debug(
-            true_labels_by_target=true_context_labels_by_target,
-            estimated_labels_by_target=estimated_context_labels_by_target,
-            partition_metrics=context_partition_metrics,
-        )
-        _print_linc_partition_diagnostics(
-            est=est,
-            true_labels_by_target=true_context_labels_by_target,
-            only_bad=True,
-        )
+    # _print_context_partition_debug(
+    #     true_labels_by_target=true_context_labels_by_target,
+    #     estimated_labels_by_target=estimated_context_labels_by_target,
+    #     partition_metrics=context_partition_metrics,
+    # )
+    # _print_linc_partition_diagnostics(
+    #     est=est,
+    #     true_labels_by_target=true_context_labels_by_target,
+    #     only_bad=True,
+    # )
     spacetime_sample = sample.spacetime
     if spacetime_sample is not None:
         wcg_metrics = _metrics_to_float_dict(compute_metrics(spacetime_sample.true_wcg, est_nx))

@@ -45,7 +45,7 @@ class SCMScoreCMM(SCMScoreTabular):
         )
         return float(fit.score)
 
-    def fit_final_mixture_components(
+    def fit_mixture_components(
         self,
         X: pd.DataFrame,
         graph: nx.DiGraph,

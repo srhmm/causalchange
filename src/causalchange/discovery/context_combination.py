@@ -9,7 +9,7 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.preprocessing import StandardScaler
 
 from causalchange.core.results import ContextCombinationResult, LincMixtureResult, LincTargetMixtureResult
-from causalchange.core.types import ContextCombinationKwargs, StatisticalTestingMethod, TabularMechanismClusteringMethod
+from causalchange.core.types import ClusteringMethod, StatisticalTestingMethod, TabularMechanismClusteringMethod
 
 
 class SkipCombination:
@@ -40,11 +40,11 @@ class LINCContextCombination:
     def __init__(
         self,
         *,
-        grouping: ContextCombinationKwargs,
-        gain_threshold: float,
-        higher_is_better: bool,
+        grouping: ClusteringMethod,
         mechanism_clustering_method: TabularMechanismClusteringMethod = TabularMechanismClusteringMethod.SCORE_MERGE,
         testing_method: StatisticalTestingMethod = StatisticalTestingMethod.SKIP,
+        gain_threshold: float,
+        higher_is_better: bool,
         mechanism_test_alpha: float = 0.05,
         mechanism_clustering_n_clusters: int | None = None,
         mechanism_clustering_distance_threshold: float | None = None,
@@ -83,19 +83,12 @@ class LINCContextCombination:
                 parents=parents,
                 score_ctx=score_ctx,
             )
-        elif self.mechanism_clustering_method == TabularMechanismClusteringMethod.CLUSTERING:
-            result = self._combine_clustering(
-                contexts=contexts,
-                effect=effect,
-                parents=parents,
-                score_ctx=score_ctx,
-            )
         else:
             raise ValueError(f"Unknown mechanism clustering method: {self.mechanism_clustering_method!r}")
 
         return self._record_result(effect=effect, parents=parents, result=result)
 
-    def final_linc_components(self, graph) -> LincMixtureResult:
+    def fit_linc_components(self, graph) -> LincMixtureResult:
         components: dict[Any, LincTargetMixtureResult] = {}
         failures: list[dict[str, Any]] = []
 
@@ -150,7 +143,7 @@ class LINCContextCombination:
                 },
             )
 
-        if self.grouping == ContextCombinationKwargs.AGGLOMERATIVE:
+        if self.grouping == ClusteringMethod.AGGLOMERATIVE:
             groups, diag = self._score_merge_agglomerative(ctx_ids, contexts, score_ctx, ctx_scores)
         else:
             groups, diag = self._score_merge_components(ctx_ids, contexts, score_ctx, ctx_scores)

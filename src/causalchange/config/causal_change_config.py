@@ -8,7 +8,7 @@ from causalchange.core.types import (
     ChangepointMethod,
     ChangepointMode,
     ChangepointScope,
-    ContextCombinationKwargs,
+    ClusteringMethod,
     DataMode,
     GraphSearch,
     MechanismClusteringMethod,
@@ -65,7 +65,7 @@ class CausalChangeConfigTabular(CausalChangeConfigBase):
     mix_type: MixedSCMType = MixedSCMType.SKIP
     context_mode: TabularContextMode = TabularContextMode.SKIP
     context_combination_method: TabularContextMethod = TabularContextMethod.SKIP
-    context_combination_kwargs: ContextCombinationKwargs = Field(default_factory=ContextCombinationKwargs)
+    context_combination_kwargs: ClusteringMethod = Field(default_factory=ClusteringMethod)
     context_col: ContextColumn = "context"
     context_gain_threshold: float = Field(default=0.0)
 

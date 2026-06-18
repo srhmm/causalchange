@@ -115,7 +115,6 @@ class TabularContextMethod(str, Enum):
 class TabularMechanismClusteringMethod(str, Enum):
     SCORE_MERGE = "score-merge"
     TESTING = "statistical-testing"
-    CLUSTERING = "mechanism-clustering"
 
 
 # sample missingness
@@ -217,7 +216,7 @@ class StatisticalTestingMethod(str, Enum):
     NONE = "none"
 
 
-class ContextCombinationKwargs(str, Enum):
+class ClusteringMethod(str, Enum):
     SKIP = "skip"
     AGGLOMERATIVE = "agglomerative"
     COMPONENTS = "components"

@@ -11,7 +11,7 @@ from causalchange.core.types import (
     ChangepointMethod,
     ChangepointMode,
     ChangepointScope,
-    ContextCombinationKwargs,
+    ClusteringMethod,
     DataMode,
     GraphSearch,
     MechanismClusteringMethod,
@@ -119,11 +119,11 @@ class Linc(CausalChange):
     def __init__(
         self,
         *,
-        score_type: ScoreName = "gam",
+        score_type: ScoreName = "ff",
         context_col: str = "context",
         postprocessing_mode: PostprocessingName = "skip",
-        context_combination_kwargs: ContextCombinationKwargs | None = None,
         mechanism_clustering_method: TabularMechanismClusteringName = "score-merge",
+        context_combination_kwargs: ClusteringMethod | None = None,
         testing_method: TestingMethodName | None = None,
         mechanism_test_alpha: float = 0.05,
         mechanism_clustering_n_clusters: int | None = None,
@@ -150,9 +150,7 @@ class Linc(CausalChange):
             context_mode=TabularContextMode.ORACLE,
             context_combination_method=TabularContextMethod.LINC,
             context_combination_kwargs=(
-                context_combination_kwargs
-                if context_combination_kwargs is not None
-                else ContextCombinationKwargs.AGGLOMERATIVE
+                context_combination_kwargs if context_combination_kwargs is not None else ClusteringMethod.AGGLOMERATIVE
             ),
             context_col=context_col,
             mechanism_clustering_method=resolved_method,
