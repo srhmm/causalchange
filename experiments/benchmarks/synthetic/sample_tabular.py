@@ -13,7 +13,7 @@ from causalchange.config.benchmark_config import (
     SingleDataConfig,
     SingleTemporalDataConfig,
 )
-from experiments.benchmarks.synthetic.sample import MixedSyntheticResult
+from experiments.benchmarks.synthetic.sample import MixedSyntheticResult, MultiContextSyntheticResult
 from experiments.benchmarks.synthetic.sample_time import sample_spacetime_synthetic
 
 
@@ -37,7 +37,7 @@ def sample_multi_continuous(config: MultiDataConfig):
         else sample_multicontext_nonlinear_additive_interventional
     )
 
-    return sampling_fun(
+    kwargs = dict(
         nonlinearity=config.nonlinearity,
         n_samples_per_context=config.n_samples_per_context,
         n_nodes=config.n_nodes,
@@ -53,6 +53,11 @@ def sample_multi_continuous(config: MultiDataConfig):
         shift_scale=config.shift_scale,
         noise_scale_intervened=config.noise_scale_intervened,
     )
+
+    if config.nonlinearity != "lin":
+        kwargs["alt_nonlinearity"] = config.alt_nonlinearity or ("sin" if config.nonlinearity != "sin" else "tanh")
+
+    return sampling_fun(**kwargs)
 
 
 def sample_mixed_continuous(config: MixedDataConfig):
@@ -564,8 +569,8 @@ def sample_multicontext_linear_gaussian_interventional(
     weight_scale_intervened: float = 2.0,
     shift_scale: float = 2.0,
     noise_scale_intervened: float | None = None,
-    nonlinearity="",
-) -> tuple[pd.DataFrame, nx.DiGraph]:
+    nonlinearity: str = "",
+) -> MultiContextSyntheticResult:
     rng = np.random.default_rng(seed)
     g_base = _random_dag(n_nodes=n_nodes, edge_prob=edge_prob, rng=rng)
 
@@ -582,20 +587,24 @@ def sample_multicontext_linear_gaussian_interventional(
     contexts = list(range(n_contexts))
     context_graphs: dict[int, nx.DiGraph] = {}
     interventions: dict[int, list[str]] = {}
+    mechanism_signatures_by_node: dict[int, dict[int, tuple[object, ...]]] = {node: {} for node in range(n_nodes)}
     blocks = []
 
     cols = [f"X{i}" for i in range(n_nodes)]
     mapping = {i: cols[i] for i in range(n_nodes)}
 
     for c in contexts:
-        targets = rng.choice(n_nodes, size=min(n_intervened_per_context, n_nodes), replace=False).tolist()
+        targets = rng.choice(
+            n_nodes,
+            size=min(n_intervened_per_context, n_nodes),
+            replace=False,
+        ).tolist()
 
         if intervention_type == "hard":
             g_c = _cut_incoming_edges(g_base, targets)
         else:
             g_c = g_base
 
-        # context-specific weights / shifts / noise
         W_c = W_base.copy()
         shift = np.zeros(n_nodes, dtype=float)
         noise_vec = np.full(n_nodes, noise_scale, dtype=float)
@@ -614,10 +623,19 @@ def sample_multicontext_linear_gaussian_interventional(
             for t in targets:
                 noise_vec[t] = ns
 
+        for node in range(n_nodes):
+            mechanism_signatures_by_node[node][c] = _mechanism_signature(
+                g_c=g_c,
+                W_c=W_c,
+                shift=shift,
+                noise_vec=noise_vec,
+                node=node,
+                function_name="lin",
+            )
+
         topo = list(nx.topological_sort(g_c))
         X = np.zeros((n_samples_per_context, n_nodes), dtype=float)
 
-        # per-node noise
         eps = rng.normal(loc=0.0, scale=1.0, size=(n_samples_per_context, n_nodes))
         eps = eps * noise_vec[None, :]
 
@@ -639,7 +657,64 @@ def sample_multicontext_linear_gaussian_interventional(
 
     true_base = nx.relabel_nodes(g_base, mapping, copy=True)
     true_target = _true_target_graph(true_base, context_graphs, intervention_type)
-    return df, true_target  # df, true_base, true_target, context_graphs, interventions
+
+    context_labels_by_target = {
+        cols[node]: _compact_signatures(mechanism_signatures_by_node[node]) for node in range(n_nodes)
+    }
+
+    return MultiContextSyntheticResult(
+        df=df,
+        true_summary_dag=true_target,
+        context_labels_by_target=context_labels_by_target,
+        context_col=context_col,
+        variables=cols,
+        metadata={
+            "setting": "multi",
+            "nonlinearity": "lin",
+            "intervention_type": intervention_type,
+            "n_contexts": int(n_contexts),
+            "n_samples_per_context": int(n_samples_per_context),
+            "n_intervened_per_context": int(n_intervened_per_context),
+            "interventions": interventions,
+        },
+    )
+
+
+def _round_signature_float(x: float, ndigits: int = 10) -> float:
+    return round(float(x), ndigits)
+
+
+def _compact_signatures(signatures: dict[int, tuple[object, ...]]) -> dict[int, int]:
+    label_by_signature: dict[tuple[object, ...], int] = {}
+    labels: dict[int, int] = {}
+
+    for context_id, signature in signatures.items():
+        if signature not in label_by_signature:
+            label_by_signature[signature] = len(label_by_signature)
+        labels[int(context_id)] = int(label_by_signature[signature])
+
+    return labels
+
+
+def _mechanism_signature(
+    *,
+    g_c: nx.DiGraph,
+    W_c: np.ndarray,
+    shift: np.ndarray,
+    noise_vec: np.ndarray,
+    node: int,
+    function_name: str,
+) -> tuple[object, ...]:
+    parents = tuple(sorted(g_c.predecessors(node)))
+    weights = tuple(_round_signature_float(W_c[p, node]) for p in parents)
+
+    return (
+        parents,
+        weights,
+        _round_signature_float(shift[node]),
+        _round_signature_float(noise_vec[node]),
+        str(function_name),
+    )
 
 
 def sample_multicontext_nonlinear_additive_interventional(
@@ -659,7 +734,7 @@ def sample_multicontext_nonlinear_additive_interventional(
     alt_nonlinearity: str = "sin",
     shift_scale: float = 2.0,
     noise_scale_intervened: float | None = None,
-) -> tuple[pd.DataFrame, nx.DiGraph]:
+) -> MultiContextSyntheticResult:
     rng = np.random.default_rng(seed)
     g_base = _random_dag(n_nodes=n_nodes, edge_prob=edge_prob, rng=rng)
 
@@ -679,29 +754,35 @@ def sample_multicontext_nonlinear_additive_interventional(
     }:
         raise ValueError(f"Unknown intervention_type: {intervention_type}")
 
-    # activation functions
-    def _act(name: str):
+    def _act_local(name: str):
         if name == "tanh":
             return np.tanh
         if name == "sin":
             return np.sin
         if name == "relu":
             return lambda x: np.maximum(x, 0.0)
+        if name == "lin":
+            return lambda x: x
         raise ValueError(f"Unknown nonlinearity: {name}")
 
-    f_base = _act(nonlinearity)
-    f_alt = _act(alt_nonlinearity)
+    f_base = _act_local(nonlinearity)
+    f_alt = _act_local(alt_nonlinearity)
 
     contexts = list(range(n_contexts))
     context_graphs: dict[int, nx.DiGraph] = {}
     interventions: dict[int, list[str]] = {}
+    mechanism_signatures_by_node: dict[int, dict[int, tuple[object, ...]]] = {node: {} for node in range(n_nodes)}
     blocks = []
 
     cols = [f"X{i}" for i in range(n_nodes)]
     mapping = {i: cols[i] for i in range(n_nodes)}
 
     for c in contexts:
-        targets = rng.choice(n_nodes, size=min(n_intervened_per_context, n_nodes), replace=False).tolist()
+        targets = rng.choice(
+            n_nodes,
+            size=min(n_intervened_per_context, n_nodes),
+            replace=False,
+        ).tolist()
 
         if intervention_type == "hard":
             g_c = _cut_incoming_edges(g_base, targets)
@@ -712,8 +793,8 @@ def sample_multicontext_nonlinear_additive_interventional(
         shift = np.zeros(n_nodes, dtype=float)
         noise_vec = np.full(n_nodes, noise_scale, dtype=float)
 
-        # node-specific mechanisms: default f_base, optionally f_alt for targets
         node_f = [f_base for _ in range(n_nodes)]
+        node_f_name = [nonlinearity for _ in range(n_nodes)]
 
         if intervention_type == "soft-weight":
             for t in targets:
@@ -723,6 +804,7 @@ def sample_multicontext_nonlinear_additive_interventional(
         elif intervention_type == "soft-mechanism":
             for t in targets:
                 node_f[t] = f_alt
+                node_f_name[t] = alt_nonlinearity
 
         elif intervention_type == "shift":
             for t in targets:
@@ -732,6 +814,16 @@ def sample_multicontext_nonlinear_additive_interventional(
             ns = noise_scale_intervened if noise_scale_intervened is not None else (2.0 * noise_scale)
             for t in targets:
                 noise_vec[t] = ns
+
+        for node in range(n_nodes):
+            mechanism_signatures_by_node[node][c] = _mechanism_signature(
+                g_c=g_c,
+                W_c=W_c,
+                shift=shift,
+                noise_vec=noise_vec,
+                node=node,
+                function_name=node_f_name[node],
+            )
 
         topo = list(nx.topological_sort(g_c))
         X = np.zeros((n_samples_per_context, n_nodes), dtype=float)
@@ -758,7 +850,28 @@ def sample_multicontext_nonlinear_additive_interventional(
 
     true_base = nx.relabel_nodes(g_base, mapping, copy=True)
     true_target = _true_target_graph(true_base, context_graphs, intervention_type)
-    return df, true_target  # df, true_base, true_target, context_graphs, interventions
+
+    context_labels_by_target = {
+        cols[node]: _compact_signatures(mechanism_signatures_by_node[node]) for node in range(n_nodes)
+    }
+
+    return MultiContextSyntheticResult(
+        df=df,
+        true_summary_dag=true_target,
+        context_labels_by_target=context_labels_by_target,
+        context_col=context_col,
+        variables=cols,
+        metadata={
+            "setting": "multi",
+            "nonlinearity": nonlinearity,
+            "alt_nonlinearity": alt_nonlinearity,
+            "intervention_type": intervention_type,
+            "n_contexts": int(n_contexts),
+            "n_samples_per_context": int(n_samples_per_context),
+            "n_intervened_per_context": int(n_intervened_per_context),
+            "interventions": interventions,
+        },
+    )
 
 
 def _true_target_graph(

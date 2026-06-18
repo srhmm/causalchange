@@ -19,6 +19,16 @@ class MixedSyntheticResult:
 
 
 @dataclass(frozen=True)
+class MultiContextSyntheticResult:
+    df: pd.DataFrame
+    true_summary_dag: nx.DiGraph
+    context_labels_by_target: dict[str, dict[int, int]]
+    context_col: str
+    variables: list[str]
+    metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class SpaceTimeSyntheticResult:
     df: pd.DataFrame
     true_wcg: nx.DiGraph
@@ -40,3 +50,4 @@ class BenchmarkSample:
     true_summary_dag: nx.DiGraph
     spacetime: SpaceTimeSyntheticResult | None = None
     mixed: MixedSyntheticResult | None = None
+    multi: MultiContextSyntheticResult | None = None

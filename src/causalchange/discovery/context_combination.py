@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from causalchange.core.results import MultiContextResult
+from causalchange.core.results import ContextCombinationResult, LincMixtureResult, LincTargetMixtureResult
 from causalchange.core.types import ContextCombinationKwargs
 
 
@@ -20,7 +20,7 @@ class SkipCombination:
         effect: Any,
         parents: tuple[Any, ...],
         score_ctx: Callable[[pd.DataFrame], float],
-    ) -> MultiContextResult:
+    ) -> ContextCombinationResult:
         if len(contexts) != 1:
             raise ValueError(
                 f"SkipCombination expects exactly one context, got {len(contexts)}. "
@@ -30,7 +30,7 @@ class SkipCombination:
         ctx, df = next(iter(contexts.items()))
         score = float(score_ctx(df))
 
-        return MultiContextResult(
+        return ContextCombinationResult(
             total=score,
             diagnostics={
                 "mode": "none",
@@ -50,6 +50,47 @@ class LINCContextCombination:
         self.last_gain_matrix: np.ndarray | None = None
         self.last_gain_contexts: tuple[Hashable, ...] | None = None
 
+        # Stores the context-combination result produced by local_score(effect, parents).
+        # This is what fit_final_linc_components(...) reads after graph search.
+        self._results_by_mechanism: dict[tuple[Any, tuple[Any, ...]], ContextCombinationResult] = {}
+
+    @staticmethod
+    def _mechanism_key(effect: Any, parents: tuple[Any, ...]) -> tuple[Any, tuple[Any, ...]]:
+        return effect, tuple(sorted(parents, key=repr))
+
+    @staticmethod
+    def _labels_from_groups(groups: list[frozenset[Any]]) -> dict[Any, int]:
+        labels: dict[Any, int] = {}
+
+        for label, group in enumerate(groups):
+            for context_id in group:
+                labels[context_id] = int(label)
+
+        return labels
+
+    def _record_result(
+        self,
+        *,
+        effect: Any,
+        parents: tuple[Any, ...],
+        result: ContextCombinationResult,
+    ) -> ContextCombinationResult:
+        parents_t = tuple(sorted(parents, key=repr))
+
+        # Create a new result so we do not mutate a frozen dataclass in-place.
+        diagnostics = {
+            **dict(result.diagnostics),
+            "effect": effect,
+            "parents": parents_t,
+        }
+        recorded = ContextCombinationResult(
+            total=float(result.total),
+            diagnostics=diagnostics,
+        )
+
+        self._results_by_mechanism[self._mechanism_key(effect, parents_t)] = recorded
+        return recorded
+
     def transition_gain(self, old_score: float, new_score: float) -> float:
         return (new_score - old_score) if self.higher_is_better else (old_score - new_score)
 
@@ -63,28 +104,31 @@ class LINCContextCombination:
         effect: Any,
         parents: tuple[Any, ...],
         score_ctx: Callable[[pd.DataFrame], float],
-    ) -> MultiContextResult:
-        # effect/parents are unused for LINC (scoring is encapsulated by score_ctx)
+    ) -> ContextCombinationResult:
         ctx_ids = list(contexts.keys())
         n = len(ctx_ids)
+
         if n == 0:
             raise ValueError("LINCContextCombination requires at least one context.")
 
-        # per-context
         ctx_scores: dict[Hashable, float] = {c: float(score_ctx(contexts[c])) for c in ctx_ids}
 
         if n == 1:
-            return MultiContextResult(
+            result = ContextCombinationResult(
                 total=float(ctx_scores[ctx_ids[0]]),
                 diagnostics={
+                    "method": "single-context",
                     "groups": [frozenset([ctx_ids[0]])],
                     "ctx_scores": ctx_scores,
                 },
             )
+            return self._record_result(effect=effect, parents=parents, result=result)
 
-        if self.grouping.value == ContextCombinationKwargs.AGGLOMERATIVE:
+        if self.grouping == ContextCombinationKwargs.AGGLOMERATIVE:
             total, diag = self._agglomerative(ctx_ids, contexts, score_ctx)
-            return MultiContextResult(total=float(total), diagnostics=diag)
+            diag["ctx_scores"] = ctx_scores
+            result = ContextCombinationResult(total=float(total), diagnostics=diag)
+            return self._record_result(effect=effect, parents=parents, result=result)
 
         # components method
         gain = np.zeros((n, n), dtype=float)
@@ -97,6 +141,7 @@ class LINCContextCombination:
                 pooled_score = float(score_ctx(pooled))
                 g = float(self.transition_gain(ctx_scores[ci] + ctx_scores[cj], pooled_score))
                 gain[i, j] = gain[j, i] = g
+
                 if self.score_significant(g):
                     edges.append((ci, cj))
 
@@ -118,7 +163,9 @@ class LINCContextCombination:
             "groups": [frozenset(c) for c in components],
             "ctx_scores": ctx_scores,
         }
-        return MultiContextResult(total=float(total), diagnostics=diag)
+
+        result = ContextCombinationResult(total=float(total), diagnostics=diag)
+        return self._record_result(effect=effect, parents=parents, result=result)
 
     def _agglomerative(self, ctx_ids, contexts, score_ctx):
         groups = [frozenset([c]) for c in ctx_ids]
@@ -128,6 +175,7 @@ class LINCContextCombination:
             return float(score_ctx(pooled))
 
         scores = {g: group_score(g) for g in groups}
+        merge_history = []
 
         while True:
             best_gain = float("-inf")
@@ -140,6 +188,7 @@ class LINCContextCombination:
                     merged = gi | gj
                     s_merged = group_score(merged)
                     g = float(self.transition_gain(scores[gi] + scores[gj], s_merged))
+
                     if g > best_gain:
                         best_gain = g
                         best_pair = (i, j, merged)
@@ -150,6 +199,16 @@ class LINCContextCombination:
 
             i, j, merged = best_pair
             gi, gj = groups[i], groups[j]
+
+            merge_history.append(
+                {
+                    "left": gi,
+                    "right": gj,
+                    "merged": merged,
+                    "gain": float(best_gain),
+                    "score": float(best_score),
+                }
+            )
 
             groups = [g for k, g in enumerate(groups) if k not in (i, j)]
             groups.append(merged)
@@ -162,7 +221,65 @@ class LINCContextCombination:
             "method": "agglomerative",
             "groups": list(scores.keys()),
             "scores": dict(scores),
+            "merge_history": merge_history,
         }
+
+    def fit_final_linc_components(self, graph) -> LincMixtureResult:
+        """Return final-graph LINC context partitions from already computed local-score results.
+
+        This does not re-score. It only reads partitions that were produced by
+        combine_contexts(...) during graph search.
+        """
+        target_components: dict[Any, LincTargetMixtureResult] = {}
+        diagnostics: dict[str, Any] = {
+            "mode": "linc_final_graph_context_partitions",
+            "failures": [],
+            "n_cached_mechanisms": len(self._results_by_mechanism),
+        }
+
+        for target in graph.nodes():
+            parents = tuple(sorted(graph.predecessors(target), key=repr))
+            key = self._mechanism_key(target, parents)
+            combo = self._results_by_mechanism.get(key)
+
+            if combo is None:
+                diagnostics["failures"].append(
+                    {
+                        "target": target,
+                        "parents": parents,
+                        "error": "final target | parents was not present in LINC context-combination cache",
+                    }
+                )
+                continue
+
+            groups_raw = combo.diagnostics.get("groups")
+            if groups_raw is None:
+                diagnostics["failures"].append(
+                    {
+                        "target": target,
+                        "parents": parents,
+                        "error": "cached context-combination result has no 'groups' diagnostic",
+                    }
+                )
+                continue
+
+            groups = [frozenset(group) for group in groups_raw]
+            labels_by_context = self._labels_from_groups(groups)
+
+            target_components[target] = LincTargetMixtureResult(
+                target=target,
+                parents=parents,
+                groups=groups,
+                labels_by_context=labels_by_context,
+                score=float(combo.total),
+                n_components=len(groups),
+                diagnostics=dict(combo.diagnostics),
+            )
+
+        return LincMixtureResult(
+            target_components=target_components,
+            diagnostics=diagnostics,
+        )
 
 
 def _colname(node: Any) -> str:
@@ -204,10 +321,10 @@ class CHAINContextCombination:
         effect: Any,
         parents: tuple[Any, ...],
         score_ctx: Callable[[pd.DataFrame], float],
-    ) -> MultiContextResult:
+    ) -> ContextCombinationResult:
         ctx_ids = list(contexts.keys())
         if not ctx_ids:
-            return MultiContextResult(total=0.0, diagnostics={})
+            return ContextCombinationResult(total=0.0, diagnostics={})
 
         # fit term
         fit = 0.0
@@ -215,7 +332,7 @@ class CHAINContextCombination:
             fit += float(score_ctx(contexts[c]))
 
         if self.lambda_inv <= 0.0 or len(ctx_ids) <= 1:
-            return MultiContextResult(total=float(fit), diagnostics={"fit": float(fit), "penalty": 0.0})
+            return ContextCombinationResult(total=float(fit), diagnostics={"fit": float(fit), "penalty": 0.0})
 
         pen = float(self._invariance_penalty(contexts, effect, parents))
         if self.higher_is_better:
@@ -223,7 +340,7 @@ class CHAINContextCombination:
         else:
             total = float(fit + self.lambda_inv * pen)
 
-        return MultiContextResult(
+        return ContextCombinationResult(
             total=total,
             diagnostics={
                 "fit": float(fit),

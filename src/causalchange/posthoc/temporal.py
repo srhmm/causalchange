@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import networkx as nx
 import pandas as pd
 
-from causalchange.core.results import EdgeContributionRecord, GridCell, MechanismScoreRecord, SCMClusteringResult
+from causalchange.core.results import EdgeContributionRecord, GridCell, MechanismScoreRecord, SpaceTimeClusteringResult
 from causalchange.domain.temporal import TemporalNode, util_changepoints_to_intervals
 
 if TYPE_CHECKING:
@@ -59,7 +59,7 @@ def fixed_partition_for_graph(
     dataset_ids: Iterable[Any],
     n_intervals: int,
     intervals_by_context: dict[Any, list[tuple[int, int]]] | None = None,
-) -> SCMClusteringResult:
+) -> SpaceTimeClusteringResult:
     """Create singleton/no-change grid partitions for a fixed graph."""
 
     dataset_ids = list(dataset_ids)
@@ -77,7 +77,7 @@ def fixed_partition_for_graph(
         for interval_id in range(len(intervals))
     ]
 
-    return SCMClusteringResult(
+    return SpaceTimeClusteringResult(
         cell_clusters={target: {cell: cell.interval_id for cell in cells} for target in targets},
         intervals_by_context=intervals_by_context,
         diagnostics={"mode": "fixed_posthoc"},

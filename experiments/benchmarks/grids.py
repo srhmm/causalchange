@@ -354,11 +354,14 @@ ALL_GRIDS = {
     "spacetime_small_detect_time": GRID_SPACETIME_SMALL_DETECT_TIME,
     "spacetime_small_detect_contexts": GRID_SPACETIME_SMALL_DETECT_CONTEXTS,
     "spacetime_clustering_contexts_fixed": GRID_SPACETIME_CLUSTERING_CONTEXTS_FIXED,
-    # "cmm_small": GRID_CMM_MIXED_SMALL,
+    "cmm_small": GRID_CMM_MIXED_SMALL,
 }
 
 
-SELECTED_GRIDS = ["linc_small_no_change", "linc_small_context_changes"]
+SELECTED_GRIDS = [
+    "linc_small_context_changes"
+    # "cmm_small"
+]
 
 
 GRIDS = {name: ALL_GRIDS[name] for name in SELECTED_GRIDS}

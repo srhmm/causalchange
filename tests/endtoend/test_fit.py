@@ -237,7 +237,7 @@ def test_topic_wrapper_has_no_mixture_components():
     assert est.cmm_components_ is None
 
 
-def test_linc_fit_runs_and_exposes_context_combination_result():
+def test_linc_fit_stores_final_context_partitions():
     X = pd.DataFrame(
         {
             "context": [0, 0, 0, 1, 1, 1, 2, 2, 2],
@@ -264,5 +264,19 @@ def test_linc_fit_runs_and_exposes_context_combination_result():
 
     assert est.graph_ is not None
     assert "context" not in est.graph_.nodes
-    assert est.linc_components_() is not None
-    assert "groups" in est.linc_components_().diagnostics
+
+    components = est.linc_components_
+    assert components is not None
+    assert components.diagnostics["failures"] == []
+
+    assert set(components.target_components) == set(est.graph_.nodes)
+
+    for target, target_result in components.target_components.items():
+        assert target_result.target == target
+        assert isinstance(target_result.parents, tuple)
+
+        assert target_result.groups
+        assert target_result.labels_by_context
+        assert target_result.n_components == len(target_result.groups)
+
+        assert set(target_result.labels_by_context) == {0, 1, 2}

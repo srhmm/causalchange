@@ -22,6 +22,7 @@ from causalchange.config.benchmark_config import (
 )
 from causalchange.core.types import (
     MechanismClusteringScope,
+    TabularContextMethod,
 )
 from experiments.benchmarks.synthetic.metrics import compute_metrics
 from experiments.benchmarks.synthetic.metrics_time import (
@@ -41,6 +42,7 @@ from experiments.benchmarks.utils import (
     _compute_cmm_mixture_metrics,
     _estimated_cmm_labels_by_target,
     _estimated_context_labels_by_target,
+    _estimated_linc_context_labels_by_target,
     _estimated_regime_labels_by_target,
     _metrics_to_float_dict,
     _project_temporal_graph_to_summary,
@@ -69,6 +71,7 @@ def run_sampling(config: DataConfig) -> BenchmarkSample:
             true_summary_dag=result.true_summary_dag,
             spacetime=result,
             mixed=None,
+            multi=None,
         )
 
     if config.setting == "mixed":
@@ -77,6 +80,16 @@ def run_sampling(config: DataConfig) -> BenchmarkSample:
             true_summary_dag=result.true_summary_dag,
             spacetime=None,
             mixed=result,
+            multi=None,
+        )
+
+    if config.setting == "multi":
+        return BenchmarkSample(
+            df=result.df,
+            true_summary_dag=result.true_summary_dag,
+            spacetime=None,
+            mixed=None,
+            multi=result,
         )
 
     df, true_g = result
@@ -85,6 +98,7 @@ def run_sampling(config: DataConfig) -> BenchmarkSample:
         true_summary_dag=true_g,
         spacetime=None,
         mixed=None,
+        multi=None,
     )
 
 
@@ -168,6 +182,23 @@ def run_scoring(
             targets=sample.mixed.mixed_targets,
         )
         metrics.update(cmm_metrics)
+
+    if sample.multi is not None and getattr(est.cfg, "context_combination_method", None) == TabularContextMethod.LINC:
+        linc_context_partition_metrics = compute_target_partition_metrics(
+            sample.multi.context_labels_by_target,
+            _estimated_linc_context_labels_by_target(est),
+        )
+
+        metrics["context_partition_ari"] = linc_context_partition_metrics.ari_mean
+        metrics["context_partition_ami"] = linc_context_partition_metrics.ami_mean
+        metrics["context_partition_nmi"] = linc_context_partition_metrics.nmi_mean
+
+        for target, value in linc_context_partition_metrics.ari_by_target.items():
+            metrics[f"context_partition_{target}_ari"] = float(value)
+        for target, value in linc_context_partition_metrics.ami_by_target.items():
+            metrics[f"context_partition_{target}_ami"] = float(value)
+        for target, value in linc_context_partition_metrics.nmi_by_target.items():
+            metrics[f"context_partition_{target}_nmi"] = float(value)
 
     spacetime_sample = sample.spacetime
     if spacetime_sample is not None:

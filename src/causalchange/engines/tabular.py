@@ -12,7 +12,12 @@ from causalchange.core.protocols import (
     TabularScoringProtocol,
     TabularSearchProtocol,
 )
-from causalchange.core.results import CMMMixtureResult, MultiContextResult, TabularResult
+from causalchange.core.results import (
+    CMMMixtureResult,
+    ContextCombinationResult,
+    LincMixtureResult,
+    TabularResult,
+)
 from causalchange.core.types import DataMode, PostprocessingMode
 from causalchange.engines.base import BaseDiscoveryEngine
 
@@ -46,8 +51,8 @@ class TabularDiscoveryEngine(BaseDiscoveryEngine[TabularDomainProtocol, TabularS
 
         self.X0_: pd.DataFrame | None = None
         self.contexts_: dict[Hashable, pd.DataFrame] | None = None
-        self.last_context_combo_: MultiContextResult | None = None
-        self._score_cache: dict[tuple[Any, tuple[Any, ...]], MultiContextResult] = {}
+        self.last_context_combo_: ContextCombinationResult | None = None
+        self._score_cache: dict[tuple[Any, tuple[Any, ...]], ContextCombinationResult] = {}
 
     def fit(self, X: pd.DataFrame) -> TabularDiscoveryEngine:
         self.contexts_ = self.context_preproc.make_contexts(X)
@@ -98,19 +103,22 @@ class TabularDiscoveryEngine(BaseDiscoveryEngine[TabularDomainProtocol, TabularS
             score_fun=self.local_score,
         )
 
-        mechanism_mixture = self._final_mixture_components(graph_search_result.graph)
+        cmm_mixture = self._extract_cmm_components(graph_search_result.graph)
+        linc_mixture = self._extract_linc_components(graph_search_result.graph)
 
         return TabularResult(
             graph_search=graph_search_result,
-            mechanism_mixture=mechanism_mixture,
+            cmm_mixture=cmm_mixture,
+            linc_mixture=linc_mixture,
             history=graph_search_result.history,
             diagnostics={
                 "score_cache_size": len(self._score_cache),
-                "has_mixture_components": mechanism_mixture is not None,
+                "has_cmm_mixture": cmm_mixture is not None,
+                "has_linc_mixture": linc_mixture is not None,
             },
         )
 
-    def _final_mixture_components(self, graph) -> CMMMixtureResult | None:
+    def _extract_cmm_components(self, graph) -> CMMMixtureResult | None:
         if self.X0_ is None:
             raise RuntimeError("Engine not fitted. Call fit() first.")
 
@@ -120,3 +128,11 @@ class TabularDiscoveryEngine(BaseDiscoveryEngine[TabularDomainProtocol, TabularS
             return None
 
         return extractor(self.X0_, graph)
+
+    def _extract_linc_components(self, graph) -> LincMixtureResult | None:
+        extractor = getattr(self.context_comb, "fit_final_linc_components", None)
+
+        if extractor is None or not callable(extractor):
+            return None
+
+        return extractor(graph)

@@ -14,7 +14,7 @@ from causalchange.core.protocols import (
     TemporalScoringProtocol,
     TemporalSearchProtocol,
 )
-from causalchange.core.results import ChangepointResult, SCMClusteringResult, TemporalResult
+from causalchange.core.results import SpaceTimeChangepointResult, SpaceTimeClusteringResult, TemporalResult
 from causalchange.core.types import (
     ChangepointMode,
     ChangepointScope,
@@ -72,7 +72,7 @@ class TemporalDiscoveryEngine(
         self.changepoints_by_context_: dict[Any, list[int]] | None = None
         self.changepoint_diagnostics_: dict[str, Any] = {}
         self.panel_: TimeGrid | None = None
-        self.partitions_: SCMClusteringResult | None = None
+        self.partitions_: SpaceTimeClusteringResult | None = None
         self.result_: TemporalResult | None = None
         self._score_cache: dict[tuple, float] = {}
 
@@ -238,7 +238,7 @@ class TemporalDiscoveryEngine(
             all_history[-1]["final_partition_diagnostics"] = self.partitions_.diagnostics
             all_history[-1]["timing"]["final_partitioning"] = final_partition_time
 
-        changepoint_result = ChangepointResult(
+        changepoint_result = SpaceTimeChangepointResult(
             changepoints=self.changepoints_,
             changepoints_by_context=self.changepoints_by_context_,
             diagnostics=self.changepoint_diagnostics_,

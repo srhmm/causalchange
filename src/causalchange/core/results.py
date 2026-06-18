@@ -7,7 +7,7 @@ import networkx as nx
 
 from causalchange.domain.temporal import TemporalNode
 
-# %% Components/algos
+# %% Components
 
 
 @dataclass
@@ -20,21 +20,54 @@ class GraphSearchResult:
     diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass
-class ChangepointResult:
-    """returned by changepoint detection algo"""
-
-    changepoints: list[int] = field(default_factory=list)
-    changepoints_by_context: dict[Any, list[int]] | None = None
-    diagnostics: dict[str, Any] = field(default_factory=dict)
+# %% LINC
 
 
 @dataclass(frozen=True)
-class MultiContextResult:
-    """returned by context combination algo"""
+class ContextCombinationResult:
+    """Internal result returned by a context-combination scorer call."""
 
     total: float
     diagnostics: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class LincTargetMixtureResult:
+    """Context-mechanism partition for one final local mechanism target | parents."""
+
+    target: Any
+    parents: tuple[Any, ...]
+    groups: list[frozenset[Any]]
+    labels_by_context: dict[Any, int]
+    score: float | None = None
+    n_components: int | None = None
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+    def label_for(self, context: Any) -> int:
+        return self.labels_by_context[context]
+
+    def contexts_for_label(self, label: int) -> list[Any]:
+        return [context for context, context_label in self.labels_by_context.items() if context_label == label]
+
+
+@dataclass
+class LincMixtureResult:
+    """Context-mechanism partitions learned by LINC under the final graph."""
+
+    target_components: dict[Any, LincTargetMixtureResult] = field(default_factory=dict)
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+    def labels_for(self, target: Any) -> dict[Any, int]:
+        return self.target_components[target].labels_by_context
+
+    def groups_for(self, target: Any) -> list[frozenset[Any]]:
+        return self.target_components[target].groups
+
+    def parents_for(self, target: Any) -> tuple[Any, ...]:
+        return self.target_components[target].parents
+
+
+# %% SpaceTime
 
 
 @dataclass(frozen=True)
@@ -46,7 +79,16 @@ class GridCell:
 
 
 @dataclass
-class SCMClusteringResult:
+class SpaceTimeChangepointResult:
+    """returned by changepoint detection algo"""
+
+    changepoints: list[int] = field(default_factory=list)
+    changepoints_by_context: dict[Any, list[int]] | None = None
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class SpaceTimeClusteringResult:
     """
     Mechanism clusters over context × time-interval cells
 
@@ -73,6 +115,9 @@ class SCMClusteringResult:
         cluster_id: int,
     ) -> list[GridCell]:
         return [cell for cell, label in self.cell_clusters.get(target, {}).items() if label == cluster_id]
+
+
+# %% CMM
 
 
 @dataclass
@@ -151,7 +196,7 @@ class EdgeContributionRecord:
     n_samples: int | None = None
 
 
-# %% CausalChange
+# %% API
 
 
 @dataclass
@@ -179,21 +224,26 @@ class CausalChangeResult:
 # %% Engines
 @dataclass
 class TabularResult(CausalChangeResult):
-    """returned by the tabular engine"""
+    """Returned by the tabular engine."""
 
-    mechanism_mixture: CMMMixtureResult | None = None
+    cmm_mixture: CMMMixtureResult | None = None
+    linc_mixture: LincMixtureResult | None = None
 
     @property
     def mixture_components(self) -> CMMMixtureResult | None:
-        return self.mechanism_mixture
+        return self.cmm_mixture
+
+    @property
+    def linc_components(self) -> LincMixtureResult | None:
+        return self.linc_mixture
 
 
 @dataclass
 class TemporalResult(CausalChangeResult):
     """returned by the temporal engine"""
 
-    changepoint: ChangepointResult = field(default_factory=ChangepointResult)
-    mechanism_clustering: SCMClusteringResult | None = None
+    changepoint: SpaceTimeChangepointResult = field(default_factory=SpaceTimeChangepointResult)
+    mechanism_clustering: SpaceTimeClusteringResult | None = None
 
     @property
     def changepoints(self) -> list[int]:
@@ -208,5 +258,5 @@ class TemporalResult(CausalChangeResult):
         return self.changepoint.diagnostics
 
     @property
-    def grid_clusters(self) -> SCMClusteringResult | None:
+    def grid_clusters(self) -> SpaceTimeClusteringResult | None:
         return self.mechanism_clustering

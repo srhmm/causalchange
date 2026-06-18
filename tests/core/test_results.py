@@ -16,11 +16,11 @@ from causalchange import (
 from causalchange.config.causal_change_config import CausalChangeConfigTemporal
 from causalchange.core.results import (
     CausalChangeResult,
-    ChangepointResult,
     GraphSearchResult,
     GridCell,
     PostProcessingResult,
-    SCMClusteringResult,
+    SpaceTimeChangepointResult,
+    SpaceTimeClusteringResult,
     TemporalResult,
 )
 from causalchange.discovery.scm_clustering import TemporalSCMClustering
@@ -44,12 +44,12 @@ def test_temporal_result_aliases_component_results():
     graph = nx.DiGraph()
     graph_search = GraphSearchResult(graph=graph)
 
-    changepoint = ChangepointResult(
+    changepoint = SpaceTimeChangepointResult(
         changepoints=[10],
         changepoints_by_context={0: [10]},
     )
 
-    clusters = SCMClusteringResult(
+    clusters = SpaceTimeClusteringResult(
         cell_clusters={
             "x": {
                 GridCell(dataset_id=0, interval_id=0): 0,

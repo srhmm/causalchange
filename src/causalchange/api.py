@@ -100,6 +100,10 @@ class Linc(CausalChange):
     * *topological_order_* -- discovered topological order if produced by the graph search
     * *edge_strengths_* -- optional edge-strength postprocessing result when
       ``postprocessing_mode="edge-strengths"``
+    * *linc_components_* -- final-graph context partitions per target
+    * *linc_labels_* -- hard context-cluster labels per target
+    * *linc_groups_* -- context groups per target
+    * *last_context_combo_* -- debug-only most recent local context-combination result
     * *history_* -- graph-search history
     * *result_* -- full result object
     """

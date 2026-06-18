@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from causalchange.config.causal_change_config import CausalChangeConfigTemporal
-from causalchange.core.results import GridCell, SCMClusteringResult
+from causalchange.core.results import GridCell, SpaceTimeClusteringResult
 from causalchange.core.types import DataMode
 from causalchange.domain.temporal import (
     TemporalNode,
@@ -176,7 +176,7 @@ class SCMScoreTemporal(BaseLocalScorer):
         panel: TimeGrid,
         effect: TemporalNode,
         parents: Sequence[TemporalNode],
-        partitions: SCMClusteringResult,
+        partitions: SpaceTimeClusteringResult,
     ) -> float:
         if effect[1] != 0:
             raise ValueError(f"Temporal effects must have lag 0, got {effect}.")
@@ -425,7 +425,7 @@ class SCMScoreTemporal(BaseLocalScorer):
     def _intervals_from_partitions(
         self,
         panel: TimeGrid,
-        partitions: SCMClusteringResult,
+        partitions: SpaceTimeClusteringResult,
     ) -> list[tuple[int, int]]:
         intervals_raw = partitions.diagnostics.get("intervals")
 
