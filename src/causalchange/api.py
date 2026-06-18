@@ -123,26 +123,15 @@ class Linc(CausalChange):
         context_col: str = "context",
         postprocessing_mode: PostprocessingName = "skip",
         mechanism_clustering_method: TabularMechanismClusteringName = "score-merge",
-        context_combination_kwargs: ClusteringMethod | None = None,
-        testing_method: TestingMethodName | None = None,
-        mechanism_test_alpha: float = 0.05,
-        mechanism_clustering_n_clusters: int | None = None,
-        mechanism_clustering_distance_threshold: float | None = None,
+        context_combination_method: ClusteringMethod | None = None,
+        # testing_method: TestingMethodName | None = None,
+        # mechanism_test_alpha: float = 0.05,
+        # mechanism_clustering_n_clusters: int | None = None,
+        # mechanism_clustering_distance_threshold: float | None = None,
         score_kwargs: dict[str, Any] | None = None,
         seed: int = 42,
         var_nms: list[str] | None = None,
     ):
-        resolved_method = TabularMechanismClusteringMethod(mechanism_clustering_method)
-
-        if testing_method is None:
-            resolved_testing_method = (
-                StatisticalTestingMethod.KERNEL
-                if resolved_method == TabularMechanismClusteringMethod.TESTING
-                else StatisticalTestingMethod.SKIP
-            )
-        else:
-            resolved_testing_method = StatisticalTestingMethod(testing_method)
-
         public_cfg = CausalChangeConfigTabular(
             data_mode=DataMode.TAB_CONTEXTS,
             graph_search=GraphSearch.TOPIC,
@@ -150,14 +139,14 @@ class Linc(CausalChange):
             context_mode=TabularContextMode.ORACLE,
             context_combination_method=TabularContextMethod.LINC,
             context_combination_kwargs=(
-                context_combination_kwargs if context_combination_kwargs is not None else ClusteringMethod.AGGLOMERATIVE
+                context_combination_method if context_combination_method is not None else ClusteringMethod.AGGLOMERATIVE
             ),
             context_col=context_col,
-            mechanism_clustering_method=resolved_method,
-            testing_method=resolved_testing_method,
-            mechanism_test_alpha=mechanism_test_alpha,
-            mechanism_clustering_n_clusters=mechanism_clustering_n_clusters,
-            mechanism_clustering_distance_threshold=mechanism_clustering_distance_threshold,
+            mechanism_clustering_method=TabularMechanismClusteringMethod(mechanism_clustering_method),
+            # testing_method=resolved_testing_method,
+            # mechanism_test_alpha=mechanism_test_alpha,
+            # mechanism_clustering_n_clusters=mechanism_clustering_n_clusters,
+            # mechanism_clustering_distance_threshold=mechanism_clustering_distance_threshold,
             postprocessing_mode=PostprocessingMode(postprocessing_mode),
             score_kwargs={} if score_kwargs is None else dict(score_kwargs),
             seed=seed,

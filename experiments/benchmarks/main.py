@@ -17,6 +17,7 @@ from experiments.benchmarks.utils import (
 )
 
 if __name__ == "__main__":
+    VERBOSITY = 0
     BASE_SEED = 42
     N_REPEATS = 10
     OUT_DIR = Path(__file__).resolve().parent / "_results"
@@ -41,9 +42,9 @@ if __name__ == "__main__":
 
                 metrics = run_on_config(cfg)
                 key = config_group_key(cfg)
-                print("\n")
-                print(metrics)
-                print("\n")
+
+                if VERBOSITY > 0:
+                    print(metrics)
                 if key not in groups:
                     example = cfg.model_dump()
                     example["data"].pop("seed", None)

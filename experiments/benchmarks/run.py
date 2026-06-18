@@ -14,7 +14,6 @@ from causalchange.config.benchmark_config import (
     AlgoConfig,
     BenchmarkConfig,
     CmmAlgoConfig,
-    ContextDataConfig,
     DataConfig,
     LincAlgoConfig,
     MultiTemporalDataConfig,
@@ -121,17 +120,11 @@ def run_algo(sample: BenchmarkSample, data_cfg: DataConfig, algo_cfg: AlgoConfig
         ).fit(sample.df)
 
     if algo_cfg.name == "linc":
-        context_cfg = cast(ContextDataConfig, data_cfg)
         linc_cfg = cast(LincAlgoConfig, algo_cfg)
 
         return Linc(
             score_type=linc_cfg.score_type,
-            context_col=context_cfg.context_col,
             mechanism_clustering_method=linc_cfg.mechanism_clustering_method,
-            testing_method=linc_cfg.testing_method,
-            mechanism_test_alpha=linc_cfg.mechanism_test_alpha,
-            mechanism_clustering_n_clusters=linc_cfg.mechanism_clustering_n_clusters,
-            mechanism_clustering_distance_threshold=linc_cfg.mechanism_clustering_distance_threshold,
         ).fit(sample.df)
 
     if algo_cfg.name != "spacetime":

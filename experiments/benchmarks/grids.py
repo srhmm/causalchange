@@ -63,51 +63,8 @@ GRID_LINC_SMALL_CONTEXT_CHANGES = {
     "algo": {
         "name": ["linc"],
         "score_type": ["gam"],
-        "mechanism_clustering_method": ["score-merge"],
-        "testing_method": ["skip"],
     },
 }
-GRID_LINC_SMALL_TESTING = {
-    "data": {
-        "setting": ["multi"],
-        "n_nodes": [5],
-        "edge_prob": [0.4],
-        "n_contexts": [5, 10],
-        "n_samples_per_context": [700],
-        "n_intervened_per_context": [1],
-        "context_col": ["context"],
-        "nonlinearity": ["tanh", "sin", "lin", "relu"],
-        "intervention_type": ["soft-weight"],
-        "weight_scale_intervened": [2.0],
-    },
-    "algo": {
-        "name": ["linc"],
-        "score_type": ["gam"],
-        "mechanism_clustering_method": ["statistical-testing"],
-        "testing_method": ["kernel"],
-    },
-}
-GRID_LINC_SMALL_CLUSTERING = {
-    "data": {
-        "setting": ["multi"],
-        "n_nodes": [5],
-        "edge_prob": [0.4],
-        "n_contexts": [5, 10],
-        "n_samples_per_context": [700],
-        "n_intervened_per_context": [1],
-        "context_col": ["context"],
-        "nonlinearity": ["tanh", "sin", "lin", "relu"],
-        "intervention_type": ["soft-weight"],
-        "weight_scale_intervened": [2.0],
-    },
-    "algo": {
-        "name": ["linc"],
-        "score_type": ["gam"],
-        "mechanism_clustering_method": ["mechanism-clustering"],
-        "testing_method": ["skip"],
-    },
-}
-
 
 GRID_LINC_NO_CHANGE = {
     "data": {
