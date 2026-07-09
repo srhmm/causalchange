@@ -51,7 +51,7 @@ def test_linc_components_merges_positive_gain_contexts():
     )
 
     assert result.total == 25.0
-    assert result.diagnostics["method"] == "components"
+    assert result.diagnostics["method"] == "score-merge-components"
     assert _as_group_sets(result.diagnostics["groups"]) == {
         frozenset({"a", "b"}),
         frozenset({"c"}),
@@ -146,7 +146,7 @@ def test_linc_agglomerative_merges_best_positive_gain_pair():
     )
 
     assert result.total == 25.0
-    assert result.diagnostics["method"] == "agglomerative"
+    assert result.diagnostics["method"] == "score-merge-agglomerative"
     assert _as_group_sets(result.diagnostics["groups"]) == {
         frozenset({"a", "b"}),
         frozenset({"c"}),

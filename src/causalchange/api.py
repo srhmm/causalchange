@@ -124,14 +124,22 @@ class Linc(CausalChange):
         postprocessing_mode: PostprocessingName = "skip",
         mechanism_clustering_method: TabularMechanismClusteringName = "score-merge",
         context_combination_method: ClusteringMethod | None = None,
-        # testing_method: TestingMethodName | None = None,
-        # mechanism_test_alpha: float = 0.05,
-        # mechanism_clustering_n_clusters: int | None = None,
-        # mechanism_clustering_distance_threshold: float | None = None,
+        testing_method: TestingMethodName | None = None,
+        mechanism_test_alpha: float = 0.05,
+        mechanism_clustering_n_clusters: int | None = None,
+        mechanism_clustering_distance_threshold: float | None = None,
         score_kwargs: dict[str, Any] | None = None,
         seed: int = 42,
         var_nms: list[str] | None = None,
     ):
+        resolved_mechanism_method = TabularMechanismClusteringMethod(mechanism_clustering_method)
+        if resolved_mechanism_method == TabularMechanismClusteringMethod.TESTING:
+            resolved_testing_method = StatisticalTestingMethod(testing_method or "kernel")
+        elif testing_method is None:
+            resolved_testing_method = StatisticalTestingMethod.SKIP
+        else:
+            resolved_testing_method = StatisticalTestingMethod(testing_method)
+
         public_cfg = CausalChangeConfigTabular(
             data_mode=DataMode.TAB_CONTEXTS,
             graph_search=GraphSearch.TOPIC,
@@ -142,11 +150,11 @@ class Linc(CausalChange):
                 context_combination_method if context_combination_method is not None else ClusteringMethod.AGGLOMERATIVE
             ),
             context_col=context_col,
-            mechanism_clustering_method=TabularMechanismClusteringMethod(mechanism_clustering_method),
-            # testing_method=resolved_testing_method,
-            # mechanism_test_alpha=mechanism_test_alpha,
-            # mechanism_clustering_n_clusters=mechanism_clustering_n_clusters,
-            # mechanism_clustering_distance_threshold=mechanism_clustering_distance_threshold,
+            mechanism_clustering_method=resolved_mechanism_method,
+            testing_method=resolved_testing_method,
+            mechanism_test_alpha=mechanism_test_alpha,
+            mechanism_clustering_n_clusters=mechanism_clustering_n_clusters,
+            mechanism_clustering_distance_threshold=mechanism_clustering_distance_threshold,
             postprocessing_mode=PostprocessingMode(postprocessing_mode),
             score_kwargs={} if score_kwargs is None else dict(score_kwargs),
             seed=seed,
@@ -266,11 +274,11 @@ class SpaceTime(CausalChange):
         tau_max: int = 2,
         context_col: str = "context",
         changepoint_mode: ChangepointModeName = "detect",
-        changepoint_scope: ChangepointScopeName = "global",
-        changepoint_method: ChangepointMethodName = "pelt",
+        changepoint_scope: ChangepointScopeName | None = None,
+        changepoint_method: ChangepointMethodName | None = None,
         clustering_scope: ClusteringScopeName = "regimes-contexts",
-        clustering_method: ClusteringMethodName = "statistical-testing",
-        testing_method: TestingMethodName = "kernel",
+        clustering_method: ClusteringMethodName | None = None,
+        testing_method: TestingMethodName | None = None,
         d_min: int = 30,
         max_iter: int = 3,
         pelt_penalty: float | PeltPenaltyName = "auto",
@@ -281,6 +289,42 @@ class SpaceTime(CausalChange):
         seed: int = 42,
         var_nms: list[str] | None = None,
     ):
+        resolved_changepoint_mode = ChangepointMode(changepoint_mode)
+        if changepoint_scope is None:
+            resolved_changepoint_scope = (
+                ChangepointScope.GLOBAL
+                if resolved_changepoint_mode == ChangepointMode.DETECT
+                else ChangepointScope.SKIP
+            )
+        else:
+            resolved_changepoint_scope = ChangepointScope(changepoint_scope)
+        if changepoint_method is None:
+            resolved_changepoint_method = (
+                ChangepointMethod.PELT
+                if resolved_changepoint_mode == ChangepointMode.DETECT
+                else ChangepointMethod.SKIP
+            )
+        else:
+            resolved_changepoint_method = ChangepointMethod(changepoint_method)
+
+        resolved_clustering_scope = MechanismClusteringScope(clustering_scope)
+        if clustering_method is None:
+            resolved_clustering_method = (
+                MechanismClusteringMethod.SKIP
+                if resolved_clustering_scope == MechanismClusteringScope.SKIP
+                else MechanismClusteringMethod.TESTING
+            )
+        else:
+            resolved_clustering_method = MechanismClusteringMethod(clustering_method)
+        if testing_method is None:
+            resolved_testing_method = (
+                StatisticalTestingMethod.KERNEL
+                if resolved_clustering_method == MechanismClusteringMethod.TESTING
+                else StatisticalTestingMethod.SKIP
+            )
+        else:
+            resolved_testing_method = StatisticalTestingMethod(testing_method)
+
         public_cfg = CausalChangeConfigTemporal(
             data_mode=DataMode(data_mode),
             graph_search=GraphSearch.GLOBE,
@@ -292,12 +336,12 @@ class SpaceTime(CausalChange):
             mechanism_test_alpha=mechanism_test_alpha,
             pelt_penalty=pelt_penalty,
             fixed_changepoints=[] if fixed_changepoints is None else list(fixed_changepoints),
-            changepoint_mode=ChangepointMode(changepoint_mode),
-            changepoint_scope=ChangepointScope(changepoint_scope),
-            changepoint_method=ChangepointMethod(changepoint_method),
-            clustering_scope=MechanismClusteringScope(clustering_scope),
-            clustering_method=MechanismClusteringMethod(clustering_method),
-            testing_method=StatisticalTestingMethod(testing_method),
+            changepoint_mode=resolved_changepoint_mode,
+            changepoint_scope=resolved_changepoint_scope,
+            changepoint_method=resolved_changepoint_method,
+            clustering_scope=resolved_clustering_scope,
+            clustering_method=resolved_clustering_method,
+            testing_method=resolved_testing_method,
             postprocessing_mode=PostprocessingMode(postprocessing_mode),
             score_kwargs={} if score_kwargs is None else dict(score_kwargs),
             seed=seed,

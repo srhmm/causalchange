@@ -23,9 +23,10 @@ class SkipCombination:
         parents: tuple[Any, ...],
         score_ctx: Callable[[pd.DataFrame], float],
     ) -> ContextCombinationResult:
-        assert (
-            len(contexts) == 1
-        ), f"expect one context, got {len(contexts)}. use TabularContextMethod.LINC for context data"
+        if len(contexts) != 1:
+            raise ValueError(
+                f"expect exactly one context, got {len(contexts)}. " "use TabularContextMethod.LINC for context data"
+            )
 
         ctx, df = next(iter(contexts.items()))
         score = float(score_ctx(df))
@@ -78,6 +79,13 @@ class LINCContextCombination:
             result = self._combine_score_merge(contexts=contexts, score_ctx=score_ctx)
         elif self.mechanism_clustering_method == TabularMechanismClusteringMethod.TESTING:
             result = self._combine_testing(
+                contexts=contexts,
+                effect=effect,
+                parents=parents,
+                score_ctx=score_ctx,
+            )
+        elif self.mechanism_clustering_method == TabularMechanismClusteringMethod.CLUSTERING:
+            result = self._combine_clustering(
                 contexts=contexts,
                 effect=effect,
                 parents=parents,

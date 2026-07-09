@@ -65,7 +65,7 @@ class CausalChangeConfigTabular(CausalChangeConfigBase):
     mix_type: MixedSCMType = MixedSCMType.SKIP
     context_mode: TabularContextMode = TabularContextMode.SKIP
     context_combination_method: TabularContextMethod = TabularContextMethod.SKIP
-    context_combination_kwargs: ClusteringMethod = Field(default_factory=ClusteringMethod)
+    context_combination_kwargs: ClusteringMethod = ClusteringMethod.SKIP
     context_col: ContextColumn = "context"
     context_gain_threshold: float = Field(default=0.0)
 
