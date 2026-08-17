@@ -5,7 +5,7 @@
 
 ### Tabular causal discovery with TOPIC [[1]](references.md)
 
-**Notebook** [`01_topic_tutorial.ipynb`](../../notebooks/01_topic_tutorial.ipynb)
+**Notebook** [`01_topic_tutorial.ipynb`](../../notebooks/01_topic_demo.ipynb)
 
 
 
@@ -28,7 +28,7 @@ print(cc.graph_.edges())
 
 ### Multi-context causal discovery with LINC  [[2]](references.md)
 
-**Notebook** [`02_linc_tutorial.ipynb`](../../notebooks/02_linc_tutorial.ipynb)
+**Notebook** [`02_linc_tutorial.ipynb`](../../notebooks/02_linc_demo.ipynb)
 
 **Example usage**
 
@@ -49,7 +49,7 @@ cc.fit(X)
 
 ### Time series causal discovery with SpaceTime  [[3]](references.md)
 
-**Notebook** [`03_spacetime_tutorial.ipynb`](../../notebooks/03_spacetime_tutorial.ipynb)
+**Notebook** [`03_spacetime_tutorial.ipynb`](../../notebooks/03_spacetime_demo.ipynb)
 
 **Example usage**
 
@@ -80,7 +80,7 @@ Both are included in `pip install "causalchange[spacetime]"`.
 ---
 
 ### Causal clustering/Discovering latent population mixtures with CMMs  [[4]](references.md)
-**Notebook** [`04_cmm_tutorial.ipynb`](../../notebooks/04_cmm_tutorial.ipynb)
+**Notebook** [`04_cmm_tutorial.ipynb`](../../notebooks/04_cmm_demo.ipynb)
 
 **Example usage**
 ```python
