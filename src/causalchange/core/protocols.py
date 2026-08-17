@@ -6,7 +6,7 @@ from typing import Any, Protocol
 import networkx as nx
 import pandas as pd
 
-from causalchange.core.results import GraphSearchResult, MultiContextResult, SCMClusteringResult
+from causalchange.core.results import ContextCombinationResult, GraphSearchResult, SpaceTimeClusteringResult
 from causalchange.domain.tabular import TabularAllowedEdge, TabularNode, TabularScoreFunction
 from causalchange.domain.temporal import TemporalAllowedEdge, TemporalNode, TemporalScoreFunction, TimeGrid
 
@@ -72,7 +72,7 @@ class TemporalScoringProtocol(Protocol):
         panel: TimeGrid,
         effect: TemporalNode,
         parents: Sequence[TemporalNode],
-        partitions: SCMClusteringResult,
+        partitions: SpaceTimeClusteringResult,
     ) -> float: ...
 
     @property
@@ -92,7 +92,7 @@ class BaseContextCombination(Protocol):
         effect: Any,
         parents: tuple[Any, ...],
         score_ctx: Callable[[pd.DataFrame], float],
-    ) -> MultiContextResult: ...
+    ) -> ContextCombinationResult: ...
 
 
 class TabularSearchProtocol(Protocol):
@@ -142,4 +142,4 @@ class MechanismClusteringProtocol(Protocol):
         changepoints: list[int] | None = None,
         changepoints_by_context: dict[Any, list[int]] | None = None,
         scorer: Any = None,
-    ) -> SCMClusteringResult: ...
+    ) -> SpaceTimeClusteringResult: ...

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from causalchange.core.types import ContextCombinationKwargs
+from causalchange.core.types import ClusteringMethod
 from causalchange.discovery.context_combination import LINCContextCombination
 
 
@@ -38,7 +38,7 @@ def _as_group_sets(groups):
 
 def test_linc_components_merges_positive_gain_contexts():
     comb = LINCContextCombination(
-        grouping=ContextCombinationKwargs.COMPONENTS,
+        grouping=ClusteringMethod.COMPONENTS,
         gain_threshold=0.0,
         higher_is_better=False,
     )
@@ -51,7 +51,7 @@ def test_linc_components_merges_positive_gain_contexts():
     )
 
     assert result.total == 25.0
-    assert result.diagnostics["method"] == "components"
+    assert result.diagnostics["method"] == "score-merge-components"
     assert _as_group_sets(result.diagnostics["groups"]) == {
         frozenset({"a", "b"}),
         frozenset({"c"}),
@@ -65,7 +65,7 @@ def test_linc_components_merges_positive_gain_contexts():
 
 def test_linc_components_threshold_can_prevent_merge():
     comb = LINCContextCombination(
-        grouping=ContextCombinationKwargs.COMPONENTS,
+        grouping=ClusteringMethod.COMPONENTS,
         gain_threshold=5.1,
         higher_is_better=False,
     )
@@ -88,7 +88,7 @@ def test_linc_components_threshold_can_prevent_merge():
 
 def test_linc_components_does_not_merge_when_gain_equals_threshold():
     comb = LINCContextCombination(
-        grouping=ContextCombinationKwargs.COMPONENTS,
+        grouping=ClusteringMethod.COMPONENTS,
         gain_threshold=5.0,
         higher_is_better=False,
     )
@@ -111,7 +111,7 @@ def test_linc_components_does_not_merge_when_gain_equals_threshold():
 
 def test_linc_components_merges_when_gain_exceeds_threshold():
     comb = LINCContextCombination(
-        grouping=ContextCombinationKwargs.COMPONENTS,
+        grouping=ClusteringMethod.COMPONENTS,
         gain_threshold=4.9,
         higher_is_better=False,
     )
@@ -133,7 +133,7 @@ def test_linc_components_merges_when_gain_exceeds_threshold():
 
 def test_linc_agglomerative_merges_best_positive_gain_pair():
     comb = LINCContextCombination(
-        grouping=ContextCombinationKwargs.AGGLOMERATIVE,
+        grouping=ClusteringMethod.AGGLOMERATIVE,
         gain_threshold=0.0,
         higher_is_better=False,
     )
@@ -146,7 +146,7 @@ def test_linc_agglomerative_merges_best_positive_gain_pair():
     )
 
     assert result.total == 25.0
-    assert result.diagnostics["method"] == "agglomerative"
+    assert result.diagnostics["method"] == "score-merge-agglomerative"
     assert _as_group_sets(result.diagnostics["groups"]) == {
         frozenset({"a", "b"}),
         frozenset({"c"}),
@@ -155,7 +155,7 @@ def test_linc_agglomerative_merges_best_positive_gain_pair():
 
 def test_linc_single_context_returns_single_group_score():
     comb = LINCContextCombination(
-        grouping=ContextCombinationKwargs.COMPONENTS,
+        grouping=ClusteringMethod.COMPONENTS,
         gain_threshold=0.0,
         higher_is_better=False,
     )
@@ -176,7 +176,7 @@ def test_linc_single_context_returns_single_group_score():
 
 def test_linc_empty_contexts_are_rejected():
     comb = LINCContextCombination(
-        grouping=ContextCombinationKwargs.COMPONENTS,
+        grouping=ClusteringMethod.COMPONENTS,
         gain_threshold=0.0,
         higher_is_better=False,
     )

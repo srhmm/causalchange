@@ -63,5 +63,5 @@ def test_spacetime_public_properties_after_skip_fit():
     assert est.graph_ is not None
     assert est.changepoints_ == []
     # assert est.changepoint_diagnostics_ is not None
-    assert est.partitions_ is not None
+    assert est.spacetime_components_ is not None
     assert est.history_ is not None

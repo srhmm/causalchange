@@ -64,6 +64,12 @@ class EngineFactory:
                 grouping=cfg.context_combination_kwargs,
                 gain_threshold=cfg.context_gain_threshold,
                 higher_is_better=scoring.higher_is_better,
+                mechanism_clustering_method=cfg.mechanism_clustering_method,
+                testing_method=cfg.testing_method,
+                mechanism_test_alpha=cfg.mechanism_test_alpha,
+                mechanism_clustering_n_clusters=cfg.mechanism_clustering_n_clusters,
+                mechanism_clustering_distance_threshold=cfg.mechanism_clustering_distance_threshold,
+                seed=cfg.seed,
             )
             if cfg.context_combination_method == TabularContextMethod.LINC
             else (
@@ -71,11 +77,10 @@ class EngineFactory:
                     higher_is_better=scoring.higher_is_better,
                     seed=cfg.seed,
                 )
-                if cfg.context_combination_method == TabularContextMethod.CHAIN  # used?
+                if cfg.context_combination_method == TabularContextMethod.CHAIN
                 else SkipCombination()
             )
         )
-
         return TabularDiscoveryEngine(
             data_mode=cfg.data_mode,
             domain=domain,

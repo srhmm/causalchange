@@ -42,10 +42,10 @@ print("Edges:", sorted(cc.graph_.edges()))
 ### Further Examples
 
 See the `notebooks/` for basic usage on small synthetic examples. The algorithms are
-*   [TOPIC](notebooks/01_topic_demo.ipynb), for score-based causal DAG discovery from tabular data in topological order [1],
-*   [LINC](notebooks/02_linc_demo.ipynb), for score-based causal discovery from multiple contexts, i.e., multiple tabular datasets under latent distribution shifts/interventions [2],
-*   [CMM](notebooks/03_spacetime_demo.ipynb), for score-based causal discovery from latent mixtures, i.e., a tabular dataset comprised of different hidden populations/contexts/interventions [3].
-*   [SpaceTime](notebooks/03_spacetime_demo.ipynb), for temporal causal discovery, changepoint detection, and causal clustering analysis in time series or multi-context time series [4].
+*   [TOPIC](notebooks/01_topic_tutorial.ipynb), for score-based causal DAG discovery from tabular data in topological order [1],
+*   [LINC](notebooks/02_linc_tutorial.ipynb), for score-based causal discovery from multiple contexts, i.e., multiple tabular datasets under latent distribution shifts/interventions [2],
+*   [CMM](notebooks/04_cmm_tutorial.ipynb), for score-based causal discovery from latent mixtures, i.e., a tabular dataset comprised of different hidden populations/contexts/interventions [3].
+*   [SpaceTime](notebooks/03_spacetime_tutorial.ipynb), for temporal causal discovery, changepoint detection, and causal clustering analysis in time series or multi-context time series [4].
 
 ---
 ### Documentation

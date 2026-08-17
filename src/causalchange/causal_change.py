@@ -14,7 +14,8 @@ from causalchange.config.causal_change_config import (
 from causalchange.core.results import (
     CausalChangeResult,
     CMMMixtureResult,
-    MultiContextResult,
+    ContextCombinationResult,
+    LincMixtureResult,
     TabularResult,
     TemporalResult,
 )
@@ -190,7 +191,7 @@ class CausalChange:
         return cast(TemporalResult, result).changepoints_by_context
 
     @property
-    def partitions_(self):
+    def spacetime_components_(self):
         result = self.get_result()
         if not self.cfg.data_mode.is_temporal():
             return None
@@ -205,8 +206,48 @@ class CausalChange:
 
         return cast(TabularResult, result).mixture_components
 
-    def linc_components_(self) -> MultiContextResult:
-        return self.engine_.last_context_combo_
+    @property
+    def cmm_labels_(self) -> dict[Any, list[int]] | None:
+        components = self.cmm_components_
+
+        if components is None:
+            return None
+
+        return {target: target_result.labels for target, target_result in components.target_components.items()}
+
+    @property
+    def linc_components_(self) -> LincMixtureResult | None:
+        result = self.get_result()
+
+        if self.cfg.data_mode.is_temporal():
+            return None
+
+        return cast(TabularResult, result).linc_components
+
+    @property
+    def linc_labels_(self) -> dict[Any, dict[Any, int]] | None:
+        components = self.linc_components_
+
+        if components is None:
+            return None
+
+        return {
+            target: target_result.labels_by_context for target, target_result in components.target_components.items()
+        }
+
+    @property
+    def linc_groups_(self) -> dict[Any, list[frozenset[Any]]] | None:
+        components = self.linc_components_
+
+        if components is None:
+            return None
+
+        return {target: target_result.groups for target, target_result in components.target_components.items()}
+
+    @property
+    def last_context_combo_(self) -> ContextCombinationResult | None:
+        self._require_fitted()
+        return None if self.engine_ is None else getattr(self.engine_, "last_context_combo_", None)
 
     def _require_fitted(self) -> None:
         if self.engine_ is None or self.result_ is None:

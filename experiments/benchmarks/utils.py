@@ -376,6 +376,18 @@ def _estimated_regime_labels_by_target(est: CausalChange) -> dict[str, dict[int,
     return out
 
 
+def _estimated_linc_context_labels_by_target(est: CausalChange) -> dict[str, dict[int, int]]:
+    components = est.linc_components_
+
+    if components is None:
+        return {}
+
+    return {
+        str(target): {int(context_id): int(label) for context_id, label in target_result.labels_by_context.items()}
+        for target, target_result in components.target_components.items()
+    }
+
+
 def _project_temporal_graph_to_summary(graph: nx.DiGraph) -> nx.DiGraph:
     summary = nx.DiGraph()
 

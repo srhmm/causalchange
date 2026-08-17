@@ -66,7 +66,6 @@ GRID_LINC_SMALL_CONTEXT_CHANGES = {
     },
 }
 
-
 GRID_LINC_NO_CHANGE = {
     "data": {
         "setting": ["multi"],
@@ -342,10 +341,10 @@ ALL_GRIDS = {
     "topic_small": GRID_TOPIC_SMALL,
     "topic_medium": GRID_TOPIC_MEDIUM,
     # LINC
-    "linc_small_no_change": GRID_LINC_SMALL_NO_CHANGE,
-    "linc_small_context_changes": GRID_LINC_SMALL_CONTEXT_CHANGES,
-    "linc_no_change": GRID_LINC_NO_CHANGE,
-    "linc_context_changes": GRID_LINC_CONTEXT_CHANGES,
+    # "linc_small_no_change": GRID_LINC_SMALL_NO_CHANGE,
+    "linc_small": GRID_LINC_SMALL_CONTEXT_CHANGES,
+    # "linc_no_change": GRID_LINC_NO_CHANGE,
+    "linc_medium": GRID_LINC_CONTEXT_CHANGES,
     # SpaceTime
     "spacetime_small_stationary_time": GRID_SPACETIME_SMALL_STATIONARY_TIME,
     "spacetime_small_stationary_contexts": GRID_SPACETIME_SMALL_STATIONARY_CONTEXTS,
@@ -354,11 +353,11 @@ ALL_GRIDS = {
     "spacetime_small_detect_time": GRID_SPACETIME_SMALL_DETECT_TIME,
     "spacetime_small_detect_contexts": GRID_SPACETIME_SMALL_DETECT_CONTEXTS,
     "spacetime_clustering_contexts_fixed": GRID_SPACETIME_CLUSTERING_CONTEXTS_FIXED,
-    # "cmm_small": GRID_CMM_MIXED_SMALL,
+    "cmm_small": GRID_CMM_MIXED_SMALL,
 }
 
 
-SELECTED_GRIDS = ["linc_small_no_change", "linc_small_context_changes"]
+SELECTED_GRIDS = ["linc_small"]
 
 
 GRIDS = {name: ALL_GRIDS[name] for name in SELECTED_GRIDS}

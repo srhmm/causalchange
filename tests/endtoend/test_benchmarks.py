@@ -1,6 +1,6 @@
 import pytest
-from config.benchmark_config import BenchmarkConfig
 
+from causalchange.config.benchmark_config import BenchmarkConfig
 from experiments.benchmarks.run import iter_valid_configs, run_on_config
 from tests.util import has_rpy2_flexmix
 

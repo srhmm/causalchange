@@ -89,11 +89,8 @@ from causalchange import CMM
 
 X = pd.DataFrame(...)
 model = CMM(
-    score_type="lin",
     mix_type="lin",
     k_max=2,
-    lambda_mix=0.0,
-    hybrid_mixing=False,
     seed=0,
 )
 

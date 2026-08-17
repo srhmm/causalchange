@@ -9,7 +9,7 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.preprocessing import StandardScaler
 
 from causalchange.config.causal_change_config import CausalChangeConfigTemporal
-from causalchange.core.results import GridCell, SCMClusteringResult
+from causalchange.core.results import GridCell, SpaceTimeClusteringResult
 from causalchange.core.types import MechanismClusteringMethod, StatisticalTestingMethod
 from causalchange.domain.temporal import (
     TemporalNode,
@@ -24,13 +24,13 @@ class SCMClustering(ABC):
     """Abstract base for SCM mechanism clustering."""
 
     @abstractmethod
-    def fit_predict(self, *args: Any, **kwargs: Any) -> SCMClusteringResult: ...
+    def fit_predict(self, *args: Any, **kwargs: Any) -> SpaceTimeClusteringResult: ...
 
 
 class TabularSCMClustering(SCMClustering):
     """Placeholder for future tabular/mixture SCM clustering."""
 
-    def fit_predict(self, *args: Any, **kwargs: Any) -> SCMClusteringResult:
+    def fit_predict(self, *args: Any, **kwargs: Any) -> SpaceTimeClusteringResult:
         raise NotImplementedError("Tabular SCM clustering is not implemented yet.")
 
 
@@ -50,7 +50,7 @@ class BaseTemporalSCMClustering(SCMClustering):
         changepoints: list[int] | None = None,
         changepoints_by_context: dict[Any, list[int]] | None = None,
         scorer=None,
-    ) -> SCMClusteringResult: ...
+    ) -> SpaceTimeClusteringResult: ...
 
     def _coerce_panel(
         self,
@@ -122,7 +122,7 @@ class BaseTemporalSCMClustering(SCMClustering):
         intervals_by_context: dict[Any, list[tuple[int, int]]],
         mode: str,
         extra_diagnostics: dict[str, Any] | None = None,
-    ) -> SCMClusteringResult:
+    ) -> SpaceTimeClusteringResult:
         cells = self._grid_cells(intervals_by_context)
 
         cell_clusters = {target: {cell: 0 for cell in cells} for target in panel.variables}
@@ -137,7 +137,7 @@ class BaseTemporalSCMClustering(SCMClustering):
         if extra_diagnostics:
             diagnostics.update(extra_diagnostics)
 
-        return SCMClusteringResult(
+        return SpaceTimeClusteringResult(
             cell_clusters=cell_clusters,
             intervals_by_context=intervals_by_context,
             diagnostics=diagnostics,
@@ -316,7 +316,7 @@ class TemporalSCMSkipClustering(BaseTemporalSCMClustering):
         changepoints: list[int] | None = None,
         changepoints_by_context: dict[Any, list[int]] | None = None,
         scorer=None,
-    ) -> SCMClusteringResult:
+    ) -> SpaceTimeClusteringResult:
         panel = self._coerce_panel(X, panel)
 
         intervals_by_context = self._intervals_by_context(
@@ -352,7 +352,7 @@ class TemporalSCMPairwiseTesting(BaseTemporalSCMClustering):
         changepoints: list[int] | None = None,
         changepoints_by_context: dict[Any, list[int]] | None = None,
         scorer=None,
-    ) -> SCMClusteringResult:
+    ) -> SpaceTimeClusteringResult:
         panel = self._coerce_panel(X, panel)
 
         intervals_by_context = self._intervals_by_context(
@@ -449,7 +449,7 @@ class TemporalSCMPairwiseTesting(BaseTemporalSCMClustering):
                 pvalues=pvalues,
             )
 
-        return SCMClusteringResult(
+        return SpaceTimeClusteringResult(
             cell_clusters=cell_clusters,
             intervals_by_context=intervals_by_context,
             diagnostics=diagnostics,
@@ -468,7 +468,7 @@ class TemporalSCMEdgeStrengthClustering(BaseTemporalSCMClustering):
         changepoints: list[int] | None = None,
         changepoints_by_context: dict[Any, list[int]] | None = None,
         scorer=None,
-    ) -> SCMClusteringResult:
+    ) -> SpaceTimeClusteringResult:
         if scorer is None:
             raise ValueError("scorer is required for edge-strength clustering.")
 
@@ -553,7 +553,7 @@ class TemporalSCMEdgeStrengthClustering(BaseTemporalSCMClustering):
                 "parents": parents,
             }
 
-        return SCMClusteringResult(
+        return SpaceTimeClusteringResult(
             cell_clusters=cell_clusters,
             intervals_by_context=intervals_by_context,
             diagnostics=diagnostics,
@@ -676,7 +676,7 @@ class TemporalSCMClustering(SCMClustering):
         changepoints: list[int] | None = None,
         changepoints_by_context: dict[Any, list[int]] | None = None,
         scorer=None,
-    ) -> SCMClusteringResult:
+    ) -> SpaceTimeClusteringResult:
         return self.impl.fit_predict(
             X=X,
             panel=panel,

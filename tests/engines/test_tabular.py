@@ -3,7 +3,7 @@ from __future__ import annotations
 import networkx as nx
 import pandas as pd
 
-from causalchange.core.results import GraphSearchResult, MultiContextResult, TabularResult
+from causalchange.core.results import ContextCombinationResult, GraphSearchResult, TabularResult
 from causalchange.core.types import DataMode
 from causalchange.engines.tabular import TabularDiscoveryEngine
 
@@ -57,7 +57,14 @@ class DummyScoring:
 class DummyContextCombination:
     def combine_contexts(self, *, contexts, effect, parents, score_ctx):
         ctx, df = next(iter(contexts.items()))
-        return MultiContextResult(total=score_ctx(df), diagnostics={"context": ctx})
+        return ContextCombinationResult(
+            total=score_ctx(df),
+            diagnostics={
+                "context": ctx,
+                "effect": effect,
+                "parents": parents,
+            },
+        )
 
 
 class DummySearch:

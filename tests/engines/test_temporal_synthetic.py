@@ -4,7 +4,7 @@ from typing import Any
 
 import pandas as pd
 
-from causalchange.core.results import SCMClusteringResult, TemporalResult
+from causalchange.core.results import SpaceTimeClusteringResult, TemporalResult
 from causalchange.core.types import (
     ChangepointMode,
     ChangepointScope,
@@ -71,7 +71,7 @@ class NoMechanismClustering:
         changepoints_by_context=None,
         scorer=None,
     ):
-        return SCMClusteringResult(
+        return SpaceTimeClusteringResult(
             cell_clusters={},
             intervals_by_context={},
             diagnostics={"mode": "skip"},
